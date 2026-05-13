@@ -1224,14 +1224,14 @@ footer { Buenas: #001533; color: rgb(18 17 17 / 55%); padding: 32px 20px 20px; f
 <!-- PUSH OPT-IN BAR — aparece después de 8 segundos si no suscripto -->
 <div class="push-bar" id="pushBar" role="dialog" aria-label="Activar notificaciones de alerta" aria-live="polite">
   <div class="push-bar-text">
-    <strong>🔔 Recibí alertas de paro y modificaciones</strong>
-    Te avisamos cuando el tren no funciona. Sin spam.
+    <strong>🔔 PROXIMAMENTE: Recibí alertas de paro y modificaciones</strong>
+    Te avisaremos cuando el tren no funciona. Sin spam.
   </div>
   <div class="push-bar-actions">
-    <button id="pushBarAccept"
+    <!--<button id="pushBarAccept"
 onclick="OneSignalDeferred.push(async function(OneSignal){await OneSignal.Notifications.requestPermission();})">
 Activar notificaciones
-</button>
+</button>-->
     <button type="button" class="push-bar-dismiss" id="pushBarDismiss" aria-label="Cerrar">✕</button>
   </div>
 </div>
