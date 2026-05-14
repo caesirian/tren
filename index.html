@@ -2262,8 +2262,9 @@ const ESTADO_JSON_URL = 'https://raw.githubusercontent.com/TU_USUARIO/tren-sarmi
 //
 // FALLBACK LOCAL — se usa si el fetch falla (sin conexión, repo no existe, etc.)
 // También es el "estado por defecto" mientras no hayas creado el repo.
-// ════════════════════════════════════════════════════════════
-let ESTADO_DIA = {
+
+
+/*let ESTADO_DIA = {
   estado: "normal",
   ultimaActualizacion: "14/05/2026 08:00",
   fuente: "local",
@@ -2272,6 +2273,17 @@ let ESTADO_DIA = {
     "⚠️ <strong>Once - Moreno (11/5 al 13/5):</strong> Primer tren Liniers-Moreno 4:32hs, Once-Moreno 4:55hs. Último tren Once-Moreno 23:02hs, Flores-Moreno 00:09hs por obras.",
     "⚠️ <strong>Moreno - Once (11/5 al 13/5):</strong> Primer tren Castelar-Liniers 2:55hs, Moreno-Once 3:00hs. Último tren Moreno-Once 21:26hs, Moreno-Flores 22:20hs por obras."
   ]
+};*/
+
+    
+// ════════════════════════════════════════════════════════════
+let ESTADO_DIA = {
+  estado: "normal",
+  ultimaActualizacion: "14/05/2026 08:00",
+  fuente: "local",
+  alertas: [
+    "🚧 <strong>Andén provisorio en Morón (permanente):</strong> Los trenes hacia Once se detienen en andén provisorio. Acceso por calles Sarmiento y Azcuénaga. Medida indefinida por obras de renovación.",
+   ]
 };
 
 // ─── Cargar estado desde GitHub, con fallback al objeto local ─
