@@ -1661,8 +1661,8 @@ Activar notificaciones
     <div style="display:flex;align-items:center;gap:12px;">
       <div class="semaforo" id="semaforo" aria-hidden="true" title="Semáforo de estado del servicio">
         <div class="semaforo-luz" id="luzRoja"></div>
-        <div class="semaforo-luz" id="luzAmarilla"></div>
-        <div class="semaforo-luz on-verde" id="luzVerde"></div>
+        <div class="semaforo-luz on-amarillo" id="luzAmarilla"></div>
+        <div class="semaforo-luz" id="luzVerde"></div>
       </div>
       <div>
         <span class="status-dot" aria-hidden="true"></span>
@@ -2278,8 +2278,8 @@ const ESTADO_JSON_URL = 'https://raw.githubusercontent.com/TU_USUARIO/tren-sarmi
     
 // ════════════════════════════════════════════════════════════
 let ESTADO_DIA = {
-  estado: "normal",
-  ultimaActualizacion: "14/05/2026 08:00",
+  estado: "modificado",
+  ultimaActualizacion: "14/05/2026 11:50",
   fuente: "local",
   alertas: [
     "🚧 <strong>Andén provisorio en Morón (permanente):</strong> Los trenes hacia Once se detienen en andén provisorio. Acceso por calles Sarmiento y Azcuénaga. Medida indefinida por obras de renovación.",
@@ -2342,7 +2342,7 @@ function applyEstadoDia() {
   // --- Texto del status bar ---
   const statusDetailMap = {
     normal:     'El servicio opera con normalidad en todos sus ramales.',
-    modificado: 'Del 11/05 al 13/05 el servicio opera con modificaciones en sus primeros y ultimos trenes por Obras.',
+    modificado: 'Servicio limitado Moreno-Liniers por colision.',
     paro:       'ATENCIÓN: El servicio se encuentra suspendido. Consultá colectivos alternativos.'
   };
   const detailEl = document.getElementById('statusDetail');
