@@ -1193,10 +1193,92 @@ footer { Buenas: #001533; color: rgb(18 17 17 / 55%); padding: 32px 20px 20px; f
         <span class="nav-brand-sub">Línea Sarmiento · AMBA · 2026</span>
       </div>
     </a>
-    <button type="button" class="nav-bell" id="navBell" aria-label="Activar notificaciones de paro y alertas" title="Notificaciones de alerta">
-      🔔
-      <span class="nav-bell-dot" aria-hidden="true"></span>
-    </button>
+<div id="bell" class="bell inactive">
+
+  <svg viewBox="0 0 24 24">
+    <path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm6-6V11a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/>
+  </svg>
+
+</div>
+
+<script>
+
+  const bell = document.getElementById("bell");
+
+  function setSubscribed(){
+
+    bell.classList.remove("inactive");
+    bell.classList.add("active");
+
+  }
+
+  function setUnsubscribed(){
+
+    bell.classList.remove("active");
+    bell.classList.add("inactive");
+
+  }
+
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+
+  OneSignalDeferred.push(async function(OneSignal) {
+
+    await OneSignal.init({
+      appId: "114f6665-eede-42d0-90ad-4d6480f10c76",
+      notifyButton: {
+        enable: false
+      }
+    });
+
+    // Estado inicial
+    const optedIn =
+      await OneSignal.User.PushSubscription.optedIn;
+
+    if(optedIn){
+      setSubscribed();
+    }else{
+      setUnsubscribed();
+    }
+
+    // Click campana
+    bell.addEventListener("click", async () => {
+
+      const permission =
+        OneSignal.Notifications.permission;
+
+      if(permission === "granted"){
+
+        setSubscribed();
+
+        alert("Ya estás suscripto");
+
+        return;
+      }
+
+      await OneSignal.Notifications.requestPermission();
+
+      const newOptedIn =
+        await OneSignal.User.PushSubscription.optedIn;
+
+      if(newOptedIn){
+
+        setSubscribed();
+
+        alert("Suscripción activada correctamente");
+
+      }else{
+
+        setUnsubscribed();
+
+        alert("La suscripción no fue activada");
+
+      }
+
+    });
+
+  });
+
+</script>
     <button type="button" class="nav-toggle" id="navToggle" aria-label="Abrir menú de navegación" aria-expanded="false" aria-controls="navLinks">☰</button>
     <ul class="nav-links" id="navLinks" role="list">
       <li><a href="#proximo">🔍 Próximo tren</a></li>
