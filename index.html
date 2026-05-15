@@ -1179,6 +1179,184 @@ footer { Buenas: #001533; color: rgb(18 17 17 / 55%); padding: 32px 20px 20px; f
 </style>
 </head>
 
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- FIREBASE - CONEXIÓN EN TIEMPO REAL PARA SEMÁFORO Y ALERTAS     -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<script type="module">
+
+/* =========================
+   FIREBASE IMPORTS
+========================= */
+
+import { initializeApp }
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+import {
+  getFirestore,
+  doc,
+  onSnapshot
+}
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* =========================
+   FIREBASE CONFIG
+========================= */
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAZ83BcBLEvVJ1G7hFvI_cqhLSKJpRsH7c",
+  authDomain: "tren-sarmiento-en-linea.firebaseapp.com",
+  projectId: "tren-sarmiento-en-linea",
+  storageBucket: "tren-sarmiento-en-linea.firebasestorage.app",
+  messagingSenderId: "712333767897",
+  appId: "1:712333767897:web:c9557e3f2299c9806dfac8",
+  measurementId: "G-BTW3JDC9DD"
+};
+
+/* =========================
+   INIT FIREBASE
+========================= */
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* =========================
+   LISTENER REALTIME
+========================= */
+
+const estadoRef = doc(db, "estadoServicio", "actual");
+
+// Escuchar cambios en tiempo real
+onSnapshot(estadoRef, (snapshot) => {
+  
+  if (!snapshot.exists()) {
+    console.warn('[Firebase] Documento de estado no existe');
+    return;
+  }
+
+  const data = snapshot.data();
+  console.log('[Firebase] Estado recibido:', data);
+  
+  // Actualizar semáforo (ahora pasamos todos los datos)
+  actualizarSemaforo(data);
+  
+  // Actualizar mensaje de alerta principal
+  actualizarAlerta(data.mensaje || '');
+  
+});
+
+/* =========================
+   ACTUALIZAR SEMAFORO
+========================= */
+
+function actualizarSemaforo(data) {
+  
+  const estado = data.estado || 'normal';
+  const mensaje = data.mensaje || '';
+  
+  const luzRoja = document.getElementById("luzRoja");
+  const luzAmarilla = document.getElementById("luzAmarilla");
+  const luzVerde = document.getElementById("luzVerde");
+  const statusBar = document.getElementById("statusBar");
+  const statusTexto = document.getElementById("statusTexto");
+  const statusDetail = document.getElementById("statusDetail");
+  
+  // Esperar a que el DOM esté listo
+  if (!luzRoja || !luzAmarilla || !luzVerde) {
+    setTimeout(() => actualizarSemaforo(data), 100);
+    return;
+  }
+  
+  // RESET
+  luzRoja.classList.remove("on-rojo");
+  luzAmarilla.classList.remove("on-amarillo");
+  luzVerde.classList.remove("on-verde");
+  
+  if (statusBar) {
+    statusBar.classList.remove("yellow", "red");
+  }
+  
+  // Mensajes por defecto (fallback si no viene mensaje de la BD)
+  const mensajesDefault = {
+    normal: 'El servicio opera con normalidad en ramal Once-Moreno.',
+    modificado: 'Demoras o cambios operativos.',
+    paro: 'ATENCIÓN: El servicio se encuentra suspendido. Consultá colectivos alternativos.'
+  };
+  
+  // APLICAR ESTADO
+  switch(estado) {
+    
+    case "paro":
+      luzRoja.classList.add("on-rojo");
+      if (statusBar) statusBar.classList.add("red");
+      if (statusTexto) statusTexto.innerText = "Servicio interrumpido";
+      // Usar mensaje de la BD o el default para paro
+      if (statusDetail) statusDetail.innerText = mensaje || mensajesDefault.paro;
+      break;
+    
+    case "modificado":
+      luzAmarilla.classList.add("on-amarillo");
+      if (statusBar) statusBar.classList.add("yellow");
+      if (statusTexto) statusTexto.innerText = "Servicio con modificaciones";
+      // Usar mensaje de la BD o el default para modificado
+      if (statusDetail) statusDetail.innerText = mensaje || mensajesDefault.modificado;
+      break;
+    
+    default: // "normal"
+      luzVerde.classList.add("on-verde");
+      // statusBar sin clases = verde (por defecto)
+      if (statusTexto) statusTexto.innerText = "Servicio normal";
+      // Usar mensaje de la BD o el default para normal
+      if (statusDetail) statusDetail.innerText = mensaje || mensajesDefault.normal;
+      break;
+  }
+  
+  // Actualizar badge de estado en la sección "Estado HOY"
+  const badgeEl = document.getElementById('estadoBadge');
+  if (badgeEl) {
+    const badgeMap = {
+      normal:     { cls: 'badge-verde',  txt: '✅ Normal' },
+      modificado: { cls: 'badge-alerta', txt: '⚠️ Con modificaciones' },
+      paro:       { cls: 'badge-paro',   txt: '🚫 Paro total' }
+    };
+    const b = badgeMap[estado] || badgeMap.normal;
+    badgeEl.className = b.cls;
+    badgeEl.textContent = b.txt;
+  }
+  
+}
+
+/* =========================
+   ACTUALIZAR ALERTA
+========================= */
+
+function actualizarAlerta(texto) {
+  
+  const alertaTexto = document.getElementById("alertaTexto");
+  
+  if (alertaTexto) {
+    alertaTexto.innerHTML = texto || "Sin alertas activas.";
+  }
+  
+  // Actualizar también en la sección "Estado HOY"
+  const alertasWrap = document.getElementById('alertasWrap');
+  if (alertasWrap) {
+    if (texto && texto.trim() !== "" && texto !== "Sin alertas activas.") {
+      alertasWrap.style.display = 'block';
+      const alertItem = alertasWrap.querySelector('.today-alert-item');
+      if (alertItem) {
+        alertItem.innerHTML = texto;
+      }
+    } else {
+      alertasWrap.style.display = 'none';
+    }
+  }
+  
+}
+
+console.log('[Firebase] Listener de estado inicializado');
+
+</script>
+
 <body>
 <!-- Skip to content — accesibilidad teclado -->
 <a class="skip-link" href="#main-content">Ir al contenido principal</a>
@@ -1661,14 +1839,20 @@ Activar notificaciones
     <div style="display:flex;align-items:center;gap:12px;">
       <div class="semaforo" id="semaforo" aria-hidden="true" title="Semáforo de estado del servicio">
         <div class="semaforo-luz" id="luzRoja"></div>
-        <div class="semaforo-luz on-amarillo" id="luzAmarilla"></div>
+        <div class="semaforo-luz" id="luzAmarilla"></div>
         <div class="semaforo-luz" id="luzVerde"></div>
       </div>
-      <div>
+        <div>
+            <span class="status-dot" aria-hidden="true"></span>
+        <span id="statusTexto" class="status-text">⚠️ Servicio con modificaciones</span>
+
+        <div id="statusDetail" class="status-detail">Demoras o cambios operativos.</div>
+      </div>
+       <!--<div>
         <span class="status-dot" aria-hidden="true"></span>
         <span class="status-text" id="statusText">⚠️ Servicio con modificaciones</span>
-        <div class="status-detail" id="statusDetail">.</div>
-      </div>
+        <div class="status-detail" id="statusDetail">Entre la Noche del Sábado 09 y mañana del Domingo 10 habrá servicio reducido por lo que el horario de los ultimos trenes se verá modificado.</div>
+      </div>-->
     </div>
     <div class="status-source" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
       <a href="https://www.instagram.com/trensarmiento_enlinea" target="_blank" rel="noopener noreferrer">📸 @trensarmiento_enlinea</a>
@@ -2279,7 +2463,7 @@ const ESTADO_JSON_URL = 'https://raw.githubusercontent.com/TU_USUARIO/tren-sarmi
 // ════════════════════════════════════════════════════════════
 let ESTADO_DIA = {
   estado: "normal",
-  ultimaActualizacion: "14/05/2026 13:10",
+  ultimaActualizacion: "14/05/2026 08:00",
   fuente: "local",
   alertas: [
     "🚧 <strong>Andén provisorio en Morón (permanente):</strong> Los trenes hacia Once se detienen en andén provisorio. Acceso por calles Sarmiento y Azcuénaga. Medida indefinida por obras de renovación.",
@@ -2341,8 +2525,8 @@ function applyEstadoDia() {
 
   // --- Texto del status bar ---
   const statusDetailMap = {
-    normal:     'El servicio opera con normalidad en ramal Once-Moreno',
-    modificado: 'Servicio limitado Moreno-Liniers por colision.',
+    normal:     'El servicio opera con normalidad en todos sus ramales.',
+    modificado: 'Del 11/05 al 13/05 el servicio opera con modificaciones en sus primeros y ultimos trenes por Obras.',
     paro:       'ATENCIÓN: El servicio se encuentra suspendido. Consultá colectivos alternativos.'
   };
   const detailEl = document.getElementById('statusDetail');
