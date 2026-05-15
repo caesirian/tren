@@ -30,23 +30,7 @@
     
     <script>
 
-// Bind toggle events
-document.querySelectorAll('.station-header').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const card   = btn.closest('.station-card');
-    const body   = card.querySelector('.station-body');
-    const isOpen = card.classList.toggle('open');
 
-    btn.setAttribute('aria-expanded', isOpen);
-    body.hidden = !isOpen;
-  });
-});
-
-document.getElementById('stationSearch').addEventListener('input', function() {
-  renderStations(this.value);
-});
-
-renderStations();
 
         
 !function(){
@@ -3208,6 +3192,67 @@ const ONE_SIGNAL_CONFIGURED = typeof OneSignalDeferred !== 'undefined' &&
     </div>
   </div>
 </section>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
 
+  // =========================
+  // ESTACIONES DESPLEGABLES
+  // =========================
+
+  document.querySelectorAll('.station-header').forEach(btn => {
+
+    btn.addEventListener('click', () => {
+
+      const card = btn.closest('.station-card');
+      const body = card.querySelector('.station-body');
+
+      const isOpen = card.classList.contains('open');
+
+      if (isOpen) {
+        card.classList.remove('open');
+        body.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+      } else {
+        card.classList.add('open');
+        body.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+      }
+
+    });
+
+  });
+
+  // =========================
+  // BUSCADOR ESTACIONES
+  // =========================
+
+  const stationSearch = document.getElementById('stationSearch');
+
+  if (stationSearch) {
+
+    stationSearch.addEventListener('input', function () {
+
+      const value = this.value.toLowerCase().trim();
+
+      document.querySelectorAll('.station-card').forEach(card => {
+
+        const name =
+          card.querySelector('.station-name')
+          ?.textContent
+          ?.toLowerCase() || '';
+
+        card.style.display =
+          name.includes(value)
+            ? ''
+            : 'none';
+
+      });
+
+    });
+
+  }
+
+});
+</script>
 </body>
 </html>
