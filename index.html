@@ -23,7 +23,32 @@
 <meta name="twitter:title"       content="Tren Sarmiento En Línea 2026 — Horarios, Tarifas y Estado"/>
 <meta name="twitter:description" content="Próximos trenes, horarios oficiales, tarifas y colectivos alternativos. Ramal Once–Moreno."/>
 <meta name="twitter:image"       content="https://commons.wikimedia.org/wiki/Special:FilePath/Nuevo_tren_en_Estaci%C3%B3n_Once_(L%C3%ADnea_Sarmiento)%2C_Buenos_Aires%2C_Enero_2015.JPG"/>
-<script>
+
+    
+    
+    
+    
+    <script>
+
+// Bind toggle events
+document.querySelectorAll('.station-header').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const card   = btn.closest('.station-card');
+    const body   = card.querySelector('.station-body');
+    const isOpen = card.classList.toggle('open');
+
+    btn.setAttribute('aria-expanded', isOpen);
+    body.hidden = !isOpen;
+  });
+});
+
+document.getElementById('stationSearch').addEventListener('input', function() {
+  renderStations(this.value);
+});
+
+renderStations();
+
+        
 !function(){
     var //e=atob,
         //t=e("NTQ5MTEzNDc5NjU2Mg=="),
