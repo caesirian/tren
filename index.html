@@ -2666,7 +2666,7 @@ function formatCountdown(min) {
   const fecha = `${diaCap}, ${now.getDate()} de ${MESES[now.getMonth()]} de ${now.getFullYear()}`;
   const corta = `${pad2(now.getDate())}/${pad2(now.getMonth()+1)}/${now.getFullYear()}`;
   document.getElementById('heroDate').textContent    = '📅 '+fecha;
-  document.getElementById('statusText').textContent  = `⚠️ Servicio con modificaciones — ${diaCap} ${corta}`;
+  document.getElementById('statusTexto').textContent  = `⚠️ Servicio con modificaciones — ${diaCap} ${corta}`;
   document.getElementById('estadoLabel').textContent = '📡 Hoy — '+fecha;
 })();
 
