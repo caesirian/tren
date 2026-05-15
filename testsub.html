@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>OneSignal Test</title>
+  <title>OneSignal Bell</title>
 
   <style>
     body{
@@ -16,24 +16,49 @@
       font-family:Arial,sans-serif;
     }
 
-    button{
-      padding:14px 24px;
-      border:none;
-      border-radius:10px;
-      font-size:16px;
-      font-weight:bold;
+    .bell{
+      width:90px;
+      height:90px;
+      border-radius:50%;
+      display:flex;
+      justify-content:center;
+      align-items:center;
       cursor:pointer;
-      transition:.2s;
+      transition:0.3s ease;
+      user-select:none;
     }
 
-    .subscribe{
-      background:#00d084;
-      color:#000;
+    .bell svg{
+      width:48px;
+      height:48px;
+      transition:0.3s ease;
     }
 
-    .subscribed{
-      background:#333;
-      color:#fff;
+    /* ESTADO APAGADO */
+    .inactive{
+      background:#1f1f1f;
+      box-shadow:none;
+    }
+
+    .inactive svg{
+      fill:#666;
+    }
+
+    /* ESTADO ACTIVO */
+    .active{
+      background:#1f1f1f;
+      box-shadow:
+        0 0 10px #00d084,
+        0 0 25px #00d084,
+        0 0 50px rgba(0,208,132,.6);
+    }
+
+    .active svg{
+      fill:#00d084;
+    }
+
+    .active:hover{
+      transform:scale(1.05);
     }
   </style>
 
@@ -42,17 +67,30 @@
 
 <body>
 
-<button id="subscribeBtn" class="subscribe">
-  Suscribirse
-</button>
+<div id="bell" class="bell inactive">
+
+  <svg viewBox="0 0 24 24">
+    <path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm6-6V11a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2z"/>
+  </svg>
+
+</div>
 
 <script>
-  const btn = document.getElementById("subscribeBtn");
 
-  function setSubscribedState(){
-    btn.innerText = "✓ Suscripto";
-    btn.classList.remove("subscribe");
-    btn.classList.add("subscribed");
+  const bell = document.getElementById("bell");
+
+  function setSubscribed(){
+
+    bell.classList.remove("inactive");
+    bell.classList.add("active");
+
+  }
+
+  function setUnsubscribed(){
+
+    bell.classList.remove("active");
+    bell.classList.add("inactive");
+
   }
 
   window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -66,24 +104,28 @@
       }
     });
 
+    // Estado inicial
     const optedIn =
       await OneSignal.User.PushSubscription.optedIn;
 
     if(optedIn){
-      setSubscribedState();
+      setSubscribed();
+    }else{
+      setUnsubscribed();
     }
 
-    btn.addEventListener("click", async () => {
+    // Click campana
+    bell.addEventListener("click", async () => {
 
       const permission =
         OneSignal.Notifications.permission;
 
-      // Ya permitido
+      // Ya suscripto
       if(permission === "granted"){
 
-        setSubscribedState();
+        setSubscribed();
 
-        alert("Ya estás suscripto a las notificaciones");
+        alert("Ya estás suscripto");
 
         return;
       }
@@ -96,19 +138,22 @@
 
       if(newOptedIn){
 
-        setSubscribedState();
+        setSubscribed();
 
         alert("Suscripción activada correctamente");
 
       }else{
 
-        alert("No se pudo activar la suscripción");
+        setUnsubscribed();
+
+        alert("La suscripción no fue activada");
 
       }
 
     });
 
   });
+
 </script>
 
 </body>
