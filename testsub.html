@@ -20,16 +20,20 @@
       padding:14px 24px;
       border:none;
       border-radius:10px;
-      background:#00d084;
-      color:#000;
       font-size:16px;
       font-weight:bold;
       cursor:pointer;
       transition:.2s;
     }
 
-    button:hover{
-      transform:scale(1.03);
+    .subscribe{
+      background:#00d084;
+      color:#000;
+    }
+
+    .subscribed{
+      background:#333;
+      color:#fff;
     }
   </style>
 
@@ -38,11 +42,19 @@
 
 <body>
 
-<button id="subscribeBtn">
+<button id="subscribeBtn" class="subscribe">
   Suscribirse
 </button>
 
 <script>
+  const btn = document.getElementById("subscribeBtn");
+
+  function setSubscribedState(){
+    btn.innerText = "✓ Suscripto";
+    btn.classList.remove("subscribe");
+    btn.classList.add("subscribed");
+  }
+
   window.OneSignalDeferred = window.OneSignalDeferred || [];
 
   OneSignalDeferred.push(async function(OneSignal) {
@@ -54,21 +66,47 @@
       }
     });
 
-    document
-      .getElementById("subscribeBtn")
-      .addEventListener("click", async () => {
+    const optedIn =
+      await OneSignal.User.PushSubscription.optedIn;
 
-        const permission =
-          OneSignal.Notifications.permission;
+    if(optedIn){
+      setSubscribedState();
+    }
 
-        if(permission === "granted"){
-          alert("Ya estás suscripto");
-          return;
-        }
+    btn.addEventListener("click", async () => {
 
-        await OneSignal.Notifications.requestPermission();
+      const permission =
+        OneSignal.Notifications.permission;
 
-      });
+      // Ya permitido
+      if(permission === "granted"){
+
+        setSubscribedState();
+
+        alert("Ya estás suscripto a las notificaciones");
+
+        return;
+      }
+
+      // Solicitar permiso
+      await OneSignal.Notifications.requestPermission();
+
+      const newOptedIn =
+        await OneSignal.User.PushSubscription.optedIn;
+
+      if(newOptedIn){
+
+        setSubscribedState();
+
+        alert("Suscripción activada correctamente");
+
+      }else{
+
+        alert("No se pudo activar la suscripción");
+
+      }
+
+    });
 
   });
 </script>
