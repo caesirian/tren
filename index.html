@@ -3247,7 +3247,7 @@ function renderStations() {
 
           <div class="bus-tags">
 
-            ${(st.buses || []).map(bus => `
+            ${st.buses.map(bus => `
               <span class="bus-tag">${bus}</span>
             `).join("")}
 
