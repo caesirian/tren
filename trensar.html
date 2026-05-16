@@ -158,24 +158,6 @@
 <!-- OneSignal Web Push SDK -->
 <!-- REEMPLAZÁ 'TU_APP_ID' con el App ID de tu cuenta OneSignal -->
 
-<script>
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-  OneSignalDeferred.push(async function(OneSignal) {
-    await OneSignal.init({
-      appId: "445c42f6-aa5b-4731-a072-9576adab63fc",
-      safari_web_id: "",
-      notifyButton: { enable: false }, // usamos nuestro propio botón
-      promptOptions: {
-        slidedown: {
-          prompts: [{
-            type: "push",
-            autoPrompt: false, // no pedimos permiso automático, lo pedimos nosotros
-          }]
-        }
-      }
-    });
-  });
-</script>
 
 <style>
 /* ─── Variables ───────────────────────────────────────────── */
