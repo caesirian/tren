@@ -2468,15 +2468,25 @@ const ESTADO_JSON_URL = 'https://raw.githubusercontent.com/TU_USUARIO/tren-sarmi
 
     
 // ════════════════════════════════════════════════════════════
-let ESTADO_DIA = {
+/*<!--let ESTADO_DIA = {
   estado: "normal",
   ultimaActualizacion: "27/05/2026 08:00",
   fuente: "local",
   alertas: [
     "🚧 <strong>Andén provisorio en Morón (permanente):</strong> Los trenes hacia Once se detienen en andén provisorio. Acceso por calles Sarmiento y Azcuénaga. Medida indefinida por obras de renovación.",
    ]
-};
+};--> */
+let d = new Date();
+if (d.getHours() < 8) d.setDate(d.getDate() - 1);
 
+let ESTADO_DIA = {
+  estado: "normal",
+  ultimaActualizacion: `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} 08:00`,
+  fuente: "local",
+  alertas: [
+    "🚧 <strong>Andén provisorio en Morón (permanente):</strong> Los trenes hacia Once se detienen en andén provisorio. Acceso por calles Sarmiento y Azcuénaga. Medida indefinida por obras de renovación."
+  ]
+};
 // ─── Cargar estado desde GitHub, con fallback al objeto local ─
 async function cargarEstadoRemoto() {
   // Si la URL todavía tiene el placeholder, usamos solo el fallback
