@@ -2330,140 +2330,85 @@ window.addEventListener('load', function() {
 </script>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-<script>
+<script type="module">
 // ─── Visually hidden utility ─────────────────────────────────
 const styleVH = document.createElement('style');
 styleVH.textContent = '.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}';
 document.head.appendChild(styleVH);
 
 // ════════════════════════════════════════════════════════════
-// CMS REMOTO — estado.json en GitHub (o cualquier URL pública)
-// Para actualizar: editá el archivo en GitHub desde el celular.
-// El HTML lo lee con fetch() al cargar. Si falla, usa el fallback.
-//
-// URL del JSON remoto — reemplazá con tu repo:
-const ESTADO_JSON_URL = 'https://raw.githubusercontent.com/TU_USUARIO/tren-sarmiento-estado/main/estado.json';
-//
-// FALLBACK LOCAL — se usa si el fetch falla (sin conexión, repo no existe, etc.)
-// También es el "estado por defecto" mientras no hayas creado el repo.
+// FIREBASE — fuente única de verdad para el estado del servicio
+// Mismo documento que usa index.html: estadoServicio/actual
+// Campos: estado, mensaje, alertas[], ultimaActualizacion, vigencia{desde,hasta}
 // ════════════════════════════════════════════════════════════
-let ESTADO_DIA = {
-  estado: "modificado",
-  ultimaActualizacion: "11/05/2026 08:00",
-  fuente: "local",
-  alertas: [
-    "🚧 <strong>Andén provisorio en Morón (permanente):</strong> Los trenes hacia Once se detienen en andén provisorio. Acceso por calles Sarmiento y Azcuénaga. Medida indefinida por obras de renovación.",
-    "⚠️ <strong>Once - Moreno (11/5 al 13/5):</strong> Primer tren Liniers-Moreno 4:32hs, Once-Moreno 4:55hs. Último tren Once-Moreno 23:02hs, Flores-Moreno 00:09hs por obras.",
-    "⚠️ <strong>Moreno - Once (11/5 al 13/5):</strong> Primer tren Castelar-Liniers 2:55hs, Moreno-Once 3:00hs. Último tren Moreno-Once 21:26hs, Moreno-Flores 22:20hs por obras."
-  ]
+import { initializeApp }       from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js';
+import { getFirestore, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey:            'AIzaSyAZ83BcBLEvVJ1G7hFvI_cqhLSKJpRsH7c',
+  authDomain:        'tren-sarmiento-en-linea.firebaseapp.com',
+  projectId:         'tren-sarmiento-en-linea',
+  storageBucket:     'tren-sarmiento-en-linea.firebasestorage.app',
+  messagingSenderId: '712333767897',
+  appId:             '1:712333767897:web:c9557e3f2299c9806dfac8'
 };
 
-// ─── Cargar estado desde GitHub, con fallback al objeto local ─
-async function cargarEstadoRemoto() {
-  // Si la URL todavía tiene el placeholder, usamos solo el fallback
-  if (ESTADO_JSON_URL.includes('TU_USUARIO')) {
+// ── Fallback mientras llega Firestore (o si falla) ──────────
+let ESTADO_DIA = {
+  estado: 'normal',
+  ultimaActualizacion: '—',
+  fuente: 'local',
+  alertas: []
+};
+// Exponer en window para que otras funciones del mismo script accedan
+window.__ESTADO_DIA_SET = (val) => { ESTADO_DIA = val; };
+window.__ESTADO_DIA_GET = () => ESTADO_DIA;
+
+// ─── Conectar a Firestore y escuchar cambios en tiempo real ──
+const fbApp = initializeApp(firebaseConfig);
+const fbDb  = getFirestore(fbApp);
+const estadoRef = doc(fbDb, 'estadoServicio', 'actual');
+
+onSnapshot(estadoRef, (snap) => {
+  if (!snap.exists()) {
+    console.warn('[Firebase/trensar] Documento estadoServicio/actual no existe');
     applyEstadoDia();
     return;
   }
-  try {
-    // Cache-busting: forzar fetch fresco (evita CDN cacheado de GitHub)
-    const url = `${ESTADO_JSON_URL}?t=${Math.floor(Date.now()/60000)}`; // cambia cada 1 min
-    const res  = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    // Validación mínima antes de aplicar
-    if (data && data.estado && ['normal','modificado','paro'].includes(data.estado)) {
-      ESTADO_DIA = { ...ESTADO_DIA, ...data, fuente: 'remoto' };
+  const data = snap.data();
+  console.log('[Firebase/trensar] Estado recibido:', data);
+
+  // Evaluar vigencia si existe el campo
+  let estadoEfectivo = data.estado || 'normal';
+  if (data.vigencia) {
+    const hoy   = new Date(); hoy.setHours(0,0,0,0);
+    const desde = new Date(data.vigencia.desde); desde.setHours(0,0,0,0);
+    const hasta = new Date(data.vigencia.hasta); hasta.setHours(23,59,59,999);
+    if (hoy < desde || hoy > hasta) {
+      // Fuera del período de vigencia → normal
+      estadoEfectivo = 'normal';
     }
-  } catch (err) {
-    console.warn('[trensarmientoenlinea] No se pudo cargar estado.json remoto, usando fallback local.', err.message);
-    ESTADO_DIA.fuente = 'local';
-  }
-  applyEstadoDia();
-}
-
-// ─── Aplicar ESTADO_DIA a toda la UI ────────────────────────
-function applyEstadoDia() {
-  const { estado, ultimaActualizacion, alertas, fuente } = ESTADO_DIA;
-
-  // --- Semáforo ---
-  const luces = { roja: document.getElementById('luzRoja'), amarilla: document.getElementById('luzAmarilla'), verde: document.getElementById('luzVerde') };
-  if (luces.roja) {
-    luces.roja.className    = 'semaforo-luz' + (estado === 'paro'       ? ' on-rojo'     : '');
-    luces.amarilla.className = 'semaforo-luz' + (estado === 'modificado' ? ' on-amarillo' : '');
-    luces.verde.className   = 'semaforo-luz' + (estado === 'normal'     ? ' on-verde'    : '');
   }
 
-  // --- Badge "última actualización" ---
-  const fuenteLabel = fuente === 'remoto' ? '' : ' (datos locales)';
-  const badgeText = `🕐 Verificado: ${ultimaActualizacion}${fuenteLabel}`;
-  ['lastUpdateBadge','lastUpdateSection'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = badgeText;
-  });
-
-  // --- Status bar (la tira de color debajo del hero) ---
-  const bar = document.getElementById('statusBar');
-  if (bar) {
-    bar.classList.remove('yellow','red');
-    if (estado === 'paro')       bar.classList.add('red');
-    else if (estado === 'modificado') bar.classList.add('yellow');
-    // 'normal' = verde (default)
-  }
-
-  // --- Texto del status bar ---
-  const statusDetailMap = {
-    normal:     'El servicio opera con normalidad en todos sus ramales.',
-    modificado: 'Del 11/05 al 13/05 el servicio opera con modificaciones en sus primeros y ultimos trenes por Obras.',
-    paro:       'ATENCIÓN: El servicio se encuentra suspendido. Consultá colectivos alternativos.'
+  ESTADO_DIA = {
+    estado:              estadoEfectivo,
+    ultimaActualizacion: data.ultimaActualizacion || '—',
+    fuente:              'firebase',
+    alertas:             Array.isArray(data.alertas) ? data.alertas : (data.mensaje ? [data.mensaje] : [])
   };
-  const detailEl = document.getElementById('statusDetail');
-  if (detailEl) detailEl.textContent = statusDetailMap[estado] || '';
-
-  // --- Badge de estado en la sección "Estado HOY" ---
-  const badgeEl = document.getElementById('estadoBadge');
-  if (badgeEl) {
-    const badgeMap = {
-      normal:     { cls: 'badge-verde',  txt: '✅ Normal' },
-      modificado: { cls: 'badge-alerta', txt: '⚠️ Con modificaciones' },
-      paro:       { cls: 'badge-paro',   txt: '🚫 Paro total' }
-    };
-    const b = badgeMap[estado] || badgeMap.modificado;
-    badgeEl.className = b.cls;
-    badgeEl.textContent = b.txt;
-  }
-
-  // --- Lista de alertas ---
-  const list = document.getElementById('alertasList');
-  if (list) {
-    if (alertas && alertas.length) {
-      list.innerHTML = alertas.map(a =>
-        `<div class="today-alert-item" role="listitem">${a}</div>`
-      ).join('');
-    } else {
-      list.innerHTML = '<div class="today-alert-item" role="listitem">Sin alertas activas al momento.</div>';
-    }
-  }
-
-  // --- Banner paro en el buscador ---
-  const paroBanner = document.getElementById('paroBanner');
-  if (paroBanner) {
-    if (estado === 'paro') {
-      paroBanner.classList.add('show');
-    } else {
-      paroBanner.classList.remove('show');
-    }
-  }
-}
-
-// Cargar estado remoto al iniciar (con fallback automático)
-cargarEstadoRemoto();
+  window.__ESTADO_DIA_SET(ESTADO_DIA);
+  applyEstadoDia();
+}, (err) => {
+  console.error('[Firebase/trensar] Error:', err);
+  applyEstadoDia(); // usar fallback vacío
+});
 
 // ─── Paro: mostrar colectivos de la estación seleccionada ────
 function updateParoBuses(stId) {
   const banner = document.getElementById('paroBannerBuses');
   if (!banner) return;
-  if (ESTADO_DIA.estado !== 'paro' || stId === '' || stId === null) {
+  const _ed = window.__ESTADO_DIA_GET ? window.__ESTADO_DIA_GET() : {estado:'normal'};
+  if (_ed.estado !== 'paro' || stId === '' || stId === null) {
     banner.innerHTML = '';
     return;
   }
