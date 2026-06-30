@@ -922,6 +922,15 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .today-alerts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .today-alert-item { background: var(--yellow-bg); border-left: 4px solid var(--yellow); border-radius: 6px; padding: 10px 14px; font-size: 0.88rem; color: #1c1200; }
 
+/* ─── Noticias ────────────────────────────────────────────── */
+.noticia-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(0,0,0,.06); }
+.noticia-item:last-child { border-bottom: none; }
+.noticia-foto { width: 64px; height: 48px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: var(--yellow-bg); }
+.noticia-meta { flex: 1; min-width: 0; }
+.noticia-titulo { font-size: 0.88rem; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
+.noticia-texto { font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
+.noticia-fecha { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+
 /* ─── Tarifas ─────────────────────────────────────────────── */
 .tariff-cards { display: flex; gap: 14px; flex-wrap: wrap; }
 .tariff-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px 20px; flex: 1 1 160px; text-align: center; border-top: 4px solid var(--celeste); }
@@ -1199,6 +1208,10 @@ from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getFirestore,
   doc,
+  collection,
+  query,
+  orderBy,
+  limit,
   onSnapshot
 }
 from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -1228,7 +1241,9 @@ const db = getFirestore(app);
    LISTENER REALTIME
 ========================= */
 
-const estadoRef = doc(db, "estadoServicio", "actual");
+const estadoRef        = doc(db, "estadoServicio", "actual");
+const ultimosTrenesRef = doc(db, "ultimosTrenes",  "actual");
+const noticiasRef      = collection(db, "noticias");
 
 // Escuchar cambios en tiempo real
 onSnapshot(estadoRef, (snapshot) => {
@@ -1357,6 +1372,52 @@ function actualizarAlerta(texto) {
   }
   
 }
+
+// ── Últimos trenes ────────────────────────────────────────────
+onSnapshot(ultimosTrenesRef, snap => {
+  if (!snap.exists()) return;
+  if (typeof window.__pintarUltimosTrenesDesdeFirestore === 'function') {
+    window.__pintarUltimosTrenesDesdeFirestore(snap.data());
+  }
+}, err => {
+  console.warn('[Firebase] ultimosTrenes no disponible, usando fallback local.', err.message);
+});
+
+// ── Noticias ──────────────────────────────────────────────────
+function escNoticia(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmtFechaNoticia(fechaMs) {
+  if (!fechaMs) return '';
+  const d = new Date(fechaMs);
+  const p2 = n => String(n).padStart(2,'0');
+  return `${p2(d.getDate())}/${p2(d.getMonth()+1)}/${d.getFullYear()}`;
+}
+
+const noticiasQuery = query(noticiasRef, orderBy('fechaMs', 'desc'), limit(5));
+onSnapshot(noticiasQuery, snap => {
+  const list = document.getElementById('noticiasList');
+  if (!list) return;
+  const publicadas = snap.docs.map(d => d.data()).filter(n => n.publicado !== false);
+  if (!publicadas.length) {
+    list.innerHTML = '<p style="font-size:.85rem;color:var(--muted);">No hay noticias publicadas por el momento.</p>';
+    return;
+  }
+  list.innerHTML = publicadas.map(n => `
+    <div class="noticia-item" role="listitem">
+      ${n.foto ? `<img class="noticia-foto" src="${n.foto}" alt="" loading="lazy" onerror="this.remove()"/>` : ''}
+      <div class="noticia-meta">
+        <div class="noticia-titulo">${escNoticia(n.titulo)}</div>
+        <div class="noticia-texto">${escNoticia(n.contenido)}</div>
+        <div class="noticia-fecha">${fmtFechaNoticia(n.fechaMs)}</div>
+      </div>
+    </div>
+  `).join('');
+}, err => {
+  const list = document.getElementById('noticiasList');
+  if (list) list.innerHTML = '<p style="font-size:.85rem;color:var(--muted);">No se pudieron cargar las noticias.</p>';
+  console.warn('[Firebase] noticias no disponible.', err.message);
+});
 
 console.log('[Firebase] Listener de estado inicializado');
 
@@ -1695,39 +1756,59 @@ Activar notificaciones
 <script>
 (function(){
 
-  const p2 = n => String(n).padStart(2,'0');
+  // ── Fallback local (cronograma base) ─────────────────────────
+  const p2  = n => String(n).padStart(2,'0');
+  const fmt = ([h,m]) => p2(h)+':'+p2(m);
 
   const day = new Date().getDay();
+  const dt  = day === 0 ? 'dom' : day === 6 ? 'sab' : 'lv';
 
-  const dt =
-    day === 0 ? 'dom' :
-    day === 6 ? 'sab' : 'lv';
-
-  const on = {
-    lv:[[22,47],[23,10],[23,25],[23,55]],
+  const FALLBACK_ON = {
+    lv: [[22,47],[23,10],[23,25],[23,55]],
     sab:[[22,20],[22,50],[23,20],[23,55]],
     dom:[[22,25],[23,0],[23,35]]
   }[dt];
 
-  const mo = {
-    lv:[[21,54],[22,12],[22,30]],
+  const FALLBACK_MO = {
+    lv: [[21,54],[22,12],[22,30]],
     sab:[[21,40],[22,10],[22,40]],
     dom:[[21,30],[22,5],[22,40]]
   }[dt];
 
-  const fmt = ([h,m]) => p2(h)+':'+p2(m);
+  const DIA_LABEL = { lv:'Lunes a Viernes', sab:'Sábado', dom:'Domingo/Feriado' }[dt];
 
-  document.getElementById('ltw-once-last').textContent =
-    fmt(on[on.length-1]);
+  function pintarUltimosTrenes({ onceUlt, oncePrev, morUlt, morPrev, footer }) {
+    document.getElementById('ltw-once-last').textContent = onceUlt;
+    document.getElementById('ltw-once-prev').textContent = oncePrev;
+    document.getElementById('ltw-mor-last').textContent  = morUlt;
+    document.getElementById('ltw-mor-prev').textContent  = morPrev;
+    const footerEl = document.getElementById('ltw-footer');
+    if (footerEl) footerEl.textContent = footer;
+  }
 
-  document.getElementById('ltw-once-prev').textContent =
-    fmt(on[on.length-2]);
+  // Pintar fallback inmediatamente
+  pintarUltimosTrenes({
+    onceUlt:  fmt(FALLBACK_ON[FALLBACK_ON.length-1]),
+    oncePrev: fmt(FALLBACK_ON[FALLBACK_ON.length-2]),
+    morUlt:   fmt(FALLBACK_MO[FALLBACK_MO.length-1]),
+    morPrev:  fmt(FALLBACK_MO[FALLBACK_MO.length-2]),
+    footer:   'Cronograma · ' + DIA_LABEL + ' (datos locales)'
+  });
 
-  document.getElementById('ltw-mor-last').textContent =
-    fmt(mo[mo.length-1]);
-
-  document.getElementById('ltw-mor-prev').textContent =
-    fmt(mo[mo.length-2]);
+  // Hook para Firestore — lo llama el módulo Firebase cuando llega un snapshot
+  window.__pintarUltimosTrenesDesdeFirestore = function(data) {
+    if (!data) return;
+    const om = data.onceMoreno || {};
+    const mo = data.morenoOnce || {};
+    if (!om.ultimo && !mo.ultimo) return; // doc vacío: seguimos con fallback
+    pintarUltimosTrenes({
+      onceUlt:  om.ultimo     || '--:--',
+      oncePrev: om.anteultimo || '--:--',
+      morUlt:   mo.ultimo     || '--:--',
+      morPrev:  mo.anteultimo || '--:--',
+      footer:   'Cronograma · ' + DIA_LABEL
+    });
+  };
 
   // MINIMIZAR
   const bubble = document.getElementById('ltw-bubble');
@@ -1735,49 +1816,25 @@ Activar notificaciones
 
   document.getElementById('ltw-minimize')
     .addEventListener('click', () => {
-
       card.style.opacity = '0';
       card.style.transform = 'scale(.9)';
       card.style.pointerEvents = 'none';
-
       setTimeout(() => {
         card.style.display = 'none';
         bubble.style.display = 'flex';
       }, 180);
-
     });
 
-  // RESTAURAR
   bubble.addEventListener('click', () => {
-
     bubble.style.display = 'none';
-
     card.style.display = 'block';
-
     requestAnimationFrame(() => {
       card.style.opacity = '1';
       card.style.transform = 'scale(1)';
       card.style.pointerEvents = 'auto';
     });
-
   });
 
-})();
-</script>
-<script>
-(function(){
-  const p2=n=>String(n).padStart(2,'0');
-  const d=new Date().getDay();
-  const dt=d===0?'dom':d===6?'sab':'lv';
-  const on={lv:[[22,47],[23,10],[23,25],[23,55]],sab:[[22,20],[22,50],[23,20],[23,55]],dom:[[22,25],[23,0],[23,35]]};
-  const mo={lv:[[21,36],[21,50],[22,20]],sab:[[21,40],[22,10],[22,40]],dom:[[21,30],[22,5],[22,40]]};
-  const sc_on=on[dt], sc_mo=mo[dt];
-  const fmt=([h,m])=>p2(h)+':'+p2(m);
-  document.getElementById('ltw-once-last').textContent=fmt(sc_on[sc_on.length-1]);
-  document.getElementById('ltw-once-prev').textContent=fmt(sc_on[sc_on.length-2]);
-  document.getElementById('ltw-mor-last').textContent=fmt(sc_mo[sc_mo.length-1]);
-  document.getElementById('ltw-mor-prev').textContent=fmt(sc_mo[sc_mo.length-2]);
-  document.getElementById('ltw-footer').textContent='Cronograma · '+(dt==='lv'?'Lunes a Viernes':dt==='sab'?'Sábado':'Domingo/Feriado');
 })();
 </script>
 <main id="main-content">
@@ -1953,23 +2010,12 @@ Activar notificaciones
         </div>
         <div class="col-half">
           <div class="today-card">
-
-              
-            <!--<div class="today-header">📱 Alertas en tiempo real — @InfoTSarmiento</div>
-            <div style="padding:0; min-height:50px;" id="twitterWrap">
-              <a class="twitter-timeline" data-lang="es" data-height="280" data-theme="light"
-                 data-chrome="noheader nofooter noborders transparent"
-                 href="https://twitter.com/InfoTSarmiento?ref_src=twsrc%5Etfw">Cargando alertas…</a>
-            </div>-->
-
-              
-            <!-- Fallback siempre visible, se oculta si el widget carga 
-            <div id="twitterFallback" style="padding:16px 20px;">
-              <p style="font-size:.85rem;font-weight:600;color:var(--navy);margin-bottom:10px;">Seguinos en nuestras redes para estar al día con todas las novedades del Sarmiento.</p>
+            <div class="today-header">📰 Últimas noticias</div>
+            <div class="today-body">
+              <div id="noticiasList" role="list">
+                <p style="font-size:.85rem;color:var(--muted);">Cargando noticias…</p>
+              </div>
             </div>
-            <p style="padding:6px 16px 12px;font-size:.72rem;color:var(--muted);">
-              Encontranos en el footer de esta página
-            </p>-->
           </div>
         </div>
       </div>
