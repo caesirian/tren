@@ -2916,6 +2916,7 @@ document.querySelectorAll('.faq-q').forEach(btn => {
 // ─── Mapa Leaflet ─────────────────────────────────────────────
 window.addEventListener('load', function() {
   if (typeof L === 'undefined') return;
+  if (!document.getElementById('map')) return; // mapa comentado en HTML
   const map = L.map('map').setView([-34.66,-58.60],11);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
     attribution:'© OpenStreetMap contributors © CARTO', subdomains:'abcd', maxZoom:19
@@ -3119,6 +3120,7 @@ function renderStations() {
 
   if (!container) return;
 
+  const SEC_PRICE = { 1: 5, 2: 7, 3: 9 };
   container.innerHTML = STATIONS.map(st => `
 
     <div class="station-card">
@@ -3140,13 +3142,13 @@ function renderStations() {
           </div>
 
           <div class="station-addr">
-            ${st.address}
+            ${st.direccion || ''}
           </div>
 
         </div>
 
-        <span class="station-sec-badge sec-${st.section}">
-          Sección ${st.section} · $${st.price}
+        <span class="station-sec-badge sec-${st.sec}">
+          Sección ${st.sec}
         </span>
 
       </button>
@@ -3161,7 +3163,7 @@ function renderStations() {
 
           <div class="bus-tags">
 
-            ${st.buses.map(bus => `
+            ${(st.colectivos||[]).map(bus => `
               <span class="bus-tag">${bus}</span>
             `).join("")}
 
