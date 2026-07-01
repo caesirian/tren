@@ -1264,23 +1264,25 @@ onSnapshot(estadoRef, (snapshot) => {
   actualizarAlerta(estadoEfectivo !== 'normal' ? (data.mensaje || '') : '');
 
   // Renderizar alertas[] en #alertasList
+  // Mostrar alertas si hay contenido Y el estado no es normal
   const alertasList = document.getElementById('alertasList');
   if (alertasList) {
-    const alertas = Array.isArray(data.alertas)
+    // Usar alertas[] si tiene contenido, sino caer al mensaje como fallback
+    const alertasRaw = Array.isArray(data.alertas) && data.alertas.length > 0
       ? data.alertas
       : (data.mensaje ? [data.mensaje] : []);
 
-    const alertasActivas = estadoEfectivo !== 'normal' ? alertas : [];
+    // Mostrar alertas solo si el estado es modificado o paro
+    const hayAlertas = estadoEfectivo !== 'normal' && alertasRaw.length > 0;
 
-    if (alertasActivas.length > 0) {
-      alertasList.innerHTML = alertasActivas
+    const wrap = document.getElementById('alertasWrap');
+    if (hayAlertas) {
+      alertasList.innerHTML = alertasRaw
         .map(a => `<div class="today-alert-item" role="listitem">${a}</div>`)
         .join('');
-      const wrap = document.getElementById('alertasWrap');
       if (wrap) wrap.style.display = 'block';
     } else {
-      alertasList.innerHTML = '<div class="today-alert-item" role="listitem">Sin alertas activas.</div>';
-      const wrap = document.getElementById('alertasWrap');
+      alertasList.innerHTML = '';
       if (wrap) wrap.style.display = 'none';
     }
   }
@@ -1296,7 +1298,9 @@ onSnapshot(estadoRef, (snapshot) => {
     estado:              estadoEfectivo,
     ultimaActualizacion: data.ultimaActualizacion || '—',
     fuente:              'firebase',
-    alertas:             Array.isArray(data.alertas) ? data.alertas : []
+    alertas:             Array.isArray(data.alertas) && data.alertas.length > 0
+                           ? data.alertas
+                           : (data.mensaje ? [data.mensaje] : [])
   };
 
 }, (err) => {
