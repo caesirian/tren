@@ -1272,11 +1272,10 @@ onSnapshot(estadoRef, (snapshot) => {
       ? data.alertas
       : (data.mensaje ? [data.mensaje] : []);
 
-    // Mostrar alertas solo si el estado es modificado o paro
-    const hayAlertas = estadoEfectivo !== 'normal' && alertasRaw.length > 0;
-
+    // Mostrar alertas si existen — independiente del estado del semáforo
+    // (se puede avisar una obra futura con servicio aún normal)
     const wrap = document.getElementById('alertasWrap');
-    if (hayAlertas) {
+    if (alertasRaw.length > 0) {
       alertasList.innerHTML = alertasRaw
         .map(a => `<div class="today-alert-item" role="listitem">${a}</div>`)
         .join('');
