@@ -1465,18 +1465,7 @@ console.log('[Firebase] Listener de estado inicializado');
 
 
 <!-- PUSH OPT-IN BAR — aparece después de 8 segundos si no suscripto -->
-<div class="push-bar" id="pushBar" role="dialog" aria-label="Activar notificaciones de alerta" aria-live="polite">
-  <div class="push-bar-text">
-    <strong>🔔 Recibí alertas de paro y modificaciones</strong>
-    Te avisaremos cuando el tren no funciona. Sin spam.
-  </div>
-  <div class="push-bar-actions">
-    <button id="pushBarAccept">
-Activar notificaciones
-</button>
-    <button type="button" class="push-bar-dismiss" id="pushBarDismiss" aria-label="Cerrar">✕</button>
-  </div>
-</div>
+<!-- push-bar eliminada: campana en nav maneja todo -->
 <!-- ═══════════════════════════════════════ -->
 <!-- WIDGET ÚLTIMOS TRENES -->
 <!-- ═══════════════════════════════════════ -->
@@ -2982,108 +2971,51 @@ const ONE_SIGNAL_CONFIGURED = typeof OneSignalDeferred !== 'undefined' &&
   !document.querySelector('script[src*="OneSignalSDK"]')?.previousElementSibling?.textContent?.includes('445c42f6-aa5b-4731-a072-9576adab63fc');
 
 (function initPush() {
-  const pushBar     = document.getElementById('pushBar');
-  const pushAccept  = document.getElementById('pushBarAccept');
-  const pushDismiss = document.getElementById('pushBarDismiss');
-  const navBell     = document.getElementById('navBell');
+  const navBell = document.getElementById('navBell');
+  if (!navBell) return;
 
-  // Leer estado guardado en localStorage
-  const pushState = localStorage.getItem('pushNotifState'); // 'subscribed' | 'dismissed'
-
-  function hidePushBar() {
-    pushBar.classList.remove('show');
-  }
-
+  // Actualizar ícono y aria según estado
   function updateBellUI(subscribed) {
-    if (!navBell) return;
     if (subscribed) {
       navBell.classList.add('subscribed');
       navBell.classList.remove('has-dot');
-      navBell.setAttribute('aria-label', 'Notificaciones activadas — tocá para gestionar');
+      navBell.setAttribute('aria-label', 'Notificaciones activadas — tocá para desactivar');
       navBell.setAttribute('title', 'Notificaciones activadas');
     } else {
       navBell.classList.remove('subscribed');
+      navBell.classList.remove('has-dot');
       navBell.setAttribute('aria-label', 'Activar notificaciones de paro y alertas');
+      navBell.setAttribute('title', 'Activar notificaciones');
     }
   }
 
-  // Verificar suscripción actual via OneSignal
+  // Verificar suscripción actual al cargar
   function checkSubscription() {
     if (typeof OneSignalDeferred === 'undefined') return;
     OneSignalDeferred.push(function(OneSignal) {
-      OneSignal.User.PushSubscription.optedIn
-        ? updateBellUI(true)
-        : updateBellUI(false);
+      updateBellUI(OneSignal.User.PushSubscription.optedIn);
     });
   }
 
-  // Pedir permiso y suscribir
-  async function subscribeToPush() {
-    if (typeof OneSignalDeferred === 'undefined') {
-      alert('Las notificaciones no están configuradas aún. Completá el setup de OneSignal primero.');
-      return;
-    }
+  // Click en la campana: toggle suscripción
+  navBell.addEventListener('click', function() {
+    if (typeof OneSignalDeferred === 'undefined') return;
     OneSignalDeferred.push(async function(OneSignal) {
-      try {
+      const optedIn = OneSignal.User.PushSubscription.optedIn;
+      if (optedIn) {
+        // Desuscribir
+        await OneSignal.User.PushSubscription.optOut();
+        updateBellUI(false);
+      } else {
+        // Suscribir — pide permiso al browser si es la primera vez
         await OneSignal.Notifications.requestPermission();
-        const subscribed = OneSignal.User.PushSubscription.optedIn;
-        if (subscribed) {
-          localStorage.setItem('pushNotifState', 'subscribed');
-          updateBellUI(true);
-          hidePushBar();
-          // Pequeño feedback visual
-          navBell.textContent = '🔔';
-        }
-      } catch(e) {
-        console.warn('[Push] No se pudo suscribir:', e);
+        const nowOptedIn = OneSignal.User.PushSubscription.optedIn;
+        updateBellUI(nowOptedIn);
       }
     });
-  }
-
-  // Mostrar la barra opt-in si no se suscribió ni rechazó antes
-  if (pushState !== 'subscribed' && pushState !== 'dismissed') {
-    setTimeout(() => {
-      // Solo mostrar si el API de notificaciones está disponible
-      if ('Notification' in window && Notification.permission === 'default') {
-        pushBar.classList.add('show');
-        navBell.classList.add('has-dot'); // punto indicador en la campana
-      }
-    }, 8000);
-  }
-
-  // Si ya está suscripto, actualizar UI inmediatamente
-  if (pushState === 'subscribed') {
-    updateBellUI(true);
-  }
-
-  // Botón "Activar" en la barra
-  pushAccept?.addEventListener('click', subscribeToPush);
-
-  // Botón "✕" en la barra
-  pushDismiss?.addEventListener('click', () => {
-    hidePushBar();
-    localStorage.setItem('pushNotifState', 'dismissed');
-    navBell.classList.remove('has-dot');
   });
 
-  // Campana en el navbar
-  navBell?.addEventListener('click', () => {
-    if (localStorage.getItem('pushNotifState') === 'subscribed') {
-      // Ya suscripto — podría abrir gestión, por ahora confirmamos estado
-      OneSignalDeferred?.push(function(OneSignal) {
-        const opted = OneSignal.User.PushSubscription.optedIn;
-        alert(opted
-          ? '✅ Las notificaciones están activas. Te avisaremos cuando haya paro o alerta importante.'
-          : '⚠️ Las notificaciones fueron desactivadas en tu navegador. Podés reactivarlas desde la configuración del sitio.');
-      });
-    } else {
-      // No suscripto — mostrar barra
-      pushBar.classList.add('show');
-      navBell.classList.remove('has-dot');
-    }
-  });
-
-  // Verificar estado real al cargar
+  // Verificar estado al cargar
   checkSubscription();
 })();
 </script>
