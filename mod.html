@@ -828,10 +828,10 @@ function showToast(msg, type) {
   setTimeout(() => { t.className = ''; }, 3000);
 }
 
-// ── Login buttons ─────────────────────────────────────────────
-document.getElementById('loginBtn')?.addEventListener('click', doLogin);
-document.getElementById('loginBtn2')?.addEventListener('click', doLogin);
-document.getElementById('logoutBtn')?.addEventListener('click', doLogout);
+// ── loginBtn2 (tarjeta de login) dispara el loginBtn del topbar ──
+document.getElementById('loginBtn2')?.addEventListener('click', () => {
+  document.getElementById('loginBtn')?.click();
+});
 
 // ── Upload zone click ─────────────────────────────────────────
 document.getElementById('uploadZone')?.addEventListener('click', () => {
@@ -877,7 +877,7 @@ const sanitize  = v => v.replace(/<[^>]*>?/gm,"").trim();
 
 // ── Auth ───────────────────────────────────────────────────────
 document.getElementById("loginBtn").addEventListener("click", async () => {
-  try { await signInWithPopup(auth,provider); } catch(e){ alert("Error iniciando sesión"); }
+  try { await signInWithPopup(auth,provider); } catch(e){ showToast("Error al iniciar sesión", "err"); }
 });
 document.getElementById("logoutBtn").addEventListener("click", () => signOut(auth));
 
