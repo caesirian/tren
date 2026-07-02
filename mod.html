@@ -788,57 +788,6 @@
 
 
 <script type="module">
-
-// ── Navegación sidebar ──────────────────────────────────────
-document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.section)?.classList.add('active');
-  });
-});
-
-// ── Indicador de color del select estado ────────────────────
-const estadoIndicator = document.getElementById('estadoIndicator');
-const ESTADO_COLORS = { normal: '#22c55e', modificado: '#f59e0b', paro: '#ef4444' };
-function updateEstadoIndicator() {
-  const sel = document.getElementById('estadoSelect');
-  if (estadoIndicator && sel) estadoIndicator.style.background = ESTADO_COLORS[sel.value] || '#22c55e';
-}
-document.getElementById('estadoSelect')?.addEventListener('change', updateEstadoIndicator);
-// updateEstadoIndicator se llama al cargar el onSnapshot
-
-// ── Tabs Últimos Trenes ──────────────────────────────────────
-document.querySelectorAll('.tab-btn[data-src]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn[data-src]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const src = btn.dataset.src;
-    document.getElementById('utPanelSheets').style.display = src === 'sheets' ? 'block' : 'none';
-    document.getElementById('utPanelManual').style.display  = src === 'manual'  ? 'block' : 'none';
-  });
-});
-
-// ── Toast helper ─────────────────────────────────────────────
-function showToast(msg, type) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'show ' + (type || 'ok');
-  setTimeout(() => { t.className = ''; }, 3000);
-}
-
-// ── loginBtn2 (tarjeta de login) dispara el loginBtn del topbar ──
-document.getElementById('loginBtn2')?.addEventListener('click', () => {
-  document.getElementById('loginBtn')?.click();
-});
-
-// ── Upload zone click ─────────────────────────────────────────
-document.getElementById('uploadZone')?.addEventListener('click', () => {
-  document.getElementById('imgFile')?.click();
-});
-
-
 import { initializeApp }
   from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
@@ -1669,7 +1618,55 @@ function utClearStatus() {
   if (el) el.innerHTML = '';
 }
 
+// ── Inicialización del panel (UI, navegación, helpers) ──────
+// ── Navegación sidebar ──────────────────────────────────────
+document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.section)?.classList.add('active');
+  });
+});
 
+// ── Indicador de color del select estado ────────────────────
+const estadoIndicator = document.getElementById('estadoIndicator');
+const ESTADO_COLORS = { normal: '#22c55e', modificado: '#f59e0b', paro: '#ef4444' };
+function updateEstadoIndicator() {
+  const sel = document.getElementById('estadoSelect');
+  if (estadoIndicator && sel) estadoIndicator.style.background = ESTADO_COLORS[sel.value] || '#22c55e';
+}
+document.getElementById('estadoSelect')?.addEventListener('change', updateEstadoIndicator);
+// updateEstadoIndicator se llama al cargar el onSnapshot
+
+// ── Tabs Últimos Trenes ──────────────────────────────────────
+document.querySelectorAll('.tab-btn[data-src]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn[data-src]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const src = btn.dataset.src;
+    document.getElementById('utPanelSheets').style.display = src === 'sheets' ? 'block' : 'none';
+    document.getElementById('utPanelManual').style.display  = src === 'manual'  ? 'block' : 'none';
+  });
+});
+
+// ── Toast helper ─────────────────────────────────────────────
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + (type || 'ok');
+  setTimeout(() => { t.className = ''; }, 3000);
+}
+
+// ── loginBtn2 (tarjeta de login) dispara el loginBtn del topbar ──
+document.getElementById('loginBtn2')?.addEventListener('click', () => {
+  document.getElementById('loginBtn')?.click();
+});
+
+// ── Upload zone click ─────────────────────────────────────────
+document.getElementById('uploadZone')?.addEventListener('click', () => {
+  document.getElementById('imgFile')?.click();
+});
 </script>
 </body>
 </html>
