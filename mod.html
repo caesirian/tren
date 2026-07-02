@@ -807,7 +807,7 @@ function updateEstadoIndicator() {
   if (estadoIndicator && sel) estadoIndicator.style.background = ESTADO_COLORS[sel.value] || '#22c55e';
 }
 document.getElementById('estadoSelect')?.addEventListener('change', updateEstadoIndicator);
-setTimeout(updateEstadoIndicator, 500);
+// updateEstadoIndicator se llama al cargar el onSnapshot
 
 // ── Tabs Últimos Trenes ──────────────────────────────────────
 document.querySelectorAll('.tab-btn[data-src]').forEach(btn => {
@@ -886,27 +886,65 @@ onAuthStateChanged(auth, user => {
   const lBtn  = document.getElementById("loginBtn");
   const oBtn  = document.getElementById("logoutBtn");
   const panel = document.getElementById("adminPanel");
+  const loginScreen = document.getElementById('loginScreen');
   if (user) {
-    lBtn.style.display="none"; oBtn.style.display="block";
-    if (admins.includes(user.email)) { panel.style.display="block"; mostrarSeccion("Estado"); }
-    else { panel.style.display="none"; alert("Usuario sin permisos"); }
+    if (lBtn) lBtn.style.display = "none";
+    if (oBtn) oBtn.style.display = "block";
+    if (loginScreen) loginScreen.style.display = "none";
+    if (admins.includes(user.email)) {
+      panel.classList.add('visible');
+      // Chip de usuario
+      const chip = document.getElementById('userChip');
+      const avatar = document.getElementById('userAvatar');
+      const emailEl = document.getElementById('userEmail');
+      if (chip) chip.style.display = 'flex';
+      if (avatar) avatar.textContent = (user.displayName || user.email)[0].toUpperCase();
+      if (emailEl) emailEl.textContent = user.displayName || user.email;
+      mostrarSeccion("Estado");
+    } else {
+      panel.classList.remove('visible');
+      showToast('Usuario sin permisos', 'err');
+    }
   } else {
-    panel.style.display="none"; lBtn.style.display="block"; oBtn.style.display="none";
+    panel.classList.remove('visible');
+    if (loginScreen) loginScreen.style.display = 'flex';
+    if (lBtn) lBtn.style.display = "block";
+    if (oBtn) oBtn.style.display = "none";
+    const chip = document.getElementById('userChip');
+    if (chip) chip.style.display = 'none';
   }
 });
 
 // ── Navegación ─────────────────────────────────────────────────
-const SECS = ["Estado","PuntosSube","Noticias","Cronograma","UltimosTrenes"];
+const SEC_MAP = {
+  "Estado":       "secEstado",
+  "PuntosSube":   "secSube",
+  "Noticias":     "secNoticias",
+  "Cronograma":   "secEstado",
+  "UltimosTrenes":"secUltimosTrenes"
+};
 function mostrarSeccion(n) {
-  SECS.forEach(s => document.getElementById("seccion"+s).classList.add("hidden"));
-  document.getElementById("seccion"+n).classList.remove("hidden");
-  if (n==="Noticias" && !_lstIniciado) initLst();
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  const targetId = SEC_MAP[n] || "secEstado";
+  document.getElementById(targetId)?.classList.add('active');
+  // Activar nav item correspondiente
+  const navItem = document.querySelector(\`.nav-item[data-section="\${targetId}"]\`);
+  if (navItem) navItem.classList.add('active');
+  if (n === "Noticias" && !_lstIniciado) initLst();
 }
-document.getElementById("btnEstado").addEventListener("click",        () => mostrarSeccion("Estado"));
-document.getElementById("btnPuntosSube").addEventListener("click",    () => mostrarSeccion("PuntosSube"));
-document.getElementById("btnNoticias").addEventListener("click",       () => mostrarSeccion("Noticias"));
-document.getElementById("btnCronograma").addEventListener("click",     () => mostrarSeccion("Cronograma"));
-document.getElementById("btnUltimosTrenes").addEventListener("click",  () => { mostrarSeccion("UltimosTrenes"); utInit(); });
+// Navegación del sidebar (via data-section)
+document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const sec = btn.dataset.section;
+    const nameMap = {
+      "secEstado": "Estado", "secSube": "PuntosSube",
+      "secNoticias": "Noticias", "secUltimosTrenes": "UltimosTrenes"
+    };
+    mostrarSeccion(nameMap[sec] || "Estado");
+    if (sec === "secUltimosTrenes") utInit();
+  });
+});
 
 // ── Semáforo ───────────────────────────────────────────────────
 onSnapshot(estadoRef, snap => {
@@ -920,13 +958,14 @@ onSnapshot(estadoRef, snap => {
   document.getElementById("ultimaActualizacion").value  = d.ultimaActualizacion||"";
   document.getElementById("vigenciaDesde").value        = d.vigencia?.desde||"";
   document.getElementById("vigenciaHasta").value        = d.vigencia?.hasta||"";
+  updateEstadoIndicator();
 });
 function semaforo(e) {
   const r=document.getElementById("luzRoja"),a=document.getElementById("luzAmarilla"),v=document.getElementById("luzVerde");
-  r.classList.remove("on-rojo"); a.classList.remove("on-amarillo"); v.classList.remove("on-verde");
-  if(e==="paro"){r.classList.add("on-rojo");document.getElementById("statusTexto").innerText="Servicio interrumpido";}
-  else if(e==="modificado"){a.classList.add("on-amarillo");document.getElementById("statusTexto").innerText="Servicio con demoras";}
-  else{v.classList.add("on-verde");document.getElementById("statusTexto").innerText="Servicio normal";}
+  r.classList.remove("on-red"); a.classList.remove("on-yellow"); v.classList.remove("on-green");
+  if(e==="paro"){r.classList.add("on-red");document.getElementById("statusTexto").innerText="Servicio interrumpido";}
+  else if(e==="modificado"){a.classList.add("on-yellow");document.getElementById("statusTexto").innerText="Servicio con demoras";}
+  else{v.classList.add("on-green");document.getElementById("statusTexto").innerText="Servicio normal";}
 }
 
 // ── Guardar estado ─────────────────────────────────────────────
