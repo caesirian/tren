@@ -878,7 +878,7 @@ function mostrarSeccion(n) {
   const targetId = SEC_MAP[n] || "secEstado";
   document.getElementById(targetId)?.classList.add('active');
   // Activar nav item correspondiente
-  const navItem = document.querySelector(\`.nav-item[data-section="\${targetId}"]\`);
+  const navItem = document.querySelector(`.nav-item[data-section="${targetId}"]`);
   if (navItem) navItem.classList.add('active');
   if (n === "Noticias" && !_lstIniciado) initLst();
 }
