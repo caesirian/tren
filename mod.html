@@ -4,534 +4,200 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Panel Admin — Tren Sarmiento</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:         #0b0f1a;
-      --surface:    #131929;
-      --surface2:   #1a2236;
-      --border:     rgba(255,255,255,.08);
-      --border2:    rgba(255,255,255,.14);
-      --text:       #e8edf5;
-      --muted:      #7a8aa0;
-      --celeste:    #00aaff;
-      --celeste-d:  #0088cc;
-      --green:      #22c55e;
-      --yellow:     #f59e0b;
-      --red:        #ef4444;
-      --radius:     12px;
-      --radius-sm:  8px;
+      --bg: #0b0f1a; --surface: #131929; --surface2: #1a2236;
+      --border: rgba(255,255,255,.08); --border2: rgba(255,255,255,.14);
+      --text: #e8edf5; --muted: #7a8aa0;
+      --celeste: #00aaff; --celeste-d: #0088cc;
+      --green: #22c55e; --yellow: #f59e0b; --red: #ef4444;
+      --radius: 12px; --radius-sm: 8px;
     }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: 14px;
-      min-height: 100vh;
-    }
+    body { background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; font-size:14px; min-height:100vh; }
 
     /* ── Topbar ── */
-    .topbar {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 0 24px;
-      height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    .topbar-brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 700;
-      font-size: 15px;
-      color: var(--text);
-    }
-    .topbar-brand .dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 6px var(--green);
-    }
-    .topbar-right {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .user-chip {
-      background: var(--surface2);
-      border: 1px solid var(--border2);
-      border-radius: 20px;
-      padding: 4px 12px 4px 4px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-    .user-avatar {
-      width: 28px; height: 28px;
-      border-radius: 50%;
-      background: var(--celeste);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; color: #fff;
-    }
+    .topbar { background:var(--surface); border-bottom:1px solid var(--border); padding:0 24px; height:56px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-brand { font-weight:700; font-size:15px; display:flex; align-items:center; gap:10px; }
+    .topbar-brand .dot { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green); }
+    .topbar-right { display:flex; align-items:center; gap:10px; }
+    .user-chip { background:var(--surface2); border:1px solid var(--border2); border-radius:20px; padding:4px 12px 4px 4px; display:none; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+    .user-avatar { width:28px; height:28px; border-radius:50%; background:var(--celeste); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#fff; }
 
-    /* ── Auth screen ── */
-    #loginScreen {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: calc(100vh - 56px);
-      gap: 16px;
-    }
-    .login-card {
-      background: var(--surface);
-      border: 1px solid var(--border2);
-      border-radius: var(--radius);
-      padding: 40px;
-      text-align: center;
-      max-width: 360px;
-      width: 100%;
-    }
-    .login-card h2 { font-size: 18px; margin-bottom: 8px; }
-    .login-card p  { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+    /* ── Login ── */
+    #loginScreen { display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 56px); }
+    .login-card { background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius); padding:40px; text-align:center; width:100%; max-width:360px; }
+    .login-card h2 { font-size:18px; margin-bottom:8px; }
+    .login-card p { color:var(--muted); font-size:13px; margin-bottom:24px; }
 
-    /* ── Layout principal ── */
-    #adminPanel { display: none; }
-    #adminPanel.visible { display: block; }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 200px 1fr;
-      min-height: calc(100vh - 56px);
-    }
+    /* ── Layout ── */
+    #adminPanel { display:none; }
+    .layout { display:grid; grid-template-columns:200px 1fr; min-height:calc(100vh - 56px); }
 
     /* ── Sidebar ── */
-    .sidebar {
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      padding: 20px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      position: sticky;
-      top: 56px;
-      height: calc(100vh - 56px);
-      overflow-y: auto;
-    }
-    .sidebar-section {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: var(--muted);
-      padding: 12px 8px 4px;
-    }
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 9px 12px;
-      border-radius: var(--radius-sm);
-      color: var(--muted);
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-      transition: background .15s, color .15s;
-    }
-    .nav-item:hover { background: var(--surface2); color: var(--text); }
-    .nav-item.active { background: rgba(0,170,255,.12); color: var(--celeste); }
-    .nav-item .icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+    .sidebar { background:var(--surface); border-right:1px solid var(--border); padding:16px 10px; position:sticky; top:56px; height:calc(100vh - 56px); overflow-y:auto; display:flex; flex-direction:column; gap:2px; }
+    .sidebar-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:12px 10px 4px; }
+    .nav-btn { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--radius-sm); color:var(--muted); cursor:pointer; font-size:13px; font-weight:500; border:none; background:none; width:100%; text-align:left; transition:background .15s, color .15s; }
+    .nav-btn:hover { background:var(--surface2); color:var(--text); }
+    .nav-btn.active { background:rgba(0,170,255,.12); color:var(--celeste); }
+    .nav-btn .icon { font-size:15px; width:20px; text-align:center; flex-shrink:0; }
 
-    /* ── Main content ── */
-    .main {
-      padding: 28px;
-      max-width: 860px;
-    }
+    /* ── Main ── */
+    .main { padding:28px; max-width:860px; }
+    .page-header { margin-bottom:24px; }
+    .page-header h1 { font-size:20px; font-weight:700; margin-bottom:4px; }
+    .page-header p { color:var(--muted); font-size:13px; }
 
-    /* ── Page header ── */
-    .page-header {
-      margin-bottom: 24px;
-    }
-    .page-header h1 {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-    .page-header p {
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    /* ── Secciones ── */
-    .section { display: none; }
-    .section.active { display: block; }
+    /* ── Secciones — el JS usa .hidden para ocultar ── */
+    .section-content { display:block; }
+    .section-content.hidden { display:none !important; }
 
     /* ── Cards ── */
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 24px;
-      margin-bottom: 16px;
-    }
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 20px;
-    }
-    .card-title {
-      font-size: 14px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .card-title .badge {
-      font-size: 10px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 20px;
-      background: rgba(0,170,255,.15);
-      color: var(--celeste);
-      letter-spacing: .04em;
-    }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:16px; }
+    .card-title { font-size:14px; font-weight:600; margin-bottom:20px; display:flex; align-items:center; gap:8px; }
+    .badge-live { font-size:10px; font-weight:600; padding:2px 8px; border-radius:20px; background:rgba(34,197,94,.15); color:var(--green); }
 
-    /* ── Semáforo visual ── */
-    .semaforo-display {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 16px 20px;
-      margin-bottom: 20px;
-    }
-    .lights {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-    .luz {
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      opacity: .2;
-      transition: opacity .3s, box-shadow .3s;
-    }
-    .luz.on-red    { opacity: 1; background: var(--red);    box-shadow: 0 0 10px var(--red); }
-    .luz.on-yellow { opacity: 1; background: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
-    .luz.on-green  { opacity: 1; background: var(--green);  box-shadow: 0 0 10px var(--green); }
-    .sem-info { flex: 1; }
-    .sem-estado {
-      font-weight: 700;
-      font-size: 15px;
-      margin-bottom: 2px;
-    }
-    .sem-detail { color: var(--muted); font-size: 12px; }
+    /* ── Semáforo ── */
+    .semaforo-display { display:flex; align-items:center; gap:16px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:16px 20px; margin-bottom:20px; }
+    .lights { display:flex; flex-direction:column; gap:5px; }
+    .luz { width:14px; height:14px; border-radius:50%; opacity:.15; transition:opacity .3s, box-shadow .3s; }
+    .luz.on-rojo    { opacity:1; background:var(--red);    box-shadow:0 0 10px var(--red); }
+    .luz.on-amarillo{ opacity:1; background:var(--yellow); box-shadow:0 0 10px var(--yellow); }
+    .luz.on-verde   { opacity:1; background:var(--green);  box-shadow:0 0 10px var(--green); }
+    #luzRoja    { background:var(--red); }
+    #luzAmarilla{ background:var(--yellow); }
+    #luzVerde   { background:var(--green); }
+    .sem-info { flex:1; }
+    .sem-estado { font-weight:700; font-size:15px; margin-bottom:2px; }
+    .sem-detail { color:var(--muted); font-size:12px; }
 
-    /* ── Formularios ── */
-    .form-group { margin-bottom: 16px; }
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
+    /* ── Forms ── */
+    .form-group { margin-bottom:16px; }
+    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    label { display:block; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:6px; }
+    input[type=text], input[type=date], textarea, select {
+      width:100%; background:var(--surface2); border:1px solid var(--border2);
+      border-radius:var(--radius-sm); color:var(--text); font-family:inherit;
+      font-size:13px; padding:9px 12px; outline:none; transition:border-color .15s;
     }
-    label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      margin-bottom: 6px;
-    }
-    input[type="text"],
-    input[type="date"],
-    textarea,
-    select {
-      width: 100%;
-      background: var(--surface2);
-      border: 1px solid var(--border2);
-      border-radius: var(--radius-sm);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 13px;
-      padding: 9px 12px;
-      transition: border-color .15s;
-      outline: none;
-    }
-    input:focus, textarea:focus, select:focus {
-      border-color: var(--celeste);
-    }
-    textarea { resize: vertical; min-height: 80px; }
-    select option { background: var(--surface2); }
-    small {
-      display: block;
-      color: var(--muted);
-      font-size: 11px;
-      margin-top: 4px;
-    }
+    input:focus, textarea:focus, select:focus { border-color:var(--celeste); }
+    textarea { resize:vertical; min-height:80px; }
+    select option { background:var(--surface2); }
+    small { display:block; color:var(--muted); font-size:11px; margin-top:4px; }
 
-    /* ── Estado select con indicador de color ── */
-    .estado-select-wrap {
-      position: relative;
-    }
-    .estado-indicator {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      pointer-events: none;
-    }
-    .estado-select-wrap select { padding-left: 28px; }
+    /* ── Estado select con indicador ── */
+    .estado-wrap { position:relative; }
+    .estado-dot { position:absolute; left:12px; top:50%; transform:translateY(-50%); width:8px; height:8px; border-radius:50%; background:var(--green); pointer-events:none; transition:background .2s; }
+    .estado-wrap select { padding-left:28px; }
 
-    /* ── Vigencia block ── */
-    .vigencia-block {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 16px;
-    }
-    .vigencia-block .form-row { margin-top: 12px; }
+    /* ── Vigencia ── */
+    .vigencia-box { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:16px; }
 
     /* ── Buttons ── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 9px 18px;
-      border-radius: var(--radius-sm);
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: opacity .15s, transform .1s;
-    }
-    .btn:active { transform: scale(.98); }
-    .btn-primary { background: var(--celeste); color: #fff; }
-    .btn-primary:hover { background: var(--celeste-d); }
-    .btn-ghost {
-      background: transparent;
-      color: var(--muted);
-      border: 1px solid var(--border2);
-    }
-    .btn-ghost:hover { color: var(--text); border-color: var(--border2); background: var(--surface2); }
-    .btn-danger { background: rgba(239,68,68,.12); color: var(--red); border: 1px solid rgba(239,68,68,.2); }
-    .btn-danger:hover { background: rgba(239,68,68,.2); }
-    .btn-success { background: rgba(34,197,94,.12); color: var(--green); border: 1px solid rgba(34,197,94,.2); }
-    .btn-success:hover { background: rgba(34,197,94,.2); }
-    .btn-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-top: 20px;
-      padding-top: 16px;
-      border-top: 1px solid var(--border);
-    }
+    .btn { display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:var(--radius-sm); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:opacity .15s; }
+    .btn-primary { background:var(--celeste); color:#fff; }
+    .btn-primary:hover { background:var(--celeste-d); }
+    .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--border2); }
+    .btn-ghost:hover { color:var(--text); background:var(--surface2); }
+    .btn-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+
+    /* ── Tabs ── */
+    .tab-bar { display:flex; gap:4px; background:var(--surface2); border-radius:var(--radius-sm); padding:4px; margin-bottom:20px; }
+    .tab-src { flex:1; padding:8px; border:none; border-radius:6px; background:transparent; color:var(--muted); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+    .tab-src.active { background:var(--surface); color:var(--text); }
+
+    /* ── Upload ── */
+    .upload-zone { border:2px dashed var(--border2); border-radius:var(--radius-sm); padding:32px; text-align:center; cursor:pointer; color:var(--muted); font-size:13px; transition:border-color .15s; }
+    .upload-zone:hover { border-color:var(--celeste); }
+    .upload-zone input { display:none; }
+
+    /* ── Noticias lista ── */
+    .noticia-item { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .noticia-titulo { font-weight:600; font-size:13px; }
+    .noticia-meta { color:var(--muted); font-size:11px; }
+
+    /* ── Crop ── */
+    #cropPanel { display:none; margin-top:16px; }
+    #cropCanvas { width:100%; cursor:crosshair; border-radius:var(--radius-sm); background:#000; }
+    .crop-btns { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+    #finalPreview { display:none; margin-top:16px; }
+    #finalImg { width:100%; border-radius:var(--radius-sm); }
+    #progWrap { display:none; margin-top:12px; background:var(--surface2); border-radius:4px; height:6px; overflow:hidden; }
+    #progFill { height:100%; background:var(--celeste); width:0; transition:width .2s; }
 
     /* ── Toast ── */
-    #toast {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: var(--surface2);
-      border: 1px solid var(--border2);
-      border-radius: var(--radius-sm);
-      padding: 12px 18px;
-      font-size: 13px;
-      font-weight: 500;
-      transform: translateY(80px);
-      opacity: 0;
-      transition: transform .25s, opacity .25s;
-      z-index: 999;
-    }
-    #toast.show { transform: translateY(0); opacity: 1; }
-    #toast.ok   { border-color: rgba(34,197,94,.4); color: var(--green); }
-    #toast.err  { border-color: rgba(239,68,68,.4); color: var(--red); }
+    #toast { position:fixed; bottom:24px; right:24px; background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius-sm); padding:12px 18px; font-size:13px; font-weight:500; transform:translateY(80px); opacity:0; transition:transform .25s, opacity .25s; z-index:999; }
+    #toast.show { transform:translateY(0); opacity:1; }
 
-    /* ── Últimos Trenes tabs ── */
-    .tab-bar {
-      display: flex;
-      gap: 4px;
-      background: var(--surface2);
-      border-radius: var(--radius-sm);
-      padding: 4px;
-      margin-bottom: 20px;
-    }
-    .tab-btn {
-      flex: 1;
-      padding: 8px;
-      border: none;
-      border-radius: 6px;
-      background: transparent;
-      color: var(--muted);
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background .15s, color .15s;
-    }
-    .tab-btn.active { background: var(--surface); color: var(--text); }
-
-    /* ── Noticias image upload ── */
-    .upload-zone {
-      border: 2px dashed var(--border2);
-      border-radius: var(--radius-sm);
-      padding: 32px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color .15s, background .15s;
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .upload-zone:hover { border-color: var(--celeste); background: rgba(0,170,255,.04); }
-    .upload-zone input { display: none; }
-
-    /* ── Lista noticias ── */
-    .noticia-item {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 12px 16px;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .noticia-titulo { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
-    .noticia-meta { color: var(--muted); font-size: 11px; }
-    .noticia-actions { display: flex; gap: 6px; flex-shrink: 0; }
-
-    /* ── Crop canvas ── */
-    #cropPanel { display: none; margin-top: 16px; }
-    #cropCanvas { width: 100%; border-radius: var(--radius-sm); cursor: crosshair; background: #000; }
-    .crop-aspect-btns {
-      display: flex;
-      gap: 6px;
-      margin-top: 8px;
-      flex-wrap: wrap;
-    }
-    #finalPreview { display: none; margin-top: 16px; }
-    #finalImg { width: 100%; border-radius: var(--radius-sm); }
-
-    /* ── Progress bar ── */
-    #progWrap { display: none; margin-top: 12px; background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden; }
-    #progFill  { height: 100%; background: var(--celeste); width: 0%; transition: width .2s; }
-
-    /* ── SUBE ── */
-    .sube-form .form-row { grid-template-columns: 2fr 1fr; }
-
-    /* ── Status mensajito ── */
-    #utStatusMsg {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 8px;
-      min-height: 18px;
-    }
-
-    /* ── Responsive ── */
-    @media (max-width: 640px) {
-      .layout { grid-template-columns: 1fr; }
-      .sidebar { display: none; }
-      .main { padding: 16px; }
-      .form-row { grid-template-columns: 1fr; }
-    }
+    @media(max-width:640px) { .layout { grid-template-columns:1fr; } .sidebar { display:none; } .main { padding:16px; } .form-row { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
 
-<!-- Topbar -->
 <header class="topbar">
   <div class="topbar-brand">
     <span class="dot"></span>
     Tren Sarmiento · Admin
   </div>
   <div class="topbar-right">
-    <div class="user-chip" id="userChip" style="display:none">
+    <div class="user-chip" id="userChip">
       <div class="user-avatar" id="userAvatar">H</div>
-      <span id="userEmail" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <span id="userEmail"></span>
     </div>
     <button class="btn btn-ghost" id="loginBtn">Iniciar sesión</button>
     <button class="btn btn-ghost" id="logoutBtn" style="display:none">Salir</button>
   </div>
 </header>
 
-<!-- Login screen -->
 <div id="loginScreen">
   <div class="login-card">
     <h2>Panel de administración</h2>
     <p>Acceso restringido. Iniciá sesión con tu cuenta de Google autorizada.</p>
-    <button class="btn btn-primary" id="loginBtn2" style="width:100%">
+    <button class="btn btn-primary" onclick="document.getElementById('loginBtn').click()" style="width:100%">
       🔐 Iniciar sesión con Google
     </button>
   </div>
 </div>
 
-<!-- Admin panel -->
 <div id="adminPanel">
   <div class="layout">
 
-    <!-- Sidebar -->
     <nav class="sidebar">
-      <span class="sidebar-section">Operaciones</span>
-      <button class="nav-item active" data-section="secEstado">
+      <span class="sidebar-label">Operaciones</span>
+      <button class="nav-btn active" id="btnEstado">
         <span class="icon">🚦</span> Estado del servicio
       </button>
-      <button class="nav-item" data-section="secUltimosTrenes">
+      <button class="nav-btn" id="btnUltimosTrenes">
         <span class="icon">🚆</span> Últimos trenes
       </button>
-      <span class="sidebar-section">Contenido</span>
-      <button class="nav-item" data-section="secNoticias">
+      <span class="sidebar-label">Contenido</span>
+      <button class="nav-btn" id="btnNoticias">
         <span class="icon">📰</span> Noticias
       </button>
-      <button class="nav-item" data-section="secSube">
+      <button class="nav-btn" id="btnPuntosSube">
         <span class="icon">💳</span> Puntos SUBE
+      </button>
+      <button class="nav-btn" id="btnCronograma" style="display:none">
+        <span class="icon">📅</span> Cronograma
       </button>
     </nav>
 
-    <!-- Main -->
     <main class="main">
 
-      <!-- ═══════════════════════════════════
-           SECCIÓN: ESTADO DEL SERVICIO
-      ═══════════════════════════════════ -->
-      <div class="section active" id="secEstado">
+      <!-- ESTADO -->
+      <div class="section-content" id="seccionEstado">
         <div class="page-header">
           <h1>Estado del servicio</h1>
-          <p>Controlá el semáforo, mensajes y alertas que ven los pasajeros en tiempo real.</p>
+          <p>Controlá el semáforo, mensajes y alertas en tiempo real.</p>
         </div>
-
-        <!-- Card: semáforo actual -->
         <div class="card">
-          <div class="card-header">
-            <div class="card-title">Estado actual <span class="badge">EN VIVO</span></div>
-          </div>
+          <div class="card-title">Estado actual <span class="badge-live">EN VIVO</span></div>
           <div class="semaforo-display">
             <div class="lights">
-              <div class="luz" id="luzRoja"    style="background:var(--red)"></div>
-              <div class="luz" id="luzAmarilla" style="background:var(--yellow)"></div>
-              <div class="luz" id="luzVerde"   style="background:var(--green)"></div>
+              <div class="luz" id="luzRoja"></div>
+              <div class="luz" id="luzAmarilla"></div>
+              <div class="luz" id="luzVerde"></div>
             </div>
             <div class="sem-info">
               <div class="sem-estado" id="statusTexto">Cargando…</div>
@@ -539,17 +205,12 @@
             </div>
           </div>
         </div>
-
-        <!-- Card: editar estado -->
         <div class="card">
-          <div class="card-header">
-            <div class="card-title">Actualizar estado</div>
-          </div>
-
+          <div class="card-title">Actualizar estado</div>
           <div class="form-group">
             <label>Estado del servicio</label>
-            <div class="estado-select-wrap">
-              <div class="estado-indicator" id="estadoIndicator" style="background:var(--green)"></div>
+            <div class="estado-wrap">
+              <div class="estado-dot" id="estadoDot"></div>
               <select id="estadoSelect">
                 <option value="normal">Servicio normal</option>
                 <option value="modificado">Servicio con modificaciones</option>
@@ -557,65 +218,48 @@
               </select>
             </div>
           </div>
-
           <div class="form-group">
-            <label>Mensaje corto <small style="display:inline;text-transform:none;letter-spacing:0">(aparece en el status bar)</small></label>
-            <textarea id="editarMensaje" rows="2" placeholder="Ej: Del 9 al 12/07 el servicio opera con modificaciones por obras."></textarea>
+            <label>Mensaje corto (status bar)</label>
+            <textarea id="editarMensaje" rows="2" placeholder="Ej: Del 9 al 12/07 el servicio opera con modificaciones."></textarea>
           </div>
-
           <div class="form-group">
-            <label>Alertas detalladas <small style="display:inline;text-transform:none;letter-spacing:0">(una por línea, acepta HTML básico)</small></label>
-            <textarea id="editarAlertas" rows="4" placeholder="🚧 <strong>Andén Morón:</strong> texto de la alerta...&#10;⚠️ <strong>Obras 9-12/07:</strong> otro aviso..."></textarea>
+            <label>Alertas detalladas (una por línea)</label>
+            <textarea id="editarAlertas" rows="4" placeholder="🚧 <strong>Andén Morón:</strong> texto...&#10;⚠️ <strong>Obras:</strong> texto..."></textarea>
           </div>
-
           <div class="form-group">
             <label>Etiqueta "Verificado"</label>
             <input type="text" id="ultimaActualizacion" placeholder="Ej: 07/07/2026 08:00"/>
           </div>
-
-          <!-- Vigencia -->
           <div class="form-group">
-            <div class="vigencia-block">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <label style="margin:0">Vigencia automática <small style="display:inline;text-transform:none;letter-spacing:0">(opcional)</small></label>
-                <button type="button" class="btn btn-ghost" id="limpiarVigenciaBtn" style="padding:4px 10px;font-size:11px">Limpiar fechas</button>
+            <div class="vigencia-box">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <label style="margin:0">Vigencia automática <span style="font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label>
+                <button type="button" class="btn btn-ghost" id="limpiarVigenciaBtn" style="padding:4px 10px;font-size:11px">Limpiar</button>
               </div>
-              <div class="form-row" style="margin-top:12px">
-                <div class="form-group" style="margin:0">
-                  <label>Desde</label>
-                  <input type="date" id="vigenciaDesde"/>
-                </div>
-                <div class="form-group" style="margin:0">
-                  <label>Hasta</label>
-                  <input type="date" id="vigenciaHasta"/>
-                </div>
+              <div class="form-row">
+                <div class="form-group" style="margin:0"><label>Desde</label><input type="date" id="vigenciaDesde"/></div>
+                <div class="form-group" style="margin:0"><label>Hasta</label><input type="date" id="vigenciaHasta"/></div>
               </div>
-              <small>Con vigencia, el estado se activa y desactiva automáticamente sin intervención.</small>
+              <small>Con vigencia, el estado se activa y desactiva automáticamente.</small>
             </div>
           </div>
-
           <div class="btn-row">
             <button class="btn btn-primary" id="guardarEstadoBtn">💾 Guardar estado</button>
           </div>
         </div>
       </div>
 
-      <!-- ═══════════════════════════════════
-           SECCIÓN: ÚLTIMOS TRENES
-      ═══════════════════════════════════ -->
-      <div class="section" id="secUltimosTrenes">
+      <!-- ÚLTIMOS TRENES -->
+      <div class="section-content hidden" id="seccionUltimosTrenes">
         <div class="page-header">
           <h1>Últimos trenes</h1>
-          <p>Informá los últimos servicios del día en ambas direcciones.</p>
+          <p>Informá los últimos servicios del día.</p>
         </div>
-
         <div class="card">
           <div class="tab-bar">
-            <button class="tab-btn active" id="utSrcSheets" data-src="sheets">📊 Desde Google Sheets</button>
-            <button class="tab-btn" id="utSrcManual" data-src="manual">✏️ Ingreso manual</button>
+            <button class="tab-src active" id="utSrcSheets">📊 Google Sheets</button>
+            <button class="tab-src" id="utSrcManual">✏️ Manual</button>
           </div>
-
-          <!-- Panel Sheets -->
           <div id="utPanelSheets">
             <div class="form-group">
               <label>Día de referencia</label>
@@ -630,74 +274,52 @@
               <button class="btn btn-primary" id="utSheetsGuardarBtn">💾 Guardar</button>
             </div>
           </div>
-
-          <!-- Panel Manual -->
           <div id="utPanelManual" style="display:none">
-            <div class="form-row" style="margin-bottom:16px">
-              <div class="form-group" style="margin:0">
-                <label>Once → Moreno · último</label>
-                <input type="text" id="man-om-ult" placeholder="23:02"/>
-              </div>
-              <div class="form-group" style="margin:0">
-                <label>Once → Moreno · anteúltimo</label>
-                <input type="text" id="man-om-ante" placeholder="22:32"/>
-              </div>
+            <div class="form-row" style="margin-bottom:12px">
+              <div class="form-group" style="margin:0"><label>Once→Moreno · último</label><input type="text" id="man-om-ult" placeholder="23:02"/></div>
+              <div class="form-group" style="margin:0"><label>Once→Moreno · anteúltimo</label><input type="text" id="man-om-ante" placeholder="22:32"/></div>
             </div>
             <div class="form-row">
-              <div class="form-group" style="margin:0">
-                <label>Moreno → Once · último</label>
-                <input type="text" id="man-mo-ult" placeholder="22:15"/>
-              </div>
-              <div class="form-group" style="margin:0">
-                <label>Moreno → Once · anteúltimo</label>
-                <input type="text" id="man-mo-ante" placeholder="21:45"/>
-              </div>
+              <div class="form-group" style="margin:0"><label>Moreno→Once · último</label><input type="text" id="man-mo-ult" placeholder="22:15"/></div>
+              <div class="form-group" style="margin:0"><label>Moreno→Once · anteúltimo</label><input type="text" id="man-mo-ante" placeholder="21:45"/></div>
             </div>
+            <!-- IDs ocultos que el JS también usa para sheets -->
+            <input type="hidden" id="sh-om-ult"/><input type="hidden" id="sh-om-ante"/>
+            <input type="hidden" id="sh-mo-ult"/><input type="hidden" id="sh-mo-ante"/>
             <div class="btn-row">
               <button class="btn btn-primary" id="utManualGuardarBtn">💾 Guardar</button>
             </div>
           </div>
-
-          <div id="utStatusMsg"></div>
-          <div style="color:var(--muted);font-size:11px;margin-top:8px" id="utLastSaved"></div>
+          <div id="utStatusMsg" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+          <div id="utLastSaved" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
         </div>
       </div>
 
-      <!-- ═══════════════════════════════════
-           SECCIÓN: NOTICIAS
-      ═══════════════════════════════════ -->
-      <div class="section" id="secNoticias">
+      <!-- NOTICIAS -->
+      <div class="section-content hidden" id="seccionNoticias">
         <div class="page-header">
           <h1>Noticias</h1>
           <p>Publicá y administrá las noticias del sitio.</p>
         </div>
-
         <div class="card">
-          <div class="card-header">
-            <div class="card-title">Nueva noticia</div>
-          </div>
-
+          <div class="card-title">Nueva noticia</div>
           <div class="form-group">
-            <label>Título <span id="nTituloChars" style="float:right;font-weight:400">0/80</span></label>
+            <label>Título <span id="nTituloChars" style="float:right;font-weight:400;text-transform:none">0/80</span></label>
             <input type="text" id="nTitulo" maxlength="80" placeholder="Título de la noticia"/>
           </div>
-
           <div class="form-group">
             <label>Contenido</label>
             <textarea id="nContenido" rows="4" placeholder="Texto de la noticia..."></textarea>
           </div>
-
           <div class="form-group">
             <label>Imagen</label>
             <div class="upload-zone" id="uploadZone">
               <input type="file" id="imgFile" accept="image/*"/>
-              📷 Arrastrá una imagen o hacé click para seleccionar
+              📷 Arrastrá o hacé click para seleccionar
             </div>
           </div>
-
-          <!-- Crop -->
           <div id="cropPanel">
-            <div class="crop-aspect-btns">
+            <div class="crop-btns">
               <button class="btn btn-ghost" id="rFree">Libre</button>
               <button class="btn btn-ghost" id="r169">16:9</button>
               <button class="btn btn-ghost" id="r43">4:3</button>
@@ -706,88 +328,66 @@
             </div>
             <canvas id="cropCanvas"></canvas>
           </div>
-
-          <!-- Preview -->
           <div id="finalPreview">
             <label>Vista previa</label>
             <img id="finalImg" alt="Vista previa"/>
-            <div id="finalInfo" style="color:var(--muted);font-size:11px;margin-top:4px">
-              <span id="finalDims"></span>
-            </div>
+            <div id="finalInfo"><span id="finalDims"></span></div>
           </div>
-
           <div id="progWrap"><div id="progFill"></div></div>
-          <div id="wmc" style="color:var(--muted);font-size:12px;margin-top:6px"></div>
-
+          <div id="progTxt" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+          <div id="wmc" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
           <div class="form-group" style="margin-top:16px">
             <label>Pie de foto</label>
-            <input type="text" id="nPieFoto" placeholder="Créditos de la imagen..."/>
+            <input type="text" id="nPieFoto" placeholder="Créditos..."/>
           </div>
-
           <div class="form-group">
             <label>Fecha</label>
             <input type="date" id="nFecha"/>
           </div>
-
           <div class="btn-row">
             <button class="btn btn-primary" id="publicarBtn">📤 Publicar noticia</button>
           </div>
         </div>
-
-        <!-- Lista de noticias -->
         <div class="card">
-          <div class="card-header">
-            <div class="card-title">Noticias publicadas</div>
-          </div>
-          <div id="lstNoticias">
-            <div style="color:var(--muted);font-size:13px" id="lstCnt">Cargando…</div>
-          </div>
+          <div class="card-title">Noticias publicadas</div>
+          <div id="lstNoticias"><span id="lstCnt" style="color:var(--muted);font-size:13px">Cargando…</span></div>
         </div>
       </div>
 
-      <!-- ═══════════════════════════════════
-           SECCIÓN: PUNTOS SUBE
-      ═══════════════════════════════════ -->
-      <div class="section" id="secSube">
+      <!-- PUNTOS SUBE -->
+      <div class="section-content hidden" id="seccionPuntosSube">
         <div class="page-header">
           <h1>Puntos SUBE</h1>
-          <p>Agregá o actualizá puntos de carga SUBE en las estaciones.</p>
+          <p>Agregá puntos de carga SUBE por estación.</p>
         </div>
-
-        <div class="card sube-form">
+        <div class="card">
           <div class="form-row">
-            <div class="form-group">
-              <label>Nombre del punto</label>
-              <input type="text" id="subeNombre" placeholder="Ej: Kiosco Don Pedro"/>
-            </div>
-            <div class="form-group">
-              <label>Localidad</label>
-              <input type="text" id="subeLocalidad" placeholder="Ej: Morón"/>
-            </div>
+            <div class="form-group"><label>Nombre del punto</label><input type="text" id="subeNombre" placeholder="Ej: Kiosco Don Pedro"/></div>
+            <div class="form-group"><label>Localidad</label><input type="text" id="subeLocalidad" placeholder="Ej: Morón"/></div>
           </div>
-          <div class="form-group">
-            <label>Dirección</label>
-            <input type="text" id="subeDireccion" placeholder="Ej: Av. Rivadavia 1234"/>
-          </div>
-          <div class="form-group">
-            <label>Tarifas / notas</label>
-            <input type="text" id="subeTarifas" placeholder="Ej: Carga mínima $500"/>
-          </div>
+          <div class="form-group"><label>Dirección</label><input type="text" id="subeDireccion" placeholder="Ej: Av. Rivadavia 1234"/></div>
+          <div class="form-group"><label>Tarifas / notas</label><input type="text" id="subeTarifas" placeholder="Ej: Carga mínima $500"/></div>
           <div class="btn-row">
             <button class="btn btn-primary" id="guardarSubeBtn">💾 Guardar punto SUBE</button>
           </div>
         </div>
       </div>
 
+      <!-- CRONOGRAMA (oculto, lo muestra el JS si lo necesita) -->
+      <div class="section-content hidden" id="seccionCronograma">
+        <div class="page-header"><h1>Cronograma especial</h1></div>
+        <div class="card"><p style="color:var(--muted)">Sección en desarrollo.</p></div>
+      </div>
+
     </main>
   </div>
 </div>
 
-<!-- Toast -->
 <div id="toast"></div>
 
 
 <script type="module">
+
 import { initializeApp }
   from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
@@ -826,7 +426,7 @@ const sanitize  = v => v.replace(/<[^>]*>?/gm,"").trim();
 
 // ── Auth ───────────────────────────────────────────────────────
 document.getElementById("loginBtn").addEventListener("click", async () => {
-  try { await signInWithPopup(auth,provider); } catch(e){ showToast("Error al iniciar sesión", "err"); }
+  try { await signInWithPopup(auth,provider); } catch(e){ showToast("Error al iniciar sesión ❌", "err"); }
 });
 document.getElementById("logoutBtn").addEventListener("click", () => signOut(auth));
 
@@ -835,65 +435,35 @@ onAuthStateChanged(auth, user => {
   const lBtn  = document.getElementById("loginBtn");
   const oBtn  = document.getElementById("logoutBtn");
   const panel = document.getElementById("adminPanel");
-  const loginScreen = document.getElementById('loginScreen');
   if (user) {
-    if (lBtn) lBtn.style.display = "none";
-    if (oBtn) oBtn.style.display = "block";
-    if (loginScreen) loginScreen.style.display = "none";
+    lBtn.style.display="none"; oBtn.style.display="block";
     if (admins.includes(user.email)) {
-      panel.classList.add('visible');
-      // Chip de usuario
-      const chip = document.getElementById('userChip');
-      const avatar = document.getElementById('userAvatar');
-      const emailEl = document.getElementById('userEmail');
-      if (chip) chip.style.display = 'flex';
-      if (avatar) avatar.textContent = (user.displayName || user.email)[0].toUpperCase();
-      if (emailEl) emailEl.textContent = user.displayName || user.email;
+      panel.style.display="block";
+      document.getElementById('loginScreen').style.display='none';
+      const chip=document.getElementById('userChip'); if(chip) chip.style.display='flex';
+      const av=document.getElementById('userAvatar'); if(av) av.textContent=(user.displayName||user.email)[0].toUpperCase();
+      const em=document.getElementById('userEmail'); if(em) em.textContent=user.displayName||user.email;
       mostrarSeccion("Estado");
-    } else {
-      panel.classList.remove('visible');
-      showToast('Usuario sin permisos', 'err');
-    }
+    } else { panel.style.display="none"; showToast("Sin permisos ❌","err"); }
   } else {
-    panel.classList.remove('visible');
-    if (loginScreen) loginScreen.style.display = 'flex';
-    if (lBtn) lBtn.style.display = "block";
-    if (oBtn) oBtn.style.display = "none";
-    const chip = document.getElementById('userChip');
-    if (chip) chip.style.display = 'none';
+    panel.style.display="none"; lBtn.style.display="block"; oBtn.style.display="none";
+    document.getElementById('loginScreen').style.display='flex';
+    const chip2=document.getElementById('userChip'); if(chip2) chip2.style.display='none';
   }
 });
 
 // ── Navegación ─────────────────────────────────────────────────
-const SEC_MAP = {
-  "Estado":       "secEstado",
-  "PuntosSube":   "secSube",
-  "Noticias":     "secNoticias",
-  "Cronograma":   "secEstado",
-  "UltimosTrenes":"secUltimosTrenes"
-};
+const SECS = ["Estado","PuntosSube","Noticias","Cronograma","UltimosTrenes"];
 function mostrarSeccion(n) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  const targetId = SEC_MAP[n] || "secEstado";
-  document.getElementById(targetId)?.classList.add('active');
-  // Activar nav item correspondiente
-  const navItem = document.querySelector(`.nav-item[data-section="${targetId}"]`);
-  if (navItem) navItem.classList.add('active');
-  if (n === "Noticias" && !_lstIniciado) initLst();
+  SECS.forEach(s => document.getElementById("seccion"+s).classList.add("hidden"));
+  document.getElementById("seccion"+n).classList.remove("hidden");
+  if (n==="Noticias" && !_lstIniciado) initLst();
 }
-// Navegación del sidebar (via data-section)
-document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const sec = btn.dataset.section;
-    const nameMap = {
-      "secEstado": "Estado", "secSube": "PuntosSube",
-      "secNoticias": "Noticias", "secUltimosTrenes": "UltimosTrenes"
-    };
-    mostrarSeccion(nameMap[sec] || "Estado");
-    if (sec === "secUltimosTrenes") utInit();
-  });
-});
+document.getElementById("btnEstado").addEventListener("click",        () => mostrarSeccion("Estado"));
+document.getElementById("btnPuntosSube").addEventListener("click",    () => mostrarSeccion("PuntosSube"));
+document.getElementById("btnNoticias").addEventListener("click",       () => mostrarSeccion("Noticias"));
+document.getElementById("btnCronograma").addEventListener("click",     () => mostrarSeccion("Cronograma"));
+document.getElementById("btnUltimosTrenes").addEventListener("click",  () => { mostrarSeccion("UltimosTrenes"); utInit(); });
 
 // ── Semáforo ───────────────────────────────────────────────────
 onSnapshot(estadoRef, snap => {
@@ -907,14 +477,13 @@ onSnapshot(estadoRef, snap => {
   document.getElementById("ultimaActualizacion").value  = d.ultimaActualizacion||"";
   document.getElementById("vigenciaDesde").value        = d.vigencia?.desde||"";
   document.getElementById("vigenciaHasta").value        = d.vigencia?.hasta||"";
-  updateEstadoIndicator();
 });
 function semaforo(e) {
   const r=document.getElementById("luzRoja"),a=document.getElementById("luzAmarilla"),v=document.getElementById("luzVerde");
-  r.classList.remove("on-red"); a.classList.remove("on-yellow"); v.classList.remove("on-green");
-  if(e==="paro"){r.classList.add("on-red");document.getElementById("statusTexto").innerText="Servicio interrumpido";}
-  else if(e==="modificado"){a.classList.add("on-yellow");document.getElementById("statusTexto").innerText="Servicio con demoras";}
-  else{v.classList.add("on-green");document.getElementById("statusTexto").innerText="Servicio normal";}
+  r.classList.remove("on-rojo"); a.classList.remove("on-amarillo"); v.classList.remove("on-verde");
+  if(e==="paro"){r.classList.add("on-rojo");document.getElementById("statusTexto").innerText="Servicio interrumpido";}
+  else if(e==="modificado"){a.classList.add("on-amarillo");document.getElementById("statusTexto").innerText="Servicio con demoras";}
+  else{v.classList.add("on-verde");document.getElementById("statusTexto").innerText="Servicio normal";}
 }
 
 // ── Guardar estado ─────────────────────────────────────────────
@@ -1618,55 +1187,36 @@ function utClearStatus() {
   if (el) el.innerHTML = '';
 }
 
-// ── Inicialización del panel (UI, navegación, helpers) ──────
-// ── Navegación sidebar ──────────────────────────────────────
-document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.section)?.classList.add('active');
-  });
-});
 
-// ── Indicador de color del select estado ────────────────────
-const estadoIndicator = document.getElementById('estadoIndicator');
-const ESTADO_COLORS = { normal: '#22c55e', modificado: '#f59e0b', paro: '#ef4444' };
-function updateEstadoIndicator() {
-  const sel = document.getElementById('estadoSelect');
-  if (estadoIndicator && sel) estadoIndicator.style.background = ESTADO_COLORS[sel.value] || '#22c55e';
-}
-document.getElementById('estadoSelect')?.addEventListener('change', updateEstadoIndicator);
-// updateEstadoIndicator se llama al cargar el onSnapshot
 
-// ── Tabs Últimos Trenes ──────────────────────────────────────
-document.querySelectorAll('.tab-btn[data-src]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn[data-src]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const src = btn.dataset.src;
-    document.getElementById('utPanelSheets').style.display = src === 'sheets' ? 'block' : 'none';
-    document.getElementById('utPanelManual').style.display  = src === 'manual'  ? 'block' : 'none';
-  });
-});
-
-// ── Toast helper ─────────────────────────────────────────────
+// ── Helpers UI ──────────────────────────────────────────────
 function showToast(msg, type) {
   const t = document.getElementById('toast');
+  if (!t) return;
   t.textContent = msg;
-  t.className = 'show ' + (type || 'ok');
-  setTimeout(() => { t.className = ''; }, 3000);
+  t.style.borderColor = type === 'err' ? 'rgba(239,68,68,.4)' : 'rgba(34,197,94,.4)';
+  t.style.color = type === 'err' ? '#ef4444' : '#22c55e';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// ── loginBtn2 (tarjeta de login) dispara el loginBtn del topbar ──
-document.getElementById('loginBtn2')?.addEventListener('click', () => {
-  document.getElementById('loginBtn')?.click();
+// ── Indicador de color en select de estado ───────────────────
+(function() {
+  const sel = document.getElementById('estadoSelect');
+  const dot = document.getElementById('estadoDot');
+  const COLORS = { normal:'#22c55e', modificado:'#f59e0b', paro:'#ef4444' };
+  function update() { if(dot && sel) dot.style.background = COLORS[sel.value] || '#22c55e'; }
+  if(sel) { sel.addEventListener('change', update); setTimeout(update, 800); }
+})();
+
+// ── Estilo activo en sidebar al clickear nav-btn ─────────────
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
 });
 
-// ── Upload zone click ─────────────────────────────────────────
-document.getElementById('uploadZone')?.addEventListener('click', () => {
-  document.getElementById('imgFile')?.click();
-});
 </script>
 </body>
 </html>
