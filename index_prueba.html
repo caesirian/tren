@@ -405,6 +405,35 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 }
 .nav-bell.has-dot .nav-bell-dot { display: block; }
 
+/* Mini indicador de estado sticky — visible siempre en el navbar */
+.nav-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 20px;
+  background: rgba(255,255,255,.08);
+  text-decoration: none;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  transition: background .18s;
+}
+.nav-status:hover, .nav-status:focus-visible { background: rgba(255,255,255,.16); }
+.nav-status-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px 1px rgba(34,197,94,.7);
+  flex-shrink: 0;
+}
+.nav-status-dot.amarillo { background: #f59e0b; box-shadow: 0 0 6px 1px rgba(245,158,11,.7); }
+.nav-status-dot.rojo { background: #ef4444; box-shadow: 0 0 6px 1px rgba(239,68,68,.7); }
+@media (max-width: 640px) {
+  .nav-status-label { display: none; }
+}
+
 /* ─── Geo / ubicación ─────────────────────────────────────── */
 .geo-btn {
   display: inline-flex;
@@ -1337,6 +1366,11 @@ function actualizarSemaforo(data) {
   if (statusBar) {
     statusBar.classList.remove("yellow", "red");
   }
+
+  // Mini indicador de estado en el navbar (sticky, siempre visible)
+  const navStatusDot = document.getElementById("navStatusDot");
+  const navStatusLabel = document.getElementById("navStatusLabel");
+  if (navStatusDot) navStatusDot.classList.remove("amarillo", "rojo");
   
   // Mensajes por defecto (fallback si no viene mensaje de la BD)
   const mensajesDefault = {
@@ -1354,6 +1388,8 @@ function actualizarSemaforo(data) {
       if (statusTexto) statusTexto.innerText = "Servicio interrumpido";
       // Usar mensaje de la BD o el default para paro
       if (statusDetail) statusDetail.innerText = mensaje || mensajesDefault.paro;
+      if (navStatusDot) navStatusDot.classList.add("rojo");
+      if (navStatusLabel) navStatusLabel.innerText = "Interrumpido";
       break;
     
     case "modificado":
@@ -1362,6 +1398,8 @@ function actualizarSemaforo(data) {
       if (statusTexto) statusTexto.innerText = "Servicio con modificaciones";
       // Usar mensaje de la BD o el default para modificado
       if (statusDetail) statusDetail.innerText = mensaje || mensajesDefault.modificado;
+      if (navStatusDot) navStatusDot.classList.add("amarillo");
+      if (navStatusLabel) navStatusLabel.innerText = "Con demoras";
       break;
     
     default: // "normal"
@@ -1370,6 +1408,7 @@ function actualizarSemaforo(data) {
       if (statusTexto) statusTexto.innerText = "Servicio normal";
       // Usar mensaje de la BD o el default para normal
       if (statusDetail) statusDetail.innerText = mensaje || mensajesDefault.normal;
+      if (navStatusLabel) navStatusLabel.innerText = "Normal";
       break;
   }
   
@@ -1445,6 +1484,10 @@ console.log('[Firebase] Listener de estado inicializado');
         <span class="nav-brand-name">Tren Sarmiento En Línea</span>
         <span class="nav-brand-sub">Línea Sarmiento · AMBA · 2026</span>
       </div>
+    </a>
+    <a href="#estado" class="nav-status" id="navStatus" aria-label="Estado actual del servicio">
+      <span class="nav-status-dot" id="navStatusDot" aria-hidden="true"></span>
+      <span class="nav-status-label" id="navStatusLabel">Normal</span>
     </a>
     <button type="button" class="nav-bell" id="navBell" aria-label="Activar notificaciones de paro y alertas" title="Notificaciones de alerta">
       🔔
@@ -1837,56 +1880,13 @@ console.log('[Firebase] Listener de estado inicializado');
     <h1 id="hero-title">Tren <span>Sarmiento</span></h1>
     <p class="hero-sub">Horarios, tarifas y estado del servicio. Ramal Once – Moreno.</p>
 
-    <div class="hero-finder" role="search" aria-label="Buscador de próximos trenes">
-      <span class="hero-finder-label" id="hero-finder-desc">🔍 ¿Cuándo sale tu próximo tren?</span>
-      <div class="hero-finder-grid">
-        <div>
-          <label for="heroOrigen" class="visually-hidden">Estación de origen</label>
-          <select id="heroOrigen" class="hero-select" aria-describedby="hero-finder-desc">
-            <option value="">📍 Desde...</option>
-            <option value="0">Once</option><option value="1">Caballito</option><option value="2">Flores</option>
-            <option value="3">Floresta</option><option value="4">Villa Luro</option><option value="5">Liniers</option>
-            <option value="6">Ciudadela</option><option value="7">Ramos Mejía</option><option value="8">Haedo</option>
-            <option value="9">Morón</option><option value="10">Castelar</option><option value="11">Ituzaingó</option>
-            <option value="12">San A. de Padua</option><option value="13">Merlo</option><option value="14">Paso del Rey</option>
-            <option value="15">Moreno</option>
-          </select>
-        </div>
-        <div class="hero-arrow" aria-hidden="true">→</div>
-        <div>
-          <label for="heroDestino" class="visually-hidden">Estación de destino</label>
-          <select id="heroDestino" class="hero-select" aria-describedby="hero-finder-desc">
-            <option value="">🏁 Hasta...</option>
-            <option value="0">Once</option><option value="1">Caballito</option><option value="2">Flores</option>
-            <option value="3">Floresta</option><option value="4">Villa Luro</option><option value="5">Liniers</option>
-            <option value="6">Ciudadela</option><option value="7">Ramos Mejía</option><option value="8">Haedo</option>
-            <option value="9">Morón</option><option value="10">Castelar</option><option value="11">Ituzaingó</option>
-            <option value="12">San A. de Padua</option><option value="13">Merlo</option><option value="14">Paso del Rey</option>
-            <option value="15">Moreno</option>
-          </select>
-        </div>
-        <button type="button" class="hero-btn" id="heroBtnSearch">Ver trenes →</button>
-      </div>
-    </div>
-
     <nav aria-label="Accesos rápidos" class="hero-pills">
+      <a class="hero-pill" href="#proximo">🔍 ¿Cuándo sale tu próximo tren?</a>
       <a class="hero-pill" href="#estado">📡 Estado hoy</a>
       <a class="hero-pill" href="#horarios">🕐 Ver todos los horarios</a>
-      <a class="hero-pill" href="#tarifas">💳 ¿Cuánto sale?</a>
       <a class="hero-pill" href="#estaciones">🚌 Colectivos alternativos</a>
     </nav>
   </section>
-
-  <!-- BANNER PUBLICITARIO SUPERIOR -->
-  <div class="container">
-    <div class="ad-container ad-top" style="margin: 0 auto; border-radius: 0; border-left: none; border-right: none; border-top: none; display:flex; justify-content:center; align-items:center;">
-      <span class="ad-label">Publicidad</span>
-      <div class="ad-placeholder">
-        <div class="ad-placeholder-icon">📢</div>
-        <div>Publicite <a href="#contacto-publicidad" style="color: #0055A4; font-weight: 700; text-decoration: underline;">aquí</a></div>
-      </div>
-    </div>
-  </div>
 
   <!-- STATUS BAR -->
   <div class="status-bar yellow" id="statusBar" role="status" aria-live="polite" aria-label="Estado del servicio">
@@ -2025,49 +2025,7 @@ console.log('[Firebase] Listener de estado inicializado');
     </div>
   </section>
 
-  <!-- TARIFAS -->
-  <section class="section section-cel" id="tarifas" aria-labelledby="tarifas-title">
-    <div class="container">
-      <span class="section-label">💳 Vigente desde 16/03/2026</span>
-      <h2 class="section-title" id="tarifas-title">¿Cuánto cuesta el boleto?</h2>
-      <p class="section-sub">El precio varía según la distancia. Hay 3 secciones. Siempre conviene viajar con SUBE registrada.</p>
-      <div class="tariff-cards" role="list" aria-label="Tarifas por sección">
-        <article class="tariff-card" role="listitem">
-          <div class="tariff-sec">Sección 1</div>
-          <div class="tariff-km">Hasta ~12 km</div>
-          <div class="tariff-price">$310<small> SUBE</small></div>
-          <div class="tariff-social">Tarifa Social: $139,50 ✓</div>
-          <div class="tariff-efec">Efectivo: $1.100</div>
-          <p style="font-size:.75rem;color:var(--muted);margin-top:8px;">Once hasta Ciudadela</p>
-        </article>
-        <article class="tariff-card" role="listitem">
-          <div class="tariff-sec">Sección 2</div>
-          <div class="tariff-km">~12 a 24 km</div>
-          <div class="tariff-price">$420<small> SUBE</small></div>
-          <div class="tariff-social">Tarifa Social: $189 ✓</div>
-          <div class="tariff-efec">Efectivo: $1.100</div>
-          <p style="font-size:.75rem;color:var(--muted);margin-top:8px;">Ramos Mejía hasta Morón</p>
-        </article>
-        <article class="tariff-card" role="listitem">
-          <div class="tariff-sec">Sección 3</div>
-          <div class="tariff-km">Más de 24 km</div>
-          <div class="tariff-price">$520<small> SUBE</small></div>
-          <div class="tariff-social">Tarifa Social: $2340 ✓</div>
-          <div class="tariff-efec">Efectivo: $1.100</div>
-          <p style="font-size:.75rem;color:var(--muted);margin-top:8px;">Castelar hasta Moreno</p>
-        </article>
-      </div>
-      <div class="tariff-notes">
-        <strong>📌 Lo que tenés que saber:</strong>
-        <ul>
-          <li><strong>Tarifa Social (55% off):</strong> Jubilados, pensionados, beneficiarios de AUH, personal doméstico, ex combatientes de Malvinas y Jefes de Hogar. La SUBE debe estar registrada.</li>
-          <li><strong>Descuento combinación:</strong> Si viajás en otro transporte dentro de las 2 hs, el segundo boleto vale 50% menos.</li>
-          <li><strong>Sin SUBE registrada:</strong> Pagás el doble de la tarifa normal.</li>
-          <li><strong>Efectivo:</strong> El boleto en efectivo siempre cuesta $1.100, sin importar la distancia.</li>
-        </ul>
-      </div>
-    </div>
-  </section>
+
 
   <!-- HORARIOS -->
   <section class="section section-white" id="horarios" aria-labelledby="horarios-title">
@@ -2143,6 +2101,50 @@ console.log('[Firebase] Listener de estado inicializado');
         <input type="search" class="station-search" id="stationSearch" placeholder="🔍 Buscá tu estación..." aria-label="Buscar estación"/>
       </div>
       <div class="stations-list" id="stationsList" aria-label="Lista de estaciones"></div>
+    </div>
+  </section>
+
+  <!-- TARIFAS -->
+  <section class="section section-cel" id="tarifas" aria-labelledby="tarifas-title">
+    <div class="container">
+      <span class="section-label">💳 Vigente desde 16/03/2026</span>
+      <h2 class="section-title" id="tarifas-title">¿Cuánto cuesta el boleto?</h2>
+      <p class="section-sub">El precio varía según la distancia. Hay 3 secciones. Siempre conviene viajar con SUBE registrada.</p>
+      <div class="tariff-cards" role="list" aria-label="Tarifas por sección">
+        <article class="tariff-card" role="listitem">
+          <div class="tariff-sec">Sección 1</div>
+          <div class="tariff-km">Hasta ~12 km</div>
+          <div class="tariff-price">$310<small> SUBE</small></div>
+          <div class="tariff-social">Tarifa Social: $139,50 ✓</div>
+          <div class="tariff-efec">Efectivo: $1.100</div>
+          <p style="font-size:.75rem;color:var(--muted);margin-top:8px;">Once hasta Ciudadela</p>
+        </article>
+        <article class="tariff-card" role="listitem">
+          <div class="tariff-sec">Sección 2</div>
+          <div class="tariff-km">~12 a 24 km</div>
+          <div class="tariff-price">$420<small> SUBE</small></div>
+          <div class="tariff-social">Tarifa Social: $189 ✓</div>
+          <div class="tariff-efec">Efectivo: $1.100</div>
+          <p style="font-size:.75rem;color:var(--muted);margin-top:8px;">Ramos Mejía hasta Morón</p>
+        </article>
+        <article class="tariff-card" role="listitem">
+          <div class="tariff-sec">Sección 3</div>
+          <div class="tariff-km">Más de 24 km</div>
+          <div class="tariff-price">$520<small> SUBE</small></div>
+          <div class="tariff-social">Tarifa Social: $2340 ✓</div>
+          <div class="tariff-efec">Efectivo: $1.100</div>
+          <p style="font-size:.75rem;color:var(--muted);margin-top:8px;">Castelar hasta Moreno</p>
+        </article>
+      </div>
+      <div class="tariff-notes">
+        <strong>📌 Lo que tenés que saber:</strong>
+        <ul>
+          <li><strong>Tarifa Social (55% off):</strong> Jubilados, pensionados, beneficiarios de AUH, personal doméstico, ex combatientes de Malvinas y Jefes de Hogar. La SUBE debe estar registrada.</li>
+          <li><strong>Descuento combinación:</strong> Si viajás en otro transporte dentro de las 2 hs, el segundo boleto vale 50% menos.</li>
+          <li><strong>Sin SUBE registrada:</strong> Pagás el doble de la tarifa normal.</li>
+          <li><strong>Efectivo:</strong> El boleto en efectivo siempre cuesta $1.100, sin importar la distancia.</li>
+        </ul>
+      </div>
     </div>
   </section>
 <!--
@@ -2701,14 +2703,7 @@ function runSearch(oVal, dVal, scroll) {
 document.getElementById('mainBtnSearch').addEventListener('click', () =>
   runSearch(document.getElementById('selOrigen').value, document.getElementById('selDestino').value, true)
 );
-document.getElementById('heroBtnSearch').addEventListener('click', () => {
-  const o = document.getElementById('heroOrigen').value;
-  const d = document.getElementById('heroDestino').value;
-  if (o) document.getElementById('selOrigen').value = o;
-  if (d) document.getElementById('selDestino').value = d;
-  document.getElementById('proximo').scrollIntoView({behavior:'smooth'});
-  setTimeout(() => runSearch(o, d, true), 400);
-});
+
 
 // ─── Horarios tabs ────────────────────────────────────────────
 function showTab(tab) {
@@ -3191,3 +3186,4 @@ renderStations();
 </script>
 </body>
 </html>
+
