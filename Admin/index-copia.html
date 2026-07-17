@@ -178,6 +178,12 @@
   OneSignalDeferred.push(async function(OneSignal) {
     await OneSignal.init({
       appId: "114f6665-eede-42d0-90ad-4d6480f10c76",
+      notifyButton: { enable: false }, // usamos nuestra propia UI (campana en navbar + pushBar)
+      promptOptions: {
+        slidedown: {
+          prompts: [{ type: "push", autoPrompt: false }]
+        }
+      }
     });
   });
 </script>
