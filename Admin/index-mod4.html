@@ -1360,14 +1360,12 @@ function utClearStatus() {
   if (el) el.innerHTML = '';
 }
 
+
 // ══════════════════════════════════════════════════════════════
-// NOTIFICACIONES PUSH — OneSignal REST API
-// Completá ONESIGNAL_REST_API_KEY con tu key de OneSignal:
-// OneSignal → Settings → Keys & IDs → REST API Key
+// NOTIFICACIONES PUSH — vía Apps Script (proxy para evitar CORS)
+// La REST API Key de OneSignal vive en Code.gs (server-side).
 // ══════════════════════════════════════════════════════════════
-const ONESIGNAL_APP_ID       = '114f6665-eede-42d0-90ad-4d6480f10c76';
-const ONESIGNAL_REST_API_KEY = 'REEMPLAZÁ_ESTO_CON_TU_REST_API_KEY';
-const ONESIGNAL_API          = 'https://onesignal.com/api/v1';
+// APPS_SCRIPT_URL ya está definida arriba (para el cronograma)
 
 // Contadores de caracteres
 ['notifTitulo','notifMensaje'].forEach(id => {
@@ -1391,10 +1389,6 @@ document.getElementById('notifEnviarBtn').addEventListener('click', async () => 
 
   if (!titulo)  { notifSetStatus('error', '⚠️ El título es obligatorio.'); return; }
   if (!mensaje) { notifSetStatus('error', '⚠️ El mensaje es obligatorio.'); return; }
-  if (ONESIGNAL_REST_API_KEY === 'REEMPLAZÁ_ESTO_CON_TU_REST_API_KEY') {
-    notifSetStatus('error', '⚠️ Falta configurar la REST API Key de OneSignal en el código.');
-    return;
-  }
 
   const btn = document.getElementById('notifEnviarBtn');
   btn.disabled = true;
@@ -1402,38 +1396,23 @@ document.getElementById('notifEnviarBtn').addEventListener('click', async () => 
   notifSetStatus('', '');
 
   try {
-    const res = await fetch(`${ONESIGNAL_API}/notifications`, {
-      method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`
-      },
-      body: JSON.stringify({
-        app_id:            ONESIGNAL_APP_ID,
-        included_segments: ['All'],
-        headings:          { es: titulo,  en: titulo  },
-        contents:          { es: mensaje, en: mensaje },
-        url,
-        chrome_web_icon:   'https://trensarmientoenlinea.com.ar/logo.png',
-        firefox_icon:      'https://trensarmientoenlinea.com.ar/logo.png',
-      })
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ accion: 'enviar', titulo, mensaje, url })
     });
-
     const data = await res.json();
-
-    if (res.ok && data.id) {
+    if (data.ok) {
       notifSetStatus('success',
-        `✅ Enviada correctamente · ID: <code>${data.id}</code> · Receptores: <strong>${data.recipients ?? '—'}</strong>`
+        `✅ Enviada · ID: <code>${data.id}</code> · Receptores: <strong>${data.recipients ?? '—'}</strong>`
       );
       document.getElementById('notifTitulo').value  = '';
       document.getElementById('notifMensaje').value = '';
       document.getElementById('notifTituloCount').textContent  = '0';
       document.getElementById('notifMensajeCount').textContent = '0';
-      // Refrescar historial automáticamente tras envío exitoso
       setTimeout(notifCargarHistorial, 1500);
     } else {
-      const err = data.errors ? JSON.stringify(data.errors) : JSON.stringify(data);
-      notifSetStatus('error', `❌ Error al enviar: ${err}`);
+      notifSetStatus('error', `❌ Error al enviar: ${JSON.stringify(data.error)}`);
     }
   } catch(err) {
     notifSetStatus('error', `❌ Error de red: ${err.message}`);
@@ -1447,74 +1426,43 @@ document.getElementById('notifEnviarBtn').addEventListener('click', async () => 
 async function notifCargarHistorial() {
   const wrap = document.getElementById('notifHistorialWrap');
   if (!wrap) return;
-
-  if (ONESIGNAL_REST_API_KEY === 'REEMPLAZÁ_ESTO_CON_TU_REST_API_KEY') {
-    wrap.innerHTML = '<p style="font-size:.82rem;color:var(--muted);">Configurá la REST API Key para ver el historial.</p>';
-    return;
-  }
-
   wrap.innerHTML = '<p style="font-size:.82rem;color:var(--muted);">Cargando historial…</p>';
-
   try {
-    const res = await fetch(
-      `${ONESIGNAL_API}/notifications?app_id=${ONESIGNAL_APP_ID}&limit=20&offset=0&kind=1`,
-      { headers: { 'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}` } }
-    );
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const res  = await fetch(APPS_SCRIPT_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ accion: 'historial', limit: 20, offset: 0 })
+    });
     const data = await res.json();
+    if (!data.ok) throw new Error(JSON.stringify(data.error));
     const notifs = data.notifications || [];
-
     if (!notifs.length) {
       wrap.innerHTML = '<p style="font-size:.82rem;color:var(--muted);">No hay notificaciones enviadas todavía.</p>';
       return;
     }
-
     const rows = notifs.map(n => {
-      const fecha = n.completed_at
-        ? new Date(n.completed_at * 1000)
-        : n.queued_at
-          ? new Date(n.queued_at * 1000)
-          : null;
+      const fecha = n.completed_at ? new Date(n.completed_at * 1000)
+        : n.queued_at ? new Date(n.queued_at * 1000) : null;
       const p2 = x => String(x).padStart(2,'0');
-      const fechaStr = fecha
-        ? `${p2(fecha.getDate())}/${p2(fecha.getMonth()+1)}/${fecha.getFullYear()}`
-        : '—';
-      const horaStr = fecha
-        ? `${p2(fecha.getHours())}:${p2(fecha.getMinutes())}`
-        : '—';
-      const titulo  = n.headings?.es  || n.headings?.en  || '(sin título)';
-      const mensaje = n.contents?.es  || n.contents?.en  || '(sin mensaje)';
-      const recibidos = n.successful ?? n.converted ?? '—';
-
-      return `<tr>
-        <td>${fechaStr}</td>
-        <td>${horaStr}</td>
-        <td>${titulo}</td>
-        <td style="max-width:200px;word-break:break-word;">${mensaje}</td>
-        <td><span class="notif-recipients">${recibidos}</span></td>
-      </tr>`;
+      const fStr = fecha ? `${p2(fecha.getDate())}/${p2(fecha.getMonth()+1)}/${fecha.getFullYear()}` : '—';
+      const hStr = fecha ? `${p2(fecha.getHours())}:${p2(fecha.getMinutes())}` : '—';
+      const tit  = n.headings?.es || n.headings?.en || '(sin título)';
+      const msg  = n.contents?.es || n.contents?.en || '(sin mensaje)';
+      const rec  = n.successful ?? n.converted ?? '—';
+      return `<tr><td>${fStr}</td><td>${hStr}</td><td>${tit}</td>
+        <td style="max-width:200px;word-break:break-word;">${msg}</td>
+        <td><span class="notif-recipients">${rec}</span></td></tr>`;
     }).join('');
-
     wrap.innerHTML = `
       <div class="notif-table-wrap">
         <table class="notif-table">
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Hora</th>
-              <th>Título</th>
-              <th>Mensaje</th>
-              <th>Llegó a</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Fecha</th><th>Hora</th><th>Título</th><th>Mensaje</th><th>Llegó a</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p style="font-size:.7rem;color:var(--muted);margin-top:8px;">Últimas 20 notificaciones · Fuente: OneSignal API</p>`;
-
+      <p style="font-size:.7rem;color:var(--muted);margin-top:8px;">Últimas 20 · Fuente: OneSignal</p>`;
   } catch(err) {
-    wrap.innerHTML = `<p style="font-size:.82rem;color:var(--red,#e53935);">❌ Error al cargar historial: ${err.message}</p>`;
+    wrap.innerHTML = `<p style="font-size:.82rem;color:var(--red,#e53935);">❌ ${err.message}</p>`;
   }
 }
 
