@@ -37,6 +37,16 @@ app.get('/', (req, res) => {
   res.json({ ok: true, service: 'tren-proxy', version: '1.0.0' });
 });
 
+// ── Diagnóstico temporal (borrar después de verificar) ────────
+app.get('/diag', (req, res) => {
+  const key = process.env.ONESIGNAL_REST_API_KEY;
+  res.json({
+    key_presente: !!key,
+    key_longitud: key ? key.length : 0,
+    key_inicio:   key ? key.substring(0, 10) + '...' : null,
+  });
+});
+
 // ── Enviar notificación push ──────────────────────────────────
 app.post('/notif/enviar', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ ok: false, error: 'API Key no configurada en el servidor.' });
