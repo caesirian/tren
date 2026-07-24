@@ -38,12 +38,28 @@ app.get('/', (req, res) => {
 });
 
 // ── Diagnóstico temporal (borrar después de verificar) ────────
-app.get('/diag', (req, res) => {
+app.get('/diag', async (req, res) => {
   const key = process.env.ONESIGNAL_REST_API_KEY;
+
+  // Test directo contra OneSignal para ver qué responde
+  let onesignalTest = null;
+  try {
+    const r = await fetch(
+      `${ONESIGNAL_API}/notifications?app_id=${ONESIGNAL_APP_ID}&limit=1&kind=1`,
+      { headers: { 'Authorization': `Basic ${key}` } }
+    );
+    const data = await r.json();
+    onesignalTest = { status: r.status, data };
+  } catch(err) {
+    onesignalTest = { error: err.message };
+  }
+
   res.json({
     key_presente: !!key,
     key_longitud: key ? key.length : 0,
     key_inicio:   key ? key.substring(0, 10) + '...' : null,
+    app_id:       ONESIGNAL_APP_ID,
+    onesignal:    onesignalTest,
   });
 });
 
