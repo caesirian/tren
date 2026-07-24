@@ -1362,10 +1362,10 @@ function utClearStatus() {
 
 
 // ══════════════════════════════════════════════════════════════
-// NOTIFICACIONES PUSH — vía Apps Script (proxy para evitar CORS)
-// La REST API Key de OneSignal vive en Code.gs (server-side).
+// NOTIFICACIONES PUSH — vía proxy en Render (evita CORS)
+// La REST API Key de OneSignal vive en variables de entorno de Render.
 // ══════════════════════════════════════════════════════════════
-// APPS_SCRIPT_URL ya está definida arriba (para el cronograma)
+const PROXY_URL = 'https://tren-webs.onrender.com';
 
 // Contadores de caracteres
 ['notifTitulo','notifMensaje'].forEach(id => {
@@ -1396,10 +1396,10 @@ document.getElementById('notifEnviarBtn').addEventListener('click', async () => 
   notifSetStatus('', '');
 
   try {
-    const res = await fetch(APPS_SCRIPT_URL, {
+    const res = await fetch(`${PROXY_URL}/notif/enviar`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ accion: 'enviar', titulo, mensaje, url })
+      body:    JSON.stringify({ titulo, mensaje, url })
     });
     const data = await res.json();
     if (data.ok) {
@@ -1428,11 +1428,7 @@ async function notifCargarHistorial() {
   if (!wrap) return;
   wrap.innerHTML = '<p style="font-size:.82rem;color:var(--muted);">Cargando historial…</p>';
   try {
-    const res  = await fetch(APPS_SCRIPT_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ accion: 'historial', limit: 20, offset: 0 })
-    });
+    const res  = await fetch(`${PROXY_URL}/notif/historial?limit=20&offset=0`);
     const data = await res.json();
     if (!data.ok) throw new Error(JSON.stringify(data.error));
     const notifs = data.notifications || [];
