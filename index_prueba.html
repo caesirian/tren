@@ -950,6 +950,107 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .today-alerts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .today-alert-item { background: var(--yellow-bg); border-left: 4px solid var(--yellow); border-radius: 6px; padding: 10px 14px; font-size: 0.88rem; color: #1c1200; }
 
+/* ─── Noticias ─────────────────────────────────────────────── */
+.noticias-grid { display: flex; flex-direction: column; gap: 16px; margin-top: 8px; }
+
+.noticia-card {
+  display: flex; gap: 16px; align-items: flex-start;
+  background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px;
+  cursor: pointer; transition: box-shadow .2s, transform .2s;
+  border: none; width: 100%; text-align: left;
+}
+.noticia-card:hover { box-shadow: 0 6px 24px rgba(0,0,0,.12); transform: translateY(-2px); }
+.noticia-card-foto {
+  width: 110px; height: 80px; border-radius: 10px;
+  object-fit: cover; flex-shrink: 0; background: var(--cel-bg);
+}
+.noticia-card-foto-placeholder {
+  width: 110px; height: 80px; border-radius: 10px;
+  background: var(--cel-bg); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem;
+}
+.noticia-card-body { flex: 1; min-width: 0; }
+.noticia-card-titulo {
+  font-size: .95rem; font-weight: 700; color: var(--navy);
+  margin-bottom: 5px; line-height: 1.3;
+}
+.noticia-card-copete {
+  font-size: .82rem; color: var(--muted); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.noticia-card-fecha { font-size: .72rem; color: var(--muted); margin-top: 6px; }
+
+.noticias-ver-todas {
+  background: none; border: 2px solid var(--celeste); color: var(--celeste);
+  font-weight: 700; font-size: .88rem; padding: 10px 28px;
+  border-radius: 30px; cursor: pointer; transition: background .18s, color .18s;
+}
+.noticias-ver-todas:hover { background: var(--celeste); color: #fff; }
+
+/* ─── Modal de noticias ────────────────────────────────────── */
+.noticias-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.65);
+  z-index: 1000; display: flex; align-items: flex-start;
+  justify-content: center; padding: 20px;
+  overflow-y: auto;
+  animation: fadeIn .18s ease;
+}
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+.noticias-modal {
+  background: var(--white); border-radius: 16px;
+  width: 100%; max-width: 680px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  overflow: hidden; animation: slideUp .22s ease;
+  margin: auto;
+}
+@keyframes slideUp { from { transform: translateY(24px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+
+.noticias-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; background: var(--navy);
+  position: sticky; top: 0; z-index: 1;
+}
+.noticias-modal-brand {
+  display: flex; align-items: center; gap: 10px;
+  color: #fff; font-weight: 700; font-size: .9rem;
+}
+.noticias-modal-logo { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
+.noticias-modal-close {
+  background: rgba(255,255,255,.15); border: none; color: #fff;
+  width: 32px; height: 32px; border-radius: 50%; font-size: 1rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .18s;
+}
+.noticias-modal-close:hover { background: rgba(255,255,255,.3); }
+
+.noticias-modal-body { padding: 0 0 24px; }
+
+/* Artículo individual en el modal */
+.noticias-articulo-foto {
+  width: 100%; max-height: 260px; object-fit: cover; display: block;
+}
+.noticias-articulo-contenido { padding: 20px 24px; }
+.noticias-articulo-titulo {
+  font-size: 1.25rem; font-weight: 800; color: var(--navy);
+  line-height: 1.3; margin-bottom: 6px;
+}
+.noticias-articulo-fecha { font-size: .78rem; color: var(--muted); margin-bottom: 16px; }
+.noticias-articulo-cuerpo {
+  font-size: .9rem; color: var(--text); line-height: 1.7;
+}
+.noticias-articulo-cuerpo p { margin-bottom: 12px; }
+.noticias-articulo-cuerpo img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+.noticias-articulo-cuerpo strong { color: var(--navy); }
+.noticias-articulo-pie { font-size: .75rem; color: var(--muted); margin-top: 16px; font-style: italic; }
+
+/* Listado completo dentro del modal */
+.noticias-modal-lista { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.noticias-modal-lista .noticia-card { box-shadow: none; border: 1px solid var(--border); }
+
 /* ─── Tarifas ─────────────────────────────────────────────── */
 .tariff-cards { display: flex; gap: 14px; flex-wrap: wrap; }
 .tariff-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px 20px; flex: 1 1 160px; text-align: center; border-top: 4px solid var(--celeste); }
@@ -1227,6 +1328,10 @@ from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import {
   getFirestore,
   doc,
+  collection,
+  query,
+  orderBy,
+  limit,
   onSnapshot
 }
 from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
@@ -1448,6 +1553,137 @@ function actualizarAlerta(texto) {
   }
   
 }
+
+// ══════════════════════════════════════════════════════════════
+// NOTICIAS — Firestore (colección noticias)
+// ══════════════════════════════════════════════════════════════
+const noticiasRef   = collection(db, 'noticias');
+const noticiasQuery = query(noticiasRef, orderBy('fechaMs', 'desc'), limit(3));
+
+let _todasNoticias = []; // cache para el modal de "ver todas"
+
+function fmtFecha(fechaMs) {
+  if (!fechaMs) return '';
+  const d  = new Date(fechaMs);
+  const p2 = n => String(n).padStart(2,'0');
+  return `${p2(d.getDate())}/${p2(d.getMonth()+1)}/${d.getFullYear()}`;
+}
+
+function copete(html) {
+  // Extrae texto plano del HTML para el copete de la card
+  const div = document.createElement('div');
+  div.innerHTML = html || '';
+  return (div.textContent || '').substring(0, 120);
+}
+
+function buildCard(n, idx) {
+  const btn = document.createElement('button');
+  btn.className = 'noticia-card';
+  btn.setAttribute('aria-label', `Leer noticia: ${n.titulo}`);
+  btn.innerHTML = `
+    ${n.foto
+      ? `<img class="noticia-card-foto" src="${n.foto}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;noticia-card-foto-placeholder&quot;>📰</div>'">`
+      : `<div class="noticia-card-foto-placeholder">📰</div>`}
+    <div class="noticia-card-body">
+      <div class="noticia-card-titulo">${n.titulo || ''}</div>
+      <div class="noticia-card-copete">${copete(n.contenido)}</div>
+      <div class="noticia-card-fecha">${fmtFecha(n.fechaMs)}</div>
+    </div>`;
+  btn.addEventListener('click', () => abrirArticulo(idx));
+  return btn;
+}
+
+function abrirArticulo(idx) {
+  const n    = _todasNoticias[idx];
+  const body = document.getElementById('noticiasModalBody');
+  if (!n || !body) return;
+
+  body.innerHTML = `
+    ${n.foto ? `<img class="noticias-articulo-foto" src="${n.foto}" alt="${n.titulo || ''}">` : ''}
+    <div class="noticias-articulo-contenido">
+      <h2 class="noticias-articulo-titulo">${n.titulo || ''}</h2>
+      <div class="noticias-articulo-fecha">${fmtFecha(n.fechaMs)}</div>
+      <div class="noticias-articulo-cuerpo">${n.contenido || ''}</div>
+      ${n.piedefoto ? `<p class="noticias-articulo-pie">📷 ${n.piedefoto}</p>` : ''}
+    </div>`;
+
+  abrirModal();
+}
+
+function abrirListadoCompleto() {
+  const body = document.getElementById('noticiasModalBody');
+  if (!body) return;
+
+  if (!_todasNoticias.length) {
+    body.innerHTML = '<p style="padding:24px;color:var(--muted);">No hay noticias publicadas.</p>';
+    abrirModal();
+    return;
+  }
+
+  const lista = document.createElement('div');
+  lista.className = 'noticias-modal-lista';
+  _todasNoticias.forEach((n, i) => lista.appendChild(buildCard(n, i)));
+  body.innerHTML = '';
+  body.appendChild(lista);
+  abrirModal();
+}
+
+function abrirModal() {
+  const overlay = document.getElementById('noticiasOverlay');
+  overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  document.getElementById('noticiasModal').scrollTop = 0;
+}
+
+function cerrarModal() {
+  const overlay = document.getElementById('noticiasOverlay');
+  overlay.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Cerrar con botón ✕
+document.getElementById('noticiasModalClose')
+  .addEventListener('click', cerrarModal);
+
+// Cerrar al hacer click fuera del modal
+document.getElementById('noticiasOverlay')
+  .addEventListener('click', e => {
+    if (e.target === e.currentTarget) cerrarModal();
+  });
+
+// Cerrar con Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') cerrarModal();
+});
+
+// Botón "Ver todas"
+document.getElementById('noticiasVerTodas')
+  .addEventListener('click', abrirListadoCompleto);
+
+// Listener de Firestore — carga las 3 más recientes
+onSnapshot(noticiasQuery, snap => {
+  const publicadas = snap.docs
+    .map(d => d.data())
+    .filter(n => n.publicado !== false);
+
+  _todasNoticias = publicadas; // cache para modal
+
+  const grid    = document.getElementById('noticiasGrid');
+  const seccion = document.getElementById('noticias');
+  if (!grid || !seccion) return;
+
+  if (!publicadas.length) {
+    seccion.style.display = 'none';
+    return;
+  }
+
+  seccion.style.display = ''; // mostrar sección
+  grid.innerHTML = '';
+  publicadas.forEach((n, i) => grid.appendChild(buildCard(n, i)));
+
+}, err => {
+  console.warn('[Firebase] noticias no disponible.', err.message);
+});
 
 console.log('[Firebase] Listener de estado inicializado');
 
@@ -2018,7 +2254,33 @@ console.log('[Firebase] Listener de estado inicializado');
     </div>
   </section>
 
+  <!-- NOTICIAS -->
+  <section class="section section-cel" id="noticias" aria-labelledby="noticias-title" style="display:none">
+    <div class="container">
+      <span class="section-label">📰 Novedades</span>
+      <h2 class="section-title" id="noticias-title">Últimas noticias</h2>
+      <div class="noticias-grid" id="noticiasGrid"></div>
+      <div style="text-align:center;margin-top:24px;">
+        <button class="noticias-ver-todas" id="noticiasVerTodas">Ver todas las noticias →</button>
+      </div>
+    </div>
+  </section>
 
+  <!-- MODAL DE NOTICIAS -->
+  <div class="noticias-modal-overlay" id="noticiasOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitulo" style="display:none">
+    <div class="noticias-modal" id="noticiasModal">
+      <!-- Header del modal -->
+      <div class="noticias-modal-header">
+        <div class="noticias-modal-brand">
+          <img src="logo.png" alt="Tren Sarmiento En Línea" class="noticias-modal-logo"/>
+          <span>Tren Sarmiento En Línea</span>
+        </div>
+        <button class="noticias-modal-close" id="noticiasModalClose" aria-label="Cerrar">✕</button>
+      </div>
+      <!-- Contenido dinámico -->
+      <div class="noticias-modal-body" id="noticiasModalBody"></div>
+    </div>
+  </div>
 
   <!-- HORARIOS -->
   <section class="section section-white" id="horarios" aria-labelledby="horarios-title">
