@@ -78,6 +78,13 @@
       cursor:pointer;transition:.2s ease;
     }
     .primary-btn{background:linear-gradient(135deg,#00a8ff,#0057ff);color:white;}
+    /* Toggle switch */
+    .toggle-switch { position:relative; display:inline-block; width:44px; height:24px; }
+    .toggle-switch input { opacity:0; width:0; height:0; }
+    .toggle-slider { position:absolute; cursor:pointer; inset:0; background:#555; border-radius:24px; transition:.2s; }
+    .toggle-slider:before { position:absolute; content:""; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+    .toggle-switch input:checked + .toggle-slider { background:var(--celeste,#0095D4); }
+    .toggle-switch input:checked + .toggle-slider:before { transform:translateX(20px); }
     .primary-btn:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,168,255,.35);}
     .primary-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none;}
     .secondary-btn{background:rgba(255,255,255,.08);color:white;margin-top:10px;}
@@ -313,7 +320,20 @@
         <label for="editarMensaje">Mensaje / alerta</label>
         <textarea id="editarMensaje" placeholder="Escribí una alerta para los pasajeros..."></textarea>
       </div>
-      <button id="guardarEstadoBtn" class="primary-btn">Guardar estado</button>
+
+      <!-- Toggle: mostrar/ocultar titulares de noticias en el sitio -->
+      <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.04);border-radius:10px;padding:12px 16px;margin-top:4px;">
+        <div>
+          <div style="font-weight:600;font-size:.9rem;color:#d0dbe8;">Mostrar titulares de noticias</div>
+          <div style="font-size:.75rem;color:var(--muted,#8899aa);margin-top:2px;">Activá para mostrar la sección de noticias en el sitio público</div>
+        </div>
+        <label class="toggle-switch" style="flex-shrink:0;margin-left:16px;">
+          <input type="checkbox" id="mostrarTitularesToggle" checked/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <button id="guardarEstadoBtn" class="primary-btn" style="margin-top:16px;">Guardar estado</button>
     </div>
 
     <!-- Puntos SUBE -->
@@ -671,6 +691,9 @@ onSnapshot(estadoRef, snap => {
   document.getElementById("statusDetail").innerText = d.mensaje||"Sin alertas activas.";
   document.getElementById("estadoSelect").value = d.estado||"normal";
   document.getElementById("editarMensaje").value = d.mensaje||"";
+  // Cargar estado del toggle mostrarTitulares (true por defecto si no existe)
+  const toggle = document.getElementById("mostrarTitularesToggle");
+  if (toggle) toggle.checked = d.mostrarTitulares !== false;
 });
 function semaforo(e) {
   const r=document.getElementById("luzRoja"),a=document.getElementById("luzAmarilla"),v=document.getElementById("luzVerde");
@@ -684,10 +707,12 @@ function semaforo(e) {
 document.getElementById("guardarEstadoBtn").addEventListener("click", async () => {
   if (!isAdmin()) return;
   try {
+    const toggle = document.getElementById("mostrarTitularesToggle");
     await setDoc(estadoRef,{
-      estado:document.getElementById("estadoSelect").value,
-      mensaje:sanitize(document.getElementById("editarMensaje").value),
-      actualizado:new Date().toISOString(), editor:currentUser.email
+      estado:           document.getElementById("estadoSelect").value,
+      mensaje:          sanitize(document.getElementById("editarMensaje").value),
+      mostrarTitulares: toggle ? toggle.checked : true,
+      actualizado:      new Date().toISOString(), editor:currentUser.email
     });
     alert("Estado guardado");
   } catch(e){ alert("Error: "+e.message); }
