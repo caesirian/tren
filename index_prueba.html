@@ -1361,6 +1361,7 @@ import {
   query,
   orderBy,
   limit,
+  where,
   onSnapshot
 }
 from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
@@ -1460,12 +1461,14 @@ onSnapshot(estadoRef, (snapshot) => {
                            : (data.mensaje ? [data.mensaje] : [])
   };
 
-  // Mostrar/ocultar sección de noticias según campo mostrarTitulares
-  // Si el campo no existe en Firestore, se comporta como true (mostrar por defecto)
+  // Mostrar/ocultar card de noticias según campo mostrarTitulares
   window.__MOSTRAR_TITULARES = data.mostrarTitulares !== false;
-  const secNoticias = document.getElementById('noticias');
-  if (secNoticias && secNoticias.dataset.tieneNoticias === 'true') {
-    secNoticias.style.display = window.__MOSTRAR_TITULARES ? '' : 'none';
+  const gridNoticias = document.getElementById('noticiasGrid');
+  if (gridNoticias) {
+    const cardNoticias = gridNoticias.closest('.today-card');
+    if (cardNoticias && cardNoticias.style.display !== 'none') {
+      cardNoticias.style.display = window.__MOSTRAR_TITULARES ? '' : 'none';
+    }
   }
 
 }, (err) => {
@@ -1510,10 +1513,16 @@ function actualizarSemaforo(data) {
   
   // Mensajes por defecto (fallback si no viene mensaje de la BD)
   const mensajesDefault = {
-    normal: 'El servicio opera con normalidad en ramal Once-Moreno.',
-    modificado: 'Demoras o cambios operativos.',
-    paro: 'ATENCIÓN: El servicio se encuentra suspendido. Consultá colectivos alternativos.'
+    normal:    'El servicio opera con normalidad en el ramal Once–Moreno.',
+    modificado:'Hay demoras o cambios en el cronograma. Verificá el horario antes de salir.',
+    paro:      'ATENCIÓN: El servicio se encuentra suspendido. Consultá la sección de colectivos alternativos.'
   };
+
+  // CTA contextual de campana en estado crítico
+  const campanaBar = document.getElementById('campanaCtaBar');
+  if (campanaBar) {
+    campanaBar.style.display = (estado === 'paro' || estado === 'modificado') ? '' : 'none';
+  }
   
   // APLICAR ESTADO
   switch(estado) {
@@ -1708,29 +1717,68 @@ onSnapshot(noticiasQuery, snap => {
 
   _todasNoticias = publicadas; // cache para modal
 
-  const grid    = document.getElementById('noticiasGrid');
-  const seccion = document.getElementById('noticias');
-  if (!grid || !seccion) return;
+  const grid = document.getElementById('noticiasGrid');
+  if (!grid) return;
 
   if (!publicadas.length) {
-    seccion.dataset.tieneNoticias = 'false';
-    seccion.style.display = 'none';
+    grid.innerHTML = '<p style="font-size:.82rem;color:var(--muted);">Sin noticias recientes.</p>';
+    // Ocultar el col-half de noticias si no hay nada
+    const cardNoticias = grid.closest('.today-card');
+    if (cardNoticias) cardNoticias.style.display = 'none';
     return;
   }
 
-  // Marcar que hay noticias disponibles
-  seccion.dataset.tieneNoticias = 'true';
-
   // Respetar la preferencia de mostrarTitulares del admin
-  // (si aún no llegó el snapshot de estado, __MOSTRAR_TITULARES es undefined → mostrar)
   const mostrar = window.__MOSTRAR_TITULARES !== false;
-  seccion.style.display = mostrar ? '' : 'none';
+  const cardNoticias = grid.closest('.today-card');
+  if (cardNoticias) cardNoticias.style.display = mostrar ? '' : 'none';
 
   grid.innerHTML = '';
   publicadas.forEach((n, i) => grid.appendChild(buildCard(n, i)));
 
 }, err => {
   console.warn('[Firebase] noticias no disponible.', err.message);
+});
+
+// ── Historial de estado — últimos 7 días ─────────────────────
+const historialRef   = collection(db, 'historialEstado');
+const hace7dias      = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+const historialQuery = query(
+  historialRef,
+  where('timestamp', '>=', hace7dias),
+  orderBy('timestamp', 'desc'),
+  limit(14)
+);
+
+const iconoEstado = { normal: '✅', modificado: '⚠️', paro: '🚫' };
+const labelEstado = { normal: 'Normal', modificado: 'Con demoras', paro: 'Paro' };
+
+onSnapshot(historialQuery, snap => {
+  const wrap = document.getElementById('historialEstadoWrap');
+  const list = document.getElementById('historialEstadoList');
+  if (!wrap || !list) return;
+
+  const entradas = snap.docs.map(d => d.data());
+  if (!entradas.length) { wrap.style.display = 'none'; return; }
+
+  wrap.style.display = '';
+  list.innerHTML = entradas.map(e => {
+    const d   = new Date(e.timestamp);
+    const p2  = n => String(n).padStart(2,'0');
+    const fStr = `${p2(d.getDate())}/${p2(d.getMonth()+1)} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    const ico  = iconoEstado[e.estado] || '❓';
+    const lbl  = labelEstado[e.estado] || e.estado;
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:.78rem;">
+      <span>${ico}</span>
+      <span style="color:var(--muted);flex-shrink:0;">${fStr}</span>
+      <span style="color:var(--text);font-weight:600;">${lbl}</span>
+      ${e.mensaje ? `<span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">— ${e.mensaje}</span>` : ''}
+    </div>`;
+  }).join('');
+}, () => {
+  // Si la colección no existe aún, no mostrar nada (silencioso)
+  const wrap = document.getElementById('historialEstadoWrap');
+  if (wrap) wrap.style.display = 'none';
 });
 
 console.log('[Firebase] Listener de estado inicializado');
@@ -1776,7 +1824,7 @@ console.log('[Firebase] Listener de estado inicializado');
       <li><a href="#estado">📡 Estado</a></li>
       <li><a href="#horarios">🕐 Horarios</a></li>
       <li><a href="#tarifas">💳 Tarifas</a></li>
-      <li><a href="#estaciones">📍 Estaciones</a></li>
+      <li><a href="#estaciones">🚌 Colectivos</a></li>
       <li><a href="#mapa">🗺️ Mapa</a></li>
       <li><a href="#faq">❓ FAQ</a></li>
     </ul>
@@ -1785,7 +1833,6 @@ console.log('[Firebase] Listener de estado inicializado');
 
 
 <!-- PUSH OPT-IN BAR — aparece después de 8 segundos si no suscripto -->
-<!-- push-bar eliminada: campana en nav maneja todo -->
 <!-- ═══════════════════════════════════════ -->
 <!-- WIDGET ÚLTIMOS TRENES -->
 <!-- ═══════════════════════════════════════ -->
@@ -2104,32 +2151,42 @@ console.log('[Firebase] Listener de estado inicializado');
 
   document.getElementById('ltw-minimize')
     .addEventListener('click', () => {
-
       card.style.opacity = '0';
       card.style.transform = 'scale(.9)';
       card.style.pointerEvents = 'none';
-
       setTimeout(() => {
         card.style.display = 'none';
         bubble.style.display = 'flex';
       }, 180);
-
     });
 
   // RESTAURAR
   bubble.addEventListener('click', () => {
-
     bubble.style.display = 'none';
-
     card.style.display = 'block';
-
     requestAnimationFrame(() => {
       card.style.opacity = '1';
       card.style.transform = 'scale(1)';
       card.style.pointerEvents = 'auto';
     });
-
   });
+
+  // Apertura automática después de las 22hs — info crítica para no perder el último tren
+  (function autoAbrirNocturno() {
+    const hora = new Date().getHours();
+    if (hora >= 22 || hora < 1) {
+      // Mostrar la card directamente sin necesidad de tocar el bubble
+      setTimeout(() => {
+        if (card.style.display === 'none' || card.style.display === '') {
+          bubble.style.display = 'none';
+          card.style.display = 'block';
+          card.style.opacity = '1';
+          card.style.transform = 'scale(1)';
+          card.style.pointerEvents = 'auto';
+        }
+      }, 2000); // 2 segundos después de cargar
+    }
+  })();
 
 })();
 </script>
@@ -2162,6 +2219,7 @@ console.log('[Firebase] Listener de estado inicializado');
       <a class="hero-pill" href="#estado">📡 Estado hoy</a>
       <a class="hero-pill" href="#horarios">🕐 Ver todos los horarios</a>
       <a class="hero-pill" href="#estaciones">🚌 Colectivos alternativos</a>
+      <a class="hero-pill" href="https://t.me/pasajerosdeltrensarmientoenlinea" target="_blank" rel="noopener noreferrer" style="background:rgba(0,149,212,.35);border-color:var(--celeste);">✈️ Comunidad Telegram</a>
     </nav>
   </section>
 
@@ -2177,19 +2235,61 @@ console.log('[Firebase] Listener de estado inicializado');
             <span class="status-dot" aria-hidden="true"></span>
         <span id="statusTexto" class="status-text">⚠️ Servicio con modificaciones</span>
 
-        <div id="statusDetail" class="status-detail">Demoras o cambios operativos.</div>
+        <div id="statusDetail" class="status-detail">El servicio opera con normalidad.</div>
       </div>
-       <!--<div>
-        <span class="status-dot" aria-hidden="true"></span>
-        <span class="status-text" id="statusText">⚠️ Servicio con modificaciones</span>
-        <div class="status-detail" id="statusDetail">Entre la Noche del Sábado 09 y mañana del Domingo 10 habrá servicio reducido por lo que el horario de los ultimos trenes se verá modificado.</div>
-      </div>-->
     </div>
     <div class="status-source" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
       <a href="https://www.instagram.com/trensarmiento_enlinea" target="_blank" rel="noopener noreferrer">📸 @trensarmiento_enlinea</a>
       <span class="last-update-badge" id="lastUpdateBadge" title="Última verificación manual del estado">🕐 Verificado: —</span>
     </div>
   </div>
+
+  <!-- CTA campana: solo visible cuando hay paro o modificaciones -->
+  <div id="campanaCtaBar" style="display:none;background:var(--navy);color:#fff;font-size:.82rem;padding:8px 20px;display:flex;align-items:center;justify-content:center;gap:10px;">
+    <span>¿Querés que te avisemos la próxima vez?</span>
+    <button id="campanaCtaBtn" style="background:var(--celeste);border:none;color:#fff;font-weight:700;font-size:.8rem;padding:5px 14px;border-radius:20px;cursor:pointer;">
+      🔔 Activar alertas
+    </button>
+  </div>
+
+  <!-- ESTADO HOY -->
+  <section class="section section-white" id="estado" aria-labelledby="estado-title">
+    <div class="container">
+      <span class="section-label" id="estadoLabel">📡 Hoy</span>
+      <h2 class="section-title" id="estado-title">Estado del servicio</h2>
+      <p class="section-sub">Novedades vigentes y alertas. <span class="last-update-badge" id="lastUpdateSection" style="vertical-align:middle;">🕐 Verificado: —</span></p>
+      <div class="row">
+        <div class="col-half">
+          <div class="today-card">
+            <div class="today-header">🔔 Alertas vigentes hoy</div>
+            <div class="today-body">
+              <div class="today-status" id="estadoGeneral">Estado general: <span class="badge-alerta" id="estadoBadge">⚠️ Con modificaciones</span></div>
+              <p style="font-size:.88rem;color:var(--muted);margin-bottom:12px;">Novedades de la comunidad del Tren Sarmiento En Línea:</p>
+              <div class="today-alerts" role="list" id="alertasList"></div>
+              <!-- Historial de estado últimos 7 días -->
+              <div id="historialEstadoWrap" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;display:none;">
+                <div style="font-size:.75rem;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Últimos 7 días</div>
+                <div id="historialEstadoList" style="display:flex;flex-direction:column;gap:6px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-half">
+          <div class="today-card">
+            <div class="today-header" style="display:flex;align-items:center;justify-content:space-between;">
+              <span>📰 Últimas noticias</span>
+              <button class="noticias-ver-todas" id="noticiasVerTodas" style="font-size:.72rem;padding:4px 12px;">Ver todas →</button>
+            </div>
+            <div class="today-body">
+              <div class="noticias-grid" id="noticiasGrid">
+                <p style="font-size:.85rem;color:var(--muted);">Cargando noticias…</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- PRÓXIMO TREN -->
   <section class="section section-cel" id="proximo" aria-labelledby="proximo-title">
@@ -2256,60 +2356,6 @@ console.log('[Firebase] Listener de estado inicializado');
             <a href="https://t.me/pasajerosdeltrensarmientoenlinea" target="_blank" rel="noopener noreferrer">Telegram ↗</a>
           </p>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ESTADO HOY -->
-  <section class="section section-white" id="estado" aria-labelledby="estado-title">
-    <div class="container">
-      <span class="section-label" id="estadoLabel">📡 Hoy</span>
-      <h2 class="section-title" id="estado-title">Estado del servicio</h2>
-      <p class="section-sub">Novedades vigentes y alertas. <span class="last-update-badge" id="lastUpdateSection" style="vertical-align:middle;">🕐 Verificado: —</span></p>
-      <div class="row">
-        <div class="col-half">
-          <div class="today-card">
-            <div class="today-header">🔔 Alertas vigentes hoy</div>
-            <div class="today-body">
-              <div class="today-status" id="estadoGeneral">Estado general: <span class="badge-alerta" id="estadoBadge">⚠️ Con modificaciones</span></div>
-              <p style="font-size:.88rem;color:var(--muted);margin-bottom:12px;">Novedades de la comunidad del Tren Sarmiento En Línea:</p>
-              <div class="today-alerts" role="list" id="alertasList"></div>
-            </div>
-          </div>
-        </div>
-        <div class="col-half">
-          <div class="today-card">
-
-              
-            <!--<div class="today-header">📱 Alertas en tiempo real — @InfoTSarmiento</div>
-            <div style="padding:0; min-height:50px;" id="twitterWrap">
-              <a class="twitter-timeline" data-lang="es" data-height="280" data-theme="light"
-                 data-chrome="noheader nofooter noborders transparent"
-                 href="https://twitter.com/InfoTSarmiento?ref_src=twsrc%5Etfw">Cargando alertas…</a>
-            </div>-->
-
-              
-            <!-- Fallback siempre visible, se oculta si el widget carga 
-            <div id="twitterFallback" style="padding:16px 20px;">
-              <p style="font-size:.85rem;font-weight:600;color:var(--navy);margin-bottom:10px;">Seguinos en nuestras redes para estar al día con todas las novedades del Sarmiento.</p>
-            </div>
-            <p style="padding:6px 16px 12px;font-size:.72rem;color:var(--muted);">
-              Encontranos en el footer de esta página
-            </p>-->
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- NOTICIAS -->
-  <section class="section section-cel" id="noticias" aria-labelledby="noticias-title" style="display:none">
-    <div class="container">
-      <span class="section-label">📰 Novedades</span>
-      <h2 class="section-title" id="noticias-title">Últimas noticias</h2>
-      <div class="noticias-grid" id="noticiasGrid"></div>
-      <div style="text-align:center;margin-top:24px;">
-        <button class="noticias-ver-todas" id="noticiasVerTodas">Ver todas las noticias →</button>
       </div>
     </div>
   </section>
@@ -2776,17 +2822,6 @@ console.log('[Firebase] Listener de estado inicializado');
 <!-- ═══════════════════════════════════════════════════════════════
      SCRIPTS — al final del body, no bloquean render
 ═══════════════════════════════════════════════════════════════ -->
-<!-- Twitter widget carga diferida -->
-<script>
-window.addEventListener('load', function() {
-  var s = document.createElement('script');
-  s.src = 'https://platform.twitter.com/widgets.js';
-  s.async = true;
-  s.charset = 'utf-8';
-  document.body.appendChild(s);
-});
-</script>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 <script>
 // ─── Visually hidden utility ─────────────────────────────────
@@ -3003,9 +3038,32 @@ function runSearch(oVal, dVal, scroll) {
 }
 
 // Botones de búsqueda — sin onclick inline
-document.getElementById('mainBtnSearch').addEventListener('click', () =>
-  runSearch(document.getElementById('selOrigen').value, document.getElementById('selDestino').value, true)
-);
+document.getElementById('mainBtnSearch').addEventListener('click', () => {
+  const origen  = document.getElementById('selOrigen').value;
+  const destino = document.getElementById('selDestino').value;
+  // Guardar en localStorage para la próxima visita
+  try {
+    localStorage.setItem('tren_origen',  origen);
+    localStorage.setItem('tren_destino', destino);
+  } catch(e) {}
+  runSearch(origen, destino, true);
+});
+
+// Restaurar última búsqueda al cargar la página
+(function restaurarUltimaBusqueda() {
+  try {
+    const origen  = localStorage.getItem('tren_origen');
+    const destino = localStorage.getItem('tren_destino');
+    if (origen)  {
+      const sel = document.getElementById('selOrigen');
+      if ([...sel.options].some(o => o.value === origen)) sel.value = origen;
+    }
+    if (destino) {
+      const sel = document.getElementById('selDestino');
+      if ([...sel.options].some(o => o.value === destino)) sel.value = destino;
+    }
+  } catch(e) {}
+})();
 
 
 // ─── Horarios tabs ────────────────────────────────────────────
@@ -3230,16 +3288,16 @@ window.addEventListener('load', function() {
   });
 });
 
-// ─── Twitter widget: si carga, ocultar el fallback ────────────
-setTimeout(() => {
-  const hasFrame = document.querySelector('#twitterWrap iframe');
-  if (hasFrame) {
-    // El widget cargó exitosamente — ocultar el fallback
-    document.getElementById('twitterFallback').style.display = 'none';
-    document.getElementById('twitterWrap').style.minHeight = '280px';
-  }
-  // Si no cargó (sin sesión X activa), el fallback ya está visible — no hacer nada
-}, 5000);
+// ─── CTA campana contextual ────────────────────────────────────
+const campanaCtaBtn = document.getElementById('campanaCtaBtn');
+if (campanaCtaBtn) {
+  campanaCtaBtn.addEventListener('click', () => {
+    // Reusar la misma lógica de suscripción de la campana del nav
+    const navBell = document.getElementById('navBell');
+    if (navBell) navBell.click();
+    document.getElementById('campanaCtaBar').style.display = 'none';
+  });
+}
 
 // ─── Navbar toggle ────────────────────────────────────────────
 const navToggle = document.getElementById('navToggle');
