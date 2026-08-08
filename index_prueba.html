@@ -677,11 +677,17 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 /* ─── Hero ────────────────────────────────────────────────── */
 .hero {
   background: linear-gradient(135deg, var(--navy) 0%, #003F8A 60%, var(--blue) 100%);
-  padding: 32px 20px 28px;
+  padding: 36px 20px 32px;
   color: #fff;
   text-align: center;
   position: relative;
   overflow: hidden;
+}
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 700px;
+  margin: 0 auto;
 }
 .hero::before {
   content: '';
@@ -691,7 +697,6 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   border-radius: 50%;
   background: rgba(0,149,212,.15);
   pointer-events: none;
-  aria-hidden: true;
 }
 .hero-date {
   display: inline-flex;
@@ -706,9 +711,9 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   letter-spacing: .3px;
   margin-bottom: 14px;
 }
-.hero h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 800; line-height: 1.1; letter-spacing: -.5px; margin-bottom: 8px; }
+.hero h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); font-weight: 800; line-height: 1.1; letter-spacing: -.5px; margin-bottom: 8px; }
 .hero h1 span { color: var(--celeste); }
-.hero-sub { font-size: 1rem; color: rgba(255,255,255,.75); margin-bottom: 22px; max-width: 540px; margin-left: auto; margin-right: auto; }
+.hero-sub { font-size: 1rem; color: rgba(255,255,255,.75); margin-bottom: 22px; }
 
 /* Hero mini-finder */
 .hero-finder {
@@ -2210,17 +2215,18 @@ console.log('[Firebase] Listener de estado inicializado');
 
   <!-- HERO -->
   <section class="hero" id="inicio" aria-labelledby="hero-title">
-    <div class="hero-date" id="heroDate" aria-live="polite">📅 …</div>
-    <h1 id="hero-title">Tren <span>Sarmiento</span></h1>
-    <p class="hero-sub">Horarios, tarifas y estado del servicio. Ramal Once – Moreno.</p>
-
-    <nav aria-label="Accesos rápidos" class="hero-pills">
-      <a class="hero-pill" href="#proximo">🔍 ¿Cuándo sale tu próximo tren?</a>
-      <a class="hero-pill" href="#estado">📡 Estado hoy</a>
-      <a class="hero-pill" href="#horarios">🕐 Ver todos los horarios</a>
-      <a class="hero-pill" href="#estaciones">🚌 Colectivos alternativos</a>
-      <a class="hero-pill" href="https://t.me/pasajerosdeltrensarmientoenlinea" target="_blank" rel="noopener noreferrer" style="background:rgba(0,149,212,.35);border-color:var(--celeste);">✈️ Comunidad Telegram</a>
-    </nav>
+    <div class="hero-inner">
+      <div class="hero-date" id="heroDate" aria-live="polite">📅 …</div>
+      <h1 id="hero-title">Tren <span>Sarmiento</span></h1>
+      <p class="hero-sub">Horarios, tarifas y estado del servicio. Ramal Once – Moreno.</p>
+      <nav aria-label="Accesos rápidos" class="hero-pills">
+        <a class="hero-pill" href="#proximo">🔍 ¿Cuándo sale tu próximo tren?</a>
+        <a class="hero-pill" href="#estado">📡 Estado hoy</a>
+        <a class="hero-pill" href="#horarios">🕐 Ver todos los horarios</a>
+        <a class="hero-pill" href="#estaciones">🚌 Colectivos alternativos</a>
+        <a class="hero-pill" href="https://t.me/pasajerosdeltrensarmientoenlinea" target="_blank" rel="noopener noreferrer" style="background:rgba(0,149,212,.35);border-color:var(--celeste);">✈️ Comunidad Telegram</a>
+      </nav>
+    </div>
   </section>
 
   <!-- STATUS BAR -->
@@ -2299,7 +2305,7 @@ console.log('[Firebase] Listener de estado inicializado');
       <p class="section-sub">Seleccioná tu estación de origen y destino. El buscador usa el cronograma del día de hoy.</p>
       <div class="finder" role="search" aria-label="Buscador de trenes">
         <div class="finder-title">🚆 Buscador de trenes</div>
-        <p class="finder-sub">Basado en el cronograma oficial de Trenes Argentinos vigente desde el 9/3/2026.</p>
+        <p class="finder-sub">Basado en el cronograma oficial de Trenes Argentinos vigente desde el 9/3/2026 — verificá novedades operativas en la sección Estado.</p>
         <div class="finder-grid">
           <div class="finder-field">
             <label for="selOrigen">📍 Desde</label>
@@ -2410,7 +2416,7 @@ console.log('[Firebase] Listener de estado inicializado');
           </div>
         </div>
         <div class="horarios-footer">
-          <strong>📋 Sobre estos horarios:</strong> Las tablas muestran el <strong>cronograma base oficial del 9/3/2026</strong> publicado por Trenes Argentinos (SOFSE). Los trenes de madrugada y nocturnos operan con <strong>horarios modificados semana a semana</strong> por obras en zona de vías.
+          <strong>📋 Sobre estos horarios:</strong> Las tablas muestran el <strong>cronograma base oficial del 9/3/2026 (último publicado por SOFSE)</strong> publicado por Trenes Argentinos (SOFSE). Los trenes de madrugada y nocturnos operan con <strong>horarios modificados semana a semana</strong> por obras en zona de vías.
         </div>
       </div>
     </div>
@@ -2496,113 +2502,10 @@ console.log('[Firebase] Listener de estado inicializado');
       </div>
     </div>
   </section>
-<!--
+
   <div id="map" role="application" aria-label="Mapa interactivo de las estaciones del Tren Sarmiento"></div>
-<div id="loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-family:sans-serif;font-size:14px;z-index:9999;background:rgba(0,0,0,.6);padding:12px 20px;border-radius:8px;">Cargando estaciones desde OpenStreetMap...</div>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<script>
-  const map = L.map('map').setView([-34.641, -58.600], 11);
-
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors © CARTO'
-  }).addTo(map);
-
-  const stationOrder = [
-    "Once","Caballito","Flores","Floresta","Villa Luro",
-    "Liniers","Ciudadela","Ramos Mejía","Haedo","Morón",
-    "Castelar","Ituzaingó","San Antonio de Padua","Merlo",
-    "Paso del Rey","Moreno"
-  ];
-
-  const colorZones = {
-    "Once":"#22c55e","Caballito":"#22c55e","Flores":"#22c55e",
-    "Floresta":"#22c55e","Villa Luro":"#22c55e",
-    "Liniers":"#3b82f6","Ciudadela":"#3b82f6","Ramos Mejía":"#3b82f6","Haedo":"#3b82f6",
-    "Morón":"#8b5cf6","Castelar":"#8b5cf6","Ituzaingó":"#8b5cf6",
-    "San Antonio de Padua":"#8b5cf6","Merlo":"#8b5cf6",
-    "Paso del Rey":"#8b5cf6","Moreno":"#8b5cf6"
-  };
-
-  // Consulta Overpass API — obtiene los nodos exactos de OSM
-  // misma fuente que el tile de CartoDB
-  const query = `
-    [out:json][timeout:25];
-    (
-      node["railway"="station"]["network"~"Sarmiento",i](-34.70,-58.82,-34.59,-58.39);
-      node["railway"="station"]["line"~"Sarmiento",i](-34.70,-58.82,-34.59,-58.39);
-      node["railway"="station"]["name"~"Once|Caballito|Flores|Floresta|Liniers|Ciudadela|Haedo|Morón|Moron|Castelar|Ituzaingó|Padua|Merlo|Moreno",i](-34.70,-58.82,-34.59,-58.39);
-    );
-    out body;
-  `;
-
-  fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    body: "data=" + encodeURIComponent(query)
-  })
-  .then(r => r.json())
-  .then(data => {
-    document.getElementById("loading").remove();
-
-    // Indexar resultados por nombre
-    const found = {};
-    data.elements.forEach(el => {
-      const name = (el.tags.name || "").trim();
-      found[name] = { lat: el.lat, lng: el.lon };
-    });
-
-    console.log("Estaciones encontradas en OSM:", found);
-
-    // Resolver cada estación en el orden correcto
-    // con fallback por nombre parcial si no coincide exacto
-    const resolved = [];
-    stationOrder.forEach((target, idx) => {
-      // Buscar coincidencia exacta primero
-      let match = found[target];
-
-      // Si no, buscar coincidencia parcial
-      if (!match) {
-        const key = Object.keys(found).find(k =>
-          k.toLowerCase().includes(target.toLowerCase().split(" ")[0].toLowerCase())
-        );
-        if (key) match = found[key];
-      }
-
-      if (match) {
-        resolved.push({ id: idx + 1, name: target, ...match });
-      } else {
-        console.warn("No se encontró en OSM:", target);
-      }
-    });
-
-    // Trazar la vía
-    L.polyline(resolved.map(s => [s.lat, s.lng]), {
-      color: '#0095D4', weight: 4, opacity: 0.9
-    }).addTo(map);
-
-    // Crear markers
-    resolved.forEach(s => {
-      const color = colorZones[s.name] || "#8b5cf6";
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="background:${color};color:#fff;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);">${s.id}</div>`,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13]
-      });
-      L.marker([s.lat, s.lng], { icon })
-        .addTo(map)
-        .bindTooltip(s.name, { permanent: false, direction: 'top' });
-    });
-  })
-  .catch(err => {
-    document.getElementById("loading").textContent = "Error: " + err.message;
-    console.error(err);
-  });
-</script> 
-    
-    -->
 
   <!-- OBJETOS PERDIDOS / ENCONTRADOS -->
   <section class="section section-white" id="objetos-perdidos" aria-labelledby="objetos-title">
@@ -2694,7 +2597,7 @@ console.log('[Firebase] Listener de estado inicializado');
         </div>
         <div class="faq-item">
           <button type="button" class="faq-q" aria-expanded="false">¿Necesito SUBE para viajar? <span class="faq-icon" aria-hidden="true">+</span></button>
-          <div class="faq-a" hidden>No es obligatorio, pero es muy recomendable. <strong>Con SUBE registrada</strong> pagás entre $310 y $520 según la distancia. <strong>Sin SUBE</strong> pagás $1.100 en efectivo.</div>
+          <div class="faq-a" hidden>No es obligatorio, pero es muy recomendable. <strong>Con SUBE registrada</strong> pagás entre $380 y $660 según la distancia. <strong>Sin SUBE</strong> pagás $1.400 en efectivo.</div>
         </div>
         <div class="faq-item">
           <button type="button" class="faq-q" aria-expanded="false">¿Dónde recargo la tarjeta SUBE? <span class="faq-icon" aria-hidden="true">+</span></button>
@@ -2873,8 +2776,8 @@ const STATIONS = [
   { id:15, name:"Moreno",          km:52, sec:3, lat:-34.6503, lng:-58.7917, direccion:"Av. Libertad 1000, Moreno",                                  colectivos:["180","267","440","500","501","502"],                                                                                                                                                         subte:[],                                                       conexiones:["Ramal Moreno–Mercedes (diésel)"], nota:"Terminal oeste del ramal eléctrico. Conexión con ramal diésel a Mercedes." }
 ];
 
-const PRECIOS       = {1:310, 2:420, 3:520};
-const PRECIO_SOCIAL = {1:139.5, 2:189, 3:234};
+const PRECIOS       = {1:380, 2:530, 3:660};
+const PRECIO_SOCIAL = {1:171, 2:238.5, 3:297};
 const OFFSET        = [0,8,13,17,21,25,30,35,40,46,52,56,61,65,68,71];
 
 // ─── Horarios ────────────────────────────────────────────────
