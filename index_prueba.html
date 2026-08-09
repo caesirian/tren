@@ -677,26 +677,28 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 /* ─── Hero ────────────────────────────────────────────────── */
 .hero {
   background: linear-gradient(135deg, var(--navy) 0%, #003F8A 60%, var(--blue) 100%);
-  padding: 36px 20px 32px;
+  padding: 28px 16px 28px;
   color: #fff;
   text-align: center;
   position: relative;
-  overflow: hidden;
+  overflow: visible; /* no cortar el texto en pantallas angostas */
 }
 .hero-inner {
   position: relative;
   z-index: 1;
   max-width: 700px;
   margin: 0 auto;
+  padding: 0 4px;
 }
 .hero::before {
   content: '';
   position: absolute;
   top: -60px; right: -60px;
-  width: 320px; height: 320px;
+  width: 260px; height: 260px;
   border-radius: 50%;
   background: rgba(0,149,212,.15);
   pointer-events: none;
+  z-index: 0;
 }
 .hero-date {
   display: inline-flex;
@@ -709,11 +711,28 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: .3px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
-.hero h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); font-weight: 800; line-height: 1.1; letter-spacing: -.5px; margin-bottom: 8px; }
+.hero h1 {
+  font-size: clamp(1.55rem, 8vw, 2.8rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -.3px;
+  margin-bottom: 8px;
+  white-space: nowrap; /* evita que se parta en 3 líneas */
+}
 .hero h1 span { color: var(--celeste); }
-.hero-sub { font-size: 1rem; color: rgba(255,255,255,.75); margin-bottom: 22px; }
+.hero-sub {
+  font-size: clamp(.85rem, 3.5vw, 1rem);
+  color: rgba(255,255,255,.75);
+  margin-bottom: 18px;
+  line-height: 1.4;
+}
+@media (max-width: 380px) {
+  .hero h1 { font-size: 1.45rem; }
+  .hero-sub { font-size: .82rem; }
+  .hero { padding: 24px 12px 24px; }
+}
 
 /* Hero mini-finder */
 .hero-finder {
