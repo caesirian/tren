@@ -125,4 +125,126 @@ app.get('/notif/historial', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// SOFSE API — proxy para evitar CORS desde el browser
+// Fuente: ariedro.dev/api-trenes (bypasser público de la API de SOFSE)
+// Los IDs de estaciones del Sarmiento están mapeados abajo.
+// ══════════════════════════════════════════════════════════════
+const SOFSE_BASE = 'https://ariedro.dev/api-trenes';
+
+// IDs confirmados del ramal Once–Moreno (obtenidos via /sofse/discovery)
+// Se completan con el endpoint /sofse/discovery si falta alguno
+const ESTACIONES_SARMIENTO = {
+  'Once':                  null, // se pobla via discovery
+  'Caballito':             null,
+  'Flores':                null,
+  'Floresta':              null,
+  'Villa Luro':            null,
+  'Liniers':               null,
+  'Ciudadela':             null,
+  'Ramos Mejia':           null,
+  'Haedo':                 null,
+  'Moron':                 null,
+  'Castelar':              null,
+  'Ituzaingo':             null,
+  'San Antonio de Padua':  null,
+  'Merlo':                 null,
+  'Paso del Rey':          null,
+  'Moreno':                null,
+};
+
+// ── Discovery: buscar ID de una estación por nombre ───────────
+app.get('/sofse/estacion', async (req, res) => {
+  const nombre = req.query.nombre;
+  if (!nombre) return res.status(400).json({ ok: false, error: 'Falta parámetro nombre' });
+  try {
+    const r    = await fetch(`${SOFSE_BASE}/infraestructura/estaciones?nombre=${encodeURIComponent(nombre)}`);
+    const data = await r.json();
+    res.json({ ok: true, estaciones: data });
+  } catch(err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Discovery masivo: poblar IDs de las 16 estaciones ─────────
+app.get('/sofse/discovery', async (req, res) => {
+  const nombres = Object.keys(ESTACIONES_SARMIENTO);
+  const resultados = {};
+  const errores    = [];
+
+  for (const nombre of nombres) {
+    try {
+      const r    = await fetch(`${SOFSE_BASE}/infraestructura/estaciones?nombre=${encodeURIComponent(nombre)}`);
+      const data = await r.json();
+      // Buscar coincidencia exacta o parcial con el ramal Sarmiento
+      const match = Array.isArray(data)
+        ? data.find(e =>
+            e.nombre?.toLowerCase().includes(nombre.toLowerCase().split(' ')[0].toLowerCase()) &&
+            (e.incluida_en_ramales?.length > 0 || e.operativa_en_ramales?.length > 0)
+          )
+        : null;
+      resultados[nombre] = match
+        ? { id: match.id_estacion, nombre_api: match.nombre, ramales: match.incluida_en_ramales }
+        : { id: null, error: 'No encontrada' };
+    } catch(err) {
+      resultados[nombre] = { id: null, error: err.message };
+      errores.push(nombre);
+    }
+    // Pausa entre requests para no saturar la API
+    await new Promise(r => setTimeout(r, 150));
+  }
+
+  res.json({ ok: true, resultados, errores });
+});
+
+// ── Próximos trenes: consulta real a SOFSE ────────────────────
+// GET /sofse/arribos?desde=ID&hasta=ID&cantidad=5
+// La fecha y hora se toman del momento de la consulta (Argentina GMT-3)
+app.get('/sofse/arribos', async (req, res) => {
+  const { desde, hasta, cantidad = 5 } = req.query;
+  if (!desde || !hasta) {
+    return res.status(400).json({ ok: false, error: 'Faltan parámetros desde y/o hasta (IDs de estación)' });
+  }
+
+  // Hora actual en Argentina (GMT-3)
+  const ahora   = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+  const fecha   = ahora.toISOString().slice(0, 10); // YYYY-MM-DD
+  const hora    = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+
+  try {
+    const url = `${SOFSE_BASE}/arribos/estacion/${desde}?hasta=${hasta}&fecha=${fecha}&hora=${hora}&cantidad=${cantidad}`;
+    const r   = await fetch(url);
+
+    if (!r.ok) {
+      const txt = await r.text();
+      return res.status(r.status).json({ ok: false, error: `SOFSE devolvió ${r.status}`, detalle: txt.slice(0, 200) });
+    }
+
+    const data = await r.json();
+
+    // Normalizar la respuesta para el frontend
+    const trenes = (Array.isArray(data) ? data : data.servicios || data.trenes || [])
+      .map(t => ({
+        hora_salida:  t.hora_salida  || t.horario || t.hora || '—',
+        hora_llegada: t.hora_llegada || null,
+        destino:      t.destino      || t.ramal   || '—',
+        tipo:         t.tipo         || t.clasificacion || 'regular',
+        demora:       t.demora       || t.delay   || 0,
+        estado:       t.estado       || 'programado',
+        plataforma:   t.plataforma   || t.anden   || null,
+      }));
+
+    res.json({
+      ok: true,
+      desde, hasta,
+      fecha, hora_consulta: hora,
+      trenes,
+      fuente: 'SOFSE API via ariedro.dev',
+    });
+
+  } catch(err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`tren-proxy corriendo en puerto ${PORT}`));
