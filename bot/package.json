@@ -1,0 +1,22 @@
+{
+  "name": "tren-sarmiento-bot",
+  "version": "1.0.0",
+  "description": "Bot de Telegram para el grupo de Tren Sarmiento En Línea. Responde en lenguaje natural sobre horarios, frecuencias, tarifas y estado del servicio, usando la API Transporte oficial + Gemini.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "express": "^4.19.2",
+    "@google/generative-ai": "^0.21.0",
+    "dotenv": "^16.4.5",
+    "node-cache": "^5.1.2",
+    "firebase-admin": "^12.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
