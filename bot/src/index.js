@@ -44,6 +44,26 @@ function mencionaAlBot(ctx) {
   return esChatPrivado || esRespuestaAlBot || loMencionan;
 }
 
+// Palabras que indican que el mensaje probablemente es sobre el tren/AMBA.
+// Ajustá esta lista a gusto: cuanto más específica, menos falsos positivos.
+const PALABRAS_TEMA = [
+  "tren", "sarmiento", "horario", "horarios", "frecuencia", "frecuencias",
+  "tarifa", "tarifas", "boleto", "boletos", "sube", "estación", "estacion",
+  "andén", "anden", "demora", "demorado", "para", "parado", "combinación",
+  "combinacion", "subte", "colectivo", "amba", "moreno", "once", "liniers",
+  "castelar", "morón", "moron", "merlo", "ramos mejía", "haedo", "ituzaingó",
+];
+
+// Palabras/signos que indican que es una pregunta.
+const PISTAS_PREGUNTA = ["?", "¿", "cuándo", "cuando", "cuánto", "cuanto", "dónde", "donde", "cómo", "como", "hay", "sabe", "alguien sabe"];
+
+function pareceConsultaRelevante(text) {
+  const lower = text.toLowerCase();
+  const tieneTema = PALABRAS_TEMA.some((p) => lower.includes(p));
+  const tienePregunta = PISTAS_PREGUNTA.some((p) => lower.includes(p));
+  return tieneTema && tienePregunta;
+}
+
 function limpiarMencion(text) {
   if (!botUsername) return text;
   return text.replace(new RegExp(`@${botUsername}`, "gi"), "").trim();
@@ -81,9 +101,16 @@ bot.help((ctx) =>
 
 bot.on("text", async (ctx) => {
   try {
-    if (!mencionaAlBot(ctx)) return;
+    const textoOriginal = ctx.message.text;
+    const esGrupo = ctx.chat?.type !== "private";
+    const fueEtiquetado = mencionaAlBot(ctx);
+    const esPreguntaAlAire =
+      esGrupo && !fueEtiquetado && process.env.RESPONDER_SIN_MENCION === "true" &&
+      pareceConsultaRelevante(textoOriginal);
 
-    const pregunta = limpiarMencion(ctx.message.text);
+    if (!fueEtiquetado && !esPreguntaAlAire) return;
+
+    const pregunta = limpiarMencion(textoOriginal);
     if (!pregunta) return;
 
     const cacheKey = pregunta.toLowerCase().trim();
