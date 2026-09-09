@@ -173,6 +173,46 @@ export function precioPorKm(km) {
   return { seccion: sec, precioSube: PRECIOS[sec], precioSocial: PRECIO_SOCIAL[sec] };
 }
 
+// Servicio Diferencial: una sola vuelta por día, lunes a viernes, solo para
+// en Once, Haedo y Moreno. Ampliado a L-V desde agosto 2026 (antes era
+// lunes/miércoles/viernes). Verificar periódicamente que siga vigente.
+export const DIFERENCIAL = {
+  dias: "lunes a viernes",
+  precio: 2600,
+  paradas: ["Once", "Haedo", "Moreno"],
+  haciaMoreno: { Once: "18:35", Haedo_llega: "19:16", Haedo_sale: "19:21", Moreno: "19:53" },
+  haciaOnce: { Moreno: "6:29", Haedo_llega: "7:01", Haedo_sale: "7:05", Once: "7:50" },
+};
+
+export function proximoDiferencial(ahora = new Date()) {
+  if (getDayType(ahora) !== "lv") {
+    return { circulaHoy: false, motivo: "el Diferencial no circula fines de semana ni feriados" };
+  }
+  const { hour, minute } = horaArgentina(ahora);
+  const nowMins = toMins(hour, minute);
+
+  const salidas = [
+    { desde: "Once", hacia: "Moreno", hora: DIFERENCIAL.haciaMoreno.Once },
+    { desde: "Moreno", hacia: "Once", hora: DIFERENCIAL.haciaOnce.Moreno },
+  ].map((s) => {
+    const [h, m] = s.hora.split(":").map(Number);
+    return { ...s, mins: toMins(h, m) };
+  });
+
+  const futuras = salidas.filter((s) => s.mins >= nowMins).sort((a, b) => a.mins - b.mins);
+  if (!futuras.length) {
+    return { circulaHoy: true, motivo: "ya salieron los dos servicios de hoy (Once y Moreno)" };
+  }
+  const proxima = futuras[0];
+  return {
+    circulaHoy: true,
+    desde: proxima.desde,
+    hacia: proxima.hacia,
+    hora: proxima.hora,
+    enMinutos: proxima.mins - nowMins,
+  };
+}
+
 // "Locales": formaciones que arrancan VACÍAS en esa estación (no es que
 // "cualquier tren pase por ahí" — es un servicio puntual designado). Datos
 // tomados de la misma fuente que el sitio (objeto "especiales" en

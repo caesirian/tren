@@ -41,10 +41,11 @@ TARIFAS SUBE VIGENTES (servicio común, septiembre 2026 — Resolución 27/2026)
 - Las tarifas suelen actualizarse mes a mes por resolución oficial: si preguntan por un mes futuro, aclarar que puede haber un nuevo valor y sugerir confirmar el monto exacto vigente ese día.
 
 SERVICIO DIFERENCIAL (opcional, más caro, no es el servicio común):
-- Boleto: $2.600 por tramo, tanto Once-Haedo como Once-Moreno.
-- Incluye asientos reclinables, aire acondicionado, baños a bordo y kiosco.
+- Circula de lunes a viernes (se amplió desde agosto 2026; antes era solo lunes/miércoles/viernes), una sola vuelta por día.
+- Solo para en Once, Haedo y Moreno.
+- Boleto: $2.600, tarifa única (no varía con la sección ni tiene descuento social).
+- Incluye asientos reclinables, aire acondicionado, baños a bordo y kiosco (son los coches del tren de larga distancia a Bragado).
 - Se compra antes de subir (plataforma oficial online o boletería de larga distancia), no se vende a bordo.
-- Circula días de semana en horarios puntuales (verificar días vigentes, se fue ampliando durante 2026).
 
 CONEXIONES CON OTROS TRANSPORTES (AMBA):
 - Estación Once: combina con subte Línea A y Línea H, y numerosas líneas de colectivo.

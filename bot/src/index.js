@@ -14,7 +14,7 @@ import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO } from "./staticData.js";
 import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta } from "./gemini.js";
-import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales } from "./schedule.js";
+import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximoDiferencial, DIFERENCIAL } from "./schedule.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -83,6 +83,21 @@ async function armarContexto(pregunta) {
   const alertas = await getAlertasTrenes();
   if (alertas) {
     partes.push(`\n== ALERTAS API TRANSPORTE ==\n${JSON.stringify(alertas)}`);
+  }
+
+  // Si preguntan por el Diferencial, calculamos la próxima salida real.
+  if (/diferencial|preferencial/i.test(pregunta)) {
+    const ahora = new Date();
+    const dif = proximoDiferencial(ahora);
+    let texto = `\n== SERVICIO DIFERENCIAL (calculado ahora, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==\nCircula ${DIFERENCIAL.dias}, una sola vuelta por día, parando solo en ${DIFERENCIAL.paradas.join(", ")}. Precio: $${DIFERENCIAL.precio} (tarifa única, sin descuento social).\nHorario Once→Moreno: sale Once ${DIFERENCIAL.haciaMoreno.Once}, Haedo ${DIFERENCIAL.haciaMoreno.Haedo_llega}/${DIFERENCIAL.haciaMoreno.Haedo_sale}, llega Moreno ${DIFERENCIAL.haciaMoreno.Moreno}.\nHorario Moreno→Once: sale Moreno ${DIFERENCIAL.haciaOnce.Moreno}, Haedo ${DIFERENCIAL.haciaOnce.Haedo_llega}/${DIFERENCIAL.haciaOnce.Haedo_sale}, llega Once ${DIFERENCIAL.haciaOnce.Once}.\n`;
+    if (!dif.circulaHoy) {
+      texto += `Hoy no circula: ${dif.motivo}.`;
+    } else if (!dif.hora) {
+      texto += `Hoy ${dif.motivo}.`;
+    } else {
+      texto += `Próxima salida hoy: desde ${dif.desde} hacia ${dif.hacia} a las ${dif.hora} (en ${dif.enMinutos} min).`;
+    }
+    partes.push(texto);
   }
 
   // Si la pregunta menciona una estación, calculamos horarios reales de HOY
