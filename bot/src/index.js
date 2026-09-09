@@ -76,7 +76,7 @@ async function armarContexto(pregunta) {
   const estado = await getEstadoServicio();
   if (estado) {
     partes.push(
-      `\n== ESTADO EN VIVO (semáforo trensarmientoenlinea.com.ar) ==\nEstado: ${estado.estado}\nMensaje: ${estado.mensaje}\nActualizado: ${estado.actualizado ?? "desconocido"}`
+      `\n== ESTADO EN VIVO (semáforo trensarmientoenlinea.com.ar) ==\nEstado: ${estado.etiqueta}\nMensaje: ${estado.mensaje}${estado.alertas.length ? `\nAlertas activas: ${estado.alertas.join(" | ")}` : ""}${estado.vigencia ? `\nVigente desde ${estado.vigencia.desde} hasta ${estado.vigencia.hasta}` : ""}\nÚltima actualización: ${estado.ultimaActualizacion || estado.actualizado || "desconocida"}`
     );
   }
 

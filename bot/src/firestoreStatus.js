@@ -1,6 +1,10 @@
 // src/firestoreStatus.js
 // Lee el estado en vivo del servicio ("semáforo") desde el mismo Firestore
-// que usa trensarmientoenlinea.com.ar, así el bot y la web muestran lo mismo.
+// que usa trensarmientoenlinea.com.ar (mod.html), así el bot y la web
+// muestran exactamente lo mismo.
+//
+// Colección/documento reales (confirmados contra mod.html): estadoServicio/actual
+// Proyecto de Firebase: tren-sarmiento-en-linea
 //
 // Requiere las credenciales de un service account de Firebase (variables
 // de entorno FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY).
@@ -34,23 +38,29 @@ function ensureInit() {
   return db;
 }
 
-// AJUSTAR: reemplazar "estadoServicio" y "sarmiento" por la colección/doc
-// reales que ya usás en mod.html para el semáforo.
+const ETIQUETAS_ESTADO = {
+  normal: "Servicio normal",
+  modificado: "Servicio con demoras",
+  paro: "Servicio interrumpido",
+};
+
 export async function getEstadoServicio() {
   const firestore = ensureInit();
   if (!firestore) return null;
 
   try {
-    const snap = await firestore
-      .collection("estadoServicio")
-      .doc("sarmiento")
-      .get();
+    const snap = await firestore.collection("estadoServicio").doc("actual").get();
     if (!snap.exists) return null;
-    const data = snap.data();
+    const d = snap.data();
+
     return {
-      estado: data.estado ?? "sin datos",
-      mensaje: data.mensaje ?? "",
-      actualizado: data.actualizadoEn?.toDate?.() ?? null,
+      estado: d.estado || "normal",
+      etiqueta: ETIQUETAS_ESTADO[d.estado] || "Servicio normal",
+      mensaje: d.mensaje || "Sin alertas activas.",
+      alertas: Array.isArray(d.alertas) ? d.alertas : [],
+      ultimaActualizacion: d.ultimaActualizacion || null,
+      actualizado: d.actualizado || null,
+      vigencia: d.vigencia || null,
     };
   } catch (err) {
     console.error("Error leyendo estado de Firestore:", err.message);
