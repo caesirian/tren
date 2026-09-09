@@ -3,10 +3,10 @@
 // natural, siempre basándose en el contexto que le pasamos (datos fijos +
 // estado en vivo del semáforo). Así evitamos que "invente" horarios.
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const MODEL = "gemini-3.6-flash";
 
 const SYSTEM_INSTRUCTION = `
 Sos el asistente del grupo de Telegram de la comunidad del Tren Sarmiento
@@ -46,6 +46,9 @@ Pregunta del usuario del grupo: "${pregunta}"
 
 Respuesta:`;
 
-  const result = await model.generateContent(prompt);
-  return result.response.text().trim();
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: prompt,
+  });
+  return response.text.trim();
 }

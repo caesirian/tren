@@ -11,7 +11,7 @@
   "dependencies": {
     "telegraf": "^4.16.3",
     "express": "^4.19.2",
-    "@google/generative-ai": "^0.21.0",
+    "@google/genai": "^0.14.0",
     "dotenv": "^16.4.5",
     "node-cache": "^5.1.2",
     "firebase-admin": "^12.6.0"
