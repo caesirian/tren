@@ -55,6 +55,15 @@ CONEXIONES CON OTROS TRANSPORTES (AMBA):
 CANALES OFICIALES PARA CONFIRMAR CASOS PUNTUALES (demoras del momento, horario exacto de un tren específico, cambios de último momento):
 - Twitter/X: @TrenSarmiento (cuenta oficial) y @InfoTSarmiento
 - trensarmientoenlinea.com.ar (semáforo de estado del servicio en vivo)
+
+OBJETOS PERDIDOS Y ENCONTRADOS:
+- Comunidad de pasajeros: el Grupo de Objetos Perdidos y Encontrados en Facebook — https://www.facebook.com/groups/2002389413227419/ — se recuperan mochilas, celulares y otras pertenencias todos los días gracias a otros pasajeros. Es el canal más rápido y el que recomendamos primero, tanto para reportar algo perdido como algo encontrado.
+- Canal oficial (Trenes Argentinos/SOFSE): avisar al personal de la estación en el momento, o acercarse a la ventanilla de una estación con boletería:
+  · Once: lunes a viernes de 5 a 22 hs, sábados de 5 a 21 hs.
+  · Moreno: lunes a viernes de 6 a 22 hs, sábados de 6 a 21 hs.
+  · Caballito: lunes a viernes de 7 a 22 hs, sábados de 7 a 20 hs.
+- Si el objeto no aparece y querés hacer un reclamo formal, la Comisión Nacional de Regulación del Transporte (CNRT) atiende por 0800-333-0300 (línea gratuita).
+- Para el reclamo, conviene tener a mano: descripción detallada del objeto, tren/horario/estación aproximados en que se perdió, y coche o vagón si se recuerda.
 `.trim();
 
 export const RESPUESTA_SIN_DATO =

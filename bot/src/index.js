@@ -55,6 +55,8 @@ const PALABRAS_TEMA = [
   "andén", "anden", "demora", "demorado", "para", "parado", "combinación",
   "combinacion", "subte", "colectivo", "amba", "moreno", "once", "liniers",
   "castelar", "morón", "moron", "merlo", "ramos mejía", "haedo", "ituzaingó",
+  "perdí", "perdi", "perdido", "perdida", "encontré", "encontre", "encontrado",
+  "objeto", "mochila", "celular", "olvidé", "olvide", "quedó", "quede",
 ];
 
 // Palabras/signos que indican que es una pregunta.
