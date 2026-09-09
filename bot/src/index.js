@@ -15,6 +15,8 @@ import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta } from "./gemini.js";
 import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximoDiferencial, DIFERENCIAL } from "./schedule.js";
+import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
+import { registrarChatPrivado } from "./privateChatLogger.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -85,6 +87,15 @@ async function armarContexto(pregunta) {
     partes.push(`\n== ALERTAS API TRANSPORTE ==\n${JSON.stringify(alertas)}`);
   }
 
+  // Señal informal: actividad del grupo sin menciones de problemas.
+  // Solo se usa como apoyo — nunca reemplaza el estado oficial de arriba.
+  const senal = getSenalComunidad();
+  if (senal) {
+    partes.push(
+      `\n== SEÑAL INFORMAL DEL GRUPO (auxiliar, NO oficial) ==\n${senal.interpretacion}\nUsala solo como indicio adicional. Si hay un estado oficial cargado arriba (semáforo de Firestore), ese manda siempre por sobre esta señal.`
+    );
+  }
+
   // Si preguntan por el Diferencial, calculamos la próxima salida real.
   if (/diferencial|preferencial/i.test(pregunta)) {
     const ahora = new Date();
@@ -131,7 +142,7 @@ ${
 
 bot.start((ctx) =>
   ctx.reply(
-    "¡Hola! Soy el asistente del Tren Sarmiento 🚆. Preguntame por horarios, frecuencias, tarifas, estado del servicio o combinaciones con otros transportes del AMBA. En el grupo, mencioná mi usuario o respondeme un mensaje para que te vea."
+    "¡Hola! Soy el asistente del Tren Sarmiento 🚆. Preguntame por horarios, frecuencias, tarifas, estado del servicio o combinaciones con otros transportes del AMBA. En el grupo, mencioná mi usuario o respondeme un mensaje para que te vea.\n\nOjo: los mensajes que me escribas por acá (chat privado) quedan registrados para mantenimiento y monitoreo del bot."
   )
 );
 
@@ -145,6 +156,12 @@ bot.on("text", async (ctx) => {
   try {
     const textoOriginal = ctx.message.text;
     const esGrupo = ctx.chat?.type !== "private";
+    const esChatPrivado = !esGrupo;
+
+    // Alimenta la señal informal de "nadie se queja" — se registra SIEMPRE
+    // que sea un mensaje de grupo, aunque no le hablen al bot directamente.
+    if (esGrupo) registrarMensajeGrupo(textoOriginal);
+
     const fueEtiquetado = mencionaAlBot(ctx);
     const esPreguntaAlAire =
       esGrupo && !fueEtiquetado && process.env.RESPONDER_SIN_MENCION === "true" &&
@@ -159,6 +176,7 @@ bot.on("text", async (ctx) => {
     const cacheada = cache.get(cacheKey);
     if (cacheada) {
       await ctx.reply(cacheada, { reply_to_message_id: ctx.message.message_id });
+      if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: cacheada });
       return;
     }
 
@@ -168,8 +186,17 @@ bot.on("text", async (ctx) => {
 
     cache.set(cacheKey, respuesta);
     await ctx.reply(respuesta, { reply_to_message_id: ctx.message.message_id });
+    if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta });
   } catch (err) {
     console.error("Error respondiendo mensaje:", err);
+    if (ctx.chat?.type === "private") {
+      await registrarChatPrivado({
+        ctx,
+        pregunta: ctx.message?.text ?? null,
+        respuesta: null,
+        error: err.message,
+      });
+    }
     await ctx.reply(RESPUESTA_SIN_DATO);
   }
 });
