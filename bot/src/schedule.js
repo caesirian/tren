@@ -255,3 +255,15 @@ export function proximosLocales(nombreEstacion, ahora = new Date()) {
       enMinutos: l.mins - nowMins,
     }));
 }
+
+// Todos los próximos locales de HOY, agrupados por estación (para cuando
+// preguntan "¿hay algún local?" sin especificar cuál).
+export function proximosLocalesTodasEstaciones(ahora = new Date()) {
+  const estacionesConLocales = [...new Set(LOCALES.map((l) => l.estacion))];
+  const resultado = {};
+  for (const est of estacionesConLocales) {
+    const prox = proximosLocales(est, ahora);
+    if (prox.length) resultado[est] = prox;
+  }
+  return resultado;
+}

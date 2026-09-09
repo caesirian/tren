@@ -14,7 +14,7 @@ import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO } from "./staticData.js";
 import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta } from "./gemini.js";
-import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximoDiferencial, DIFERENCIAL } from "./schedule.js";
+import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 
@@ -135,6 +135,20 @@ ${
     ? locales.map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ")
     : "No hay ningún local designado en esta estación hoy (o ya pasaron todos), aunque sí puede tomar cualquier tren regular con los horarios de arriba."
 }`);
+  } else if (/\blocal(es)?\b/i.test(pregunta)) {
+    // Preguntan por "locales" sin decir de qué estación — les paso el listado completo de hoy.
+    const ahora = new Date();
+    const todos = proximosLocalesTodasEstaciones(ahora);
+    const estaciones = Object.keys(todos);
+    partes.push(`
+== TODOS LOS "LOCALES" DE HOY (calculado ahora, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==
+IMPORTANTE: un "local" es una formación que arranca VACÍA en esa estación puntual (no cualquier tren de paso). Solo hay locales designados en Flores, Liniers, Merlo y Castelar, y solo en días hábiles.
+${
+  estaciones.length
+    ? estaciones.map((est) => `${est}: ${todos[est].map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ")}`).join("\n")
+    : "No quedan más locales programados por hoy (o no es día hábil)."
+}
+Esta es la lista completa y precisa — no derives a la app, esto ya responde la pregunta.`);
   }
 
   return partes.join("\n");

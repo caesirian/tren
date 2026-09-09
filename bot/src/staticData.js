@@ -53,11 +53,10 @@ CONEXIONES CON OTROS TRANSPORTES (AMBA):
 - Estación Morón/Castelar/Merlo: combinan con líneas de colectivo locales de cada partido.
 
 CANALES OFICIALES PARA CONFIRMAR CASOS PUNTUALES (demoras del momento, horario exacto de un tren específico, cambios de último momento):
-- App "Trenes Argentinos" (SOFSE).
-- Twitter/X: @TrenSarmiento
+- Twitter/X: @TrenSarmiento (cuenta oficial) y @InfoTSarmiento
 - trensarmientoenlinea.com.ar (semáforo de estado del servicio en vivo)
 `.trim();
 
 export const RESPUESTA_SIN_DATO =
-  "No tengo ese dato específico confirmado (por ejemplo, el horario exacto de un tren puntual ahora mismo). Te recomiendo chequear la app oficial Trenes Argentinos, la cuenta @TrenSarmiento o trensarmientoenlinea.com.ar para confirmarlo al momento.";
+  "No tengo ese dato específico confirmado (por ejemplo, el horario exacto de un tren puntual ahora mismo). Te recomiendo chequear @TrenSarmiento o trensarmientoenlinea.com.ar para confirmarlo al momento.";
 
