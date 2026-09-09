@@ -14,6 +14,7 @@ import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO } from "./staticData.js";
 import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta } from "./gemini.js";
+import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes } from "./schedule.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -69,7 +70,7 @@ function limpiarMencion(text) {
   return text.replace(new RegExp(`@${botUsername}`, "gi"), "").trim();
 }
 
-async function armarContexto() {
+async function armarContexto(pregunta) {
   const partes = [TREN_SARMIENTO_INFO];
 
   const estado = await getEstadoServicio();
@@ -82,6 +83,22 @@ async function armarContexto() {
   const alertas = await getAlertasTrenes();
   if (alertas) {
     partes.push(`\n== ALERTAS API TRANSPORTE ==\n${JSON.stringify(alertas)}`);
+  }
+
+  // Si la pregunta menciona una estación, calculamos horarios reales de HOY
+  // usando el mismo cronograma que trensarmientoenlinea.com.ar (no aproximado).
+  const estacion = detectarEstacion(pregunta);
+  if (estacion) {
+    const ahora = new Date();
+    const proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora });
+    const ultimos = ultimosTrenes(ahora);
+    partes.push(`
+== HORARIOS REALES CALCULADOS AHORA PARA "${estacion.name}" (cronograma oficial, hora actual: ${ahora.toTimeString().slice(0, 5)}) ==
+Próximos trenes hacia Moreno desde ${estacion.name}: ${proximos.haciaMoreno.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
+Próximos trenes hacia Once desde ${estacion.name}: ${proximos.haciaOnce.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
+Último tren de hoy (${ultimos.diaTipo === "lv" ? "día hábil" : ultimos.diaTipo === "sab" ? "sábado" : "domingo/feriado"}) saliendo de Once: ${ultimos.desdeOnce.ultimo} (penúltimo: ${ultimos.desdeOnce.penultimo})
+Último tren de hoy saliendo de Moreno: ${ultimos.desdeMoreno.ultimo} (penúltimo: ${ultimos.desdeMoreno.penultimo})
+Estos horarios están calculados en el momento con el cronograma base oficial vigente y son la fuente más precisa disponible — no derives a la app si esta sección ya responde la pregunta.`);
   }
 
   return partes.join("\n");
@@ -121,7 +138,7 @@ bot.on("text", async (ctx) => {
     }
 
     await ctx.sendChatAction("typing");
-    const contexto = await armarContexto();
+    const contexto = await armarContexto(pregunta);
     const respuesta = await responderPregunta({ pregunta, contexto });
 
     cache.set(cacheKey, respuesta);
