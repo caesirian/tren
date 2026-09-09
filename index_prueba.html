@@ -183,6 +183,7 @@
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
+  window.__MOSTRAR_TITULARES = false; // oculto hasta que Firestore confirme
   OneSignalDeferred.push(async function(OneSignal) {
     await OneSignal.init({
       appId: "114f6665-eede-42d0-90ad-4d6480f10c76",
@@ -1486,7 +1487,7 @@ onSnapshot(estadoRef, (snapshot) => {
   };
 
   // Mostrar/ocultar card de noticias según campo mostrarTitulares
-  window.__MOSTRAR_TITULARES = data.mostrarTitulares !== false;
+  window.__MOSTRAR_TITULARES = data.mostrarTitulares === true; // oculto por defecto
   const gridNoticias = document.getElementById('noticiasGrid');
   if (gridNoticias) {
     const cardNoticias = gridNoticias.closest('.today-card');
@@ -1753,7 +1754,7 @@ onSnapshot(noticiasQuery, snap => {
   }
 
   // Respetar la preferencia de mostrarTitulares del admin
-  const mostrar = window.__MOSTRAR_TITULARES !== false;
+  const mostrar = window.__MOSTRAR_TITULARES === true; // oculto por defecto
   const cardNoticias = grid.closest('.today-card');
   if (cardNoticias) cardNoticias.style.display = mostrar ? '' : 'none';
 

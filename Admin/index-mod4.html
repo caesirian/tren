@@ -328,7 +328,7 @@
           <div style="font-size:.75rem;color:var(--muted,#8899aa);margin-top:2px;">Activá para mostrar la sección de noticias en el sitio público</div>
         </div>
         <label class="toggle-switch" style="flex-shrink:0;margin-left:16px;">
-          <input type="checkbox" id="mostrarTitularesToggle" checked/>
+          <input type="checkbox" id="mostrarTitularesToggle"/>
           <span class="toggle-slider"></span>
         </label>
       </div>
@@ -693,7 +693,7 @@ onSnapshot(estadoRef, snap => {
   document.getElementById("editarMensaje").value = d.mensaje||"";
   // Cargar estado del toggle mostrarTitulares (true por defecto si no existe)
   const toggle = document.getElementById("mostrarTitularesToggle");
-  if (toggle) toggle.checked = d.mostrarTitulares !== false;
+  if (toggle) toggle.checked = d.mostrarTitulares === true; // false por defecto
 });
 function semaforo(e) {
   const r=document.getElementById("luzRoja"),a=document.getElementById("luzAmarilla"),v=document.getElementById("luzVerde");
@@ -711,7 +711,7 @@ document.getElementById("guardarEstadoBtn").addEventListener("click", async () =
     await setDoc(estadoRef,{
       estado:           document.getElementById("estadoSelect").value,
       mensaje:          sanitize(document.getElementById("editarMensaje").value),
-      mostrarTitulares: toggle ? toggle.checked : true,
+      mostrarTitulares: toggle ? toggle.checked : false,
       actualizado:      new Date().toISOString(), editor:currentUser.email
     });
     alert("Estado guardado");
