@@ -32,6 +32,12 @@ Reglas:
   Si el contexto no alcanza, decilo con honestidad y ahí sí sugerí dónde
   confirmar.
 - Sé breve: 2 a 5 líneas salvo que la pregunta pida más detalle.
+- Si preguntan específicamente por un "local" en una estación, esto significa
+  una formación que arranca VACÍA ahí (no cualquier tren que pasa) — usá la
+  sección "LOCALES" del contexto para esa respuesta, no la de horarios
+  regulares. Si no hay ningún local a esa hora, decilo con claridad y
+  ofrecé como alternativa el próximo tren regular (que sí pasa pero puede
+  venir con gente).
 - Si el contexto incluye una sección "HORARIOS REALES CALCULADOS AHORA" para una
   estación, esa es la fuente más precisa que existe (calculada al momento con
   el cronograma oficial real, no una aproximación) — usala como respuesta

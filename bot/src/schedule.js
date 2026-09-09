@@ -52,8 +52,34 @@ const toMins = (h, m) => h * 60 + m;
 const pad2 = (n) => String(n).padStart(2, "0");
 const fmt = ([h, m]) => `${pad2(h)}:${pad2(m)}`;
 
+// El servidor (Render) corre en UTC, pero el cronograma es en hora de Buenos
+// Aires. Esta función devuelve SIEMPRE la hora y el día de la semana según
+// America/Argentina/Buenos_Aires, sin importar el huso horario del server.
+function horaArgentina(date = new Date()) {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    weekday: "short",
+  }).formatToParts(date);
+
+  const get = (tipo) => partes.find((p) => p.type === tipo)?.value;
+  const hour = parseInt(get("hour"), 10) % 24; // Intl a veces devuelve "24"
+  const minute = parseInt(get("minute"), 10);
+  const diasSemana = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const weekday = diasSemana[get("weekday")];
+
+  return { hour, minute, weekday };
+}
+
+export function horaArgentinaTexto(date = new Date()) {
+  const { hour, minute } = horaArgentina(date);
+  return `${pad2(hour)}:${pad2(minute)}`;
+}
+
 export function getDayType(date = new Date()) {
-  const d = date.getDay();
+  const d = horaArgentina(date).weekday;
   return d === 0 ? "dom" : d === 6 ? "sab" : "lv";
 }
 
@@ -91,7 +117,8 @@ export function detectarEstacion(texto) {
 export function proximosTrenesEnEstacion({ estacionId, sentido = null, ahora = new Date(), cantidad = 3 }) {
   const dt = getDayType(ahora);
   const sched = S[dt];
-  const nowMins = toMins(ahora.getHours(), ahora.getMinutes());
+  const { hour, minute } = horaArgentina(ahora);
+  const nowMins = toMins(hour, minute);
   const OFFSET_M = [...OFFSET].reverse().map((o) => 71 - o);
 
   const resultado = { haciaMoreno: [], haciaOnce: [] };
@@ -144,4 +171,47 @@ export function ultimosTrenes(ahora = new Date()) {
 export function precioPorKm(km) {
   const sec = getSec(km);
   return { seccion: sec, precioSube: PRECIOS[sec], precioSocial: PRECIO_SOCIAL[sec] };
+}
+
+// "Locales": formaciones que arrancan VACÍAS en esa estación (no es que
+// "cualquier tren pase por ahí" — es un servicio puntual designado). Datos
+// tomados de la misma fuente que el sitio (objeto "especiales" en
+// index.html). Solo aplican en días hábiles (lunes a viernes).
+export const LOCALES = [
+  { hora: "15:25", estacion: "Flores", direccion: "moreno" },
+  { hora: "16:11", estacion: "Flores", direccion: "moreno" },
+  { hora: "16:57", estacion: "Flores", direccion: "moreno" },
+  { hora: "17:56", estacion: "Liniers", direccion: "moreno" },
+  { hora: "18:41", estacion: "Liniers", direccion: "moreno" },
+  { hora: "18:41", estacion: "Liniers", direccion: "once" },
+  { hora: "19:28", estacion: "Liniers", direccion: "once" },
+  { hora: "20:14", estacion: "Liniers", direccion: "once" },
+  { hora: "05:28", estacion: "Merlo", direccion: "once" },
+  { hora: "06:13", estacion: "Merlo", direccion: "once" },
+  { hora: "07:01", estacion: "Merlo", direccion: "once" },
+  { hora: "07:50", estacion: "Castelar", direccion: "once" },
+  { hora: "08:36", estacion: "Castelar", direccion: "once" },
+  { hora: "09:22", estacion: "Castelar", direccion: "once" },
+];
+
+// Próximos locales (formación vacía) de una estación, en lo que queda del día.
+export function proximosLocales(nombreEstacion, ahora = new Date()) {
+  if (getDayType(ahora) !== "lv") return []; // los locales son solo días hábiles
+  const { hour, minute } = horaArgentina(ahora);
+  const nowMins = toMins(hour, minute);
+  const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const buscado = norm(nombreEstacion);
+
+  return LOCALES.filter((l) => norm(l.estacion) === buscado)
+    .map((l) => {
+      const [h, m] = l.hora.split(":").map(Number);
+      return { ...l, mins: toMins(h, m) };
+    })
+    .filter((l) => l.mins >= nowMins - 1)
+    .sort((a, b) => a.mins - b.mins)
+    .map((l) => ({
+      hora: l.hora,
+      direccion: l.direccion === "moreno" ? "hacia Moreno" : "hacia Once",
+      enMinutos: l.mins - nowMins,
+    }));
 }

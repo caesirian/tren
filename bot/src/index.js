@@ -14,7 +14,7 @@ import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO } from "./staticData.js";
 import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta } from "./gemini.js";
-import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes } from "./schedule.js";
+import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales } from "./schedule.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -93,12 +93,22 @@ async function armarContexto(pregunta) {
     const proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora });
     const ultimos = ultimosTrenes(ahora);
     partes.push(`
-== HORARIOS REALES CALCULADOS AHORA PARA "${estacion.name}" (cronograma oficial, hora actual: ${ahora.toTimeString().slice(0, 5)}) ==
+== HORARIOS REALES CALCULADOS AHORA PARA "${estacion.name}" (cronograma oficial, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==
 Próximos trenes hacia Moreno desde ${estacion.name}: ${proximos.haciaMoreno.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
 Próximos trenes hacia Once desde ${estacion.name}: ${proximos.haciaOnce.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
 Último tren de hoy (${ultimos.diaTipo === "lv" ? "día hábil" : ultimos.diaTipo === "sab" ? "sábado" : "domingo/feriado"}) saliendo de Once: ${ultimos.desdeOnce.ultimo} (penúltimo: ${ultimos.desdeOnce.penultimo})
 Último tren de hoy saliendo de Moreno: ${ultimos.desdeMoreno.ultimo} (penúltimo: ${ultimos.desdeMoreno.penultimo})
 Estos horarios están calculados en el momento con el cronograma base oficial vigente y son la fuente más precisa disponible — no derives a la app si esta sección ya responde la pregunta.`);
+
+    const locales = proximosLocales(estacion.name, ahora);
+    partes.push(`
+== "LOCALES" (formaciones que arrancan VACÍAS) EN "${estacion.name}" ==
+IMPORTANTE: un "local" NO es cualquier tren que pasa por la estación — es una formación puntual que arranca vacía ahí mismo, muy buscada porque conviene subirse antes de que se llene. Solo existen en días hábiles.
+${
+  locales.length
+    ? locales.map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ")
+    : "No hay ningún local designado en esta estación hoy (o ya pasaron todos), aunque sí puede tomar cualquier tren regular con los horarios de arriba."
+}`);
   }
 
   return partes.join("\n");
