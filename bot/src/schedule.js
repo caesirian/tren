@@ -26,8 +26,11 @@ export const STATIONS = [
   { id: 15, name: "Moreno", km: 52, sec: 3 },
 ];
 
-export const PRECIOS = { 1: 310, 2: 420, 3: 520 };
-export const PRECIO_SOCIAL = { 1: 139.5, 2: 189, 3: 234 };
+// Tarifas vigentes desde septiembre 2026 (Resolución 27/2026). El sitio web
+// todavía tiene los valores anteriores ($310/$420/$520) — al actualizarlos ahí,
+// sincronizar también acá.
+export const PRECIOS = { 1: 450, 2: 640, 3: 790 };
+export const PRECIO_SOCIAL = { 1: 202.5, 2: 288, 3: 355.5 };
 export const OFFSET = [0, 8, 13, 17, 21, 25, 30, 35, 40, 46, 52, 56, 61, 65, 68, 71];
 
 const S = {
