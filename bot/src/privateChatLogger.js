@@ -23,17 +23,22 @@ function ensureInit() {
   ) {
     return null;
   }
-  if (!getApps().length) {
-    initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-      }),
-    });
+  try {
+    if (!getApps().length) {
+      initializeApp({
+        credential: cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+        }),
+      });
+    }
+    db = getFirestore();
+    return db;
+  } catch (err) {
+    console.error("Error inicializando Firebase (revisar FIREBASE_PRIVATE_KEY):", err.message);
+    return null;
   }
-  db = getFirestore();
-  return db;
 }
 
 export async function registrarChatPrivado({ ctx, pregunta, respuesta, error = null }) {
