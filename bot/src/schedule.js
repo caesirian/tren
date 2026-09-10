@@ -235,6 +235,17 @@ export const LOCALES = [
 ];
 
 // Próximos locales (formación vacía) de una estación, en lo que queda del día.
+// Todos los horarios de locales de una estación, sin filtrar por hora (para
+// poder distinguir "esta estación nunca tiene locales" de "hoy ya pasaron
+// todos"). Ordenados de más temprano a más tarde.
+export function horariosLocalesEstacion(nombreEstacion) {
+  const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const buscado = norm(nombreEstacion);
+  return LOCALES.filter((l) => norm(l.estacion) === buscado)
+    .map((l) => ({ hora: l.hora, direccion: l.direccion === "moreno" ? "hacia Moreno" : "hacia Once" }))
+    .sort((a, b) => a.hora.localeCompare(b.hora));
+}
+
 export function proximosLocales(nombreEstacion, ahora = new Date()) {
   if (getDayType(ahora) !== "lv") return []; // los locales son solo días hábiles
   const { hour, minute } = horaArgentina(ahora);

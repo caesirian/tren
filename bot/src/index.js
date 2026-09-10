@@ -14,7 +14,7 @@ import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from
 import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta } from "./gemini.js";
-import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL } from "./schedule.js";
+import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 
@@ -129,14 +129,21 @@ Próximos trenes hacia Once desde ${estacion.name}: ${proximos.haciaOnce.map((t)
 Estos horarios están calculados en el momento con el cronograma base oficial vigente y son la fuente más precisa disponible — no derives a la app si esta sección ya responde la pregunta.`);
 
     const locales = proximosLocales(estacion.name, ahora);
+    const todosLosHorarios = horariosLocalesEstacion(estacion.name);
+    let bloqueLocales;
+    if (!todosLosHorarios.length) {
+      bloqueLocales = `Esta estación NO tiene servicios "locales" designados en ningún horario del día (los locales solo existen en Flores, Liniers, Merlo y Castelar). Puede tomar cualquier tren regular con los horarios de arriba.`;
+    } else if (getDayType(ahora) !== "lv") {
+      bloqueLocales = `Hoy no circula ningún local porque los locales solo son de lunes a viernes. En días hábiles, los horarios habituales en esta estación son: ${todosLosHorarios.map((l) => `${l.hora} ${l.direccion}`).join(", ")}.`;
+    } else if (!locales.length) {
+      bloqueLocales = `Ya pasaron todos los locales programados de HOY en esta estación (eran a las ${todosLosHorarios.map((l) => `${l.hora} ${l.direccion}`).join(", ")}) — no es que el servicio dejó de funcionar, simplemente ya no quedan más locales por salir hoy. Puede tomar cualquier tren regular con los horarios de arriba, o volver a preguntar mañana por los mismos horarios.`;
+    } else {
+      bloqueLocales = locales.map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ");
+    }
     partes.push(`
 == "LOCALES" (formaciones que arrancan VACÍAS) EN "${estacion.name}" ==
-IMPORTANTE: un "local" NO es cualquier tren que pasa por la estación — es una formación puntual que arranca vacía ahí mismo, muy buscada porque conviene subirse antes de que se llene. Solo existen en días hábiles.
-${
-  locales.length
-    ? locales.map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ")
-    : "No hay ningún local designado en esta estación hoy (o ya pasaron todos), aunque sí puede tomar cualquier tren regular con los horarios de arriba."
-}`);
+IMPORTANTE: un "local" NO es cualquier tren que pasa por la estación — es una formación puntual que arranca vacía ahí mismo, muy buscada porque conviene subirse antes de que se llene.
+${bloqueLocales}`);
   } else if (/\blocal(es)?\b/i.test(pregunta)) {
     // Preguntan por "locales" sin decir de qué estación — les paso el listado completo de hoy.
     const ahora = new Date();
