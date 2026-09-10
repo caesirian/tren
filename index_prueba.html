@@ -225,8 +225,8 @@
   --shadow-lg: 0 6px 32px rgba(0,43,92,.16);
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.5; }
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.5; overflow-x: hidden; }
 img { max-width: 100%; display: block; }
 a { color: var(--blue); }
 
@@ -879,7 +879,11 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   gap: 12px;
   align-items: end;
 }
-@media(max-width:600px){ .finder-grid { grid-template-columns: 1fr 1fr; } .finder-arrow-vis { display: none; } }
+@media(max-width:600px){
+  .finder-grid { grid-template-columns: 1fr 1fr; }
+  .finder-arrow-vis { display: none; }
+  .finder-btn { grid-column: 1 / -1; width: 100%; }
+}
 .finder-field label { display: block; font-size: 0.78rem; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: rgba(255,255,255,.7); margin-bottom: 6px; }
 .finder-field select {
   width: 100%;
