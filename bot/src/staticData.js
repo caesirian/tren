@@ -69,3 +69,6 @@ OBJETOS PERDIDOS Y ENCONTRADOS:
 export const RESPUESTA_SIN_DATO =
   "No tengo ese dato específico confirmado (por ejemplo, el horario exacto de un tren puntual ahora mismo). Te recomiendo chequear @TrenSarmiento o trensarmientoenlinea.com.ar para confirmarlo al momento.";
 
+export const RESPUESTA_ERROR_TECNICO =
+  "Tuve un problema técnico momentáneo para procesar tu pregunta. Probá de nuevo en unos segundos, por favor 🙏";
+

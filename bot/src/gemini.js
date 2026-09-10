@@ -57,6 +57,15 @@ Reglas:
   frecuencias del cronograma oficial.
 `.trim();
 
+function esperar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function esErrorTransitorio(err) {
+  const status = err?.status ?? err?.error?.code;
+  return status === 500 || status === 503 || /internal|unavailable/i.test(err?.message || "");
+}
+
 export async function responderPregunta({ pregunta, contexto }) {
   const prompt = `${SYSTEM_INSTRUCTION}
 
@@ -68,9 +77,22 @@ Pregunta del usuario del grupo: "${pregunta}"
 
 Respuesta:`;
 
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: prompt,
-  });
-  return response.text.trim();
+  const intentos = 3;
+  let ultimoError;
+
+  for (let i = 0; i < intentos; i++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: MODEL,
+        contents: prompt,
+      });
+      return response.text.trim();
+    } catch (err) {
+      ultimoError = err;
+      if (!esErrorTransitorio(err) || i === intentos - 1) throw err;
+      console.warn(`Gemini falló (intento ${i + 1}/${intentos}), reintentando:`, err.message);
+      await esperar(800 * (i + 1)); // espera creciente: 800ms, 1600ms
+    }
+  }
+  throw ultimoError;
 }

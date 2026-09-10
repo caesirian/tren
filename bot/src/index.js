@@ -10,7 +10,7 @@ import express from "express";
 import { Telegraf } from "telegraf";
 import NodeCache from "node-cache";
 
-import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO } from "./staticData.js";
+import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
 import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta } from "./gemini.js";
@@ -213,7 +213,7 @@ bot.on("text", async (ctx) => {
         error: err.message,
       });
     }
-    await ctx.reply(RESPUESTA_SIN_DATO);
+    await ctx.reply(RESPUESTA_ERROR_TECNICO);
   }
 });
 
