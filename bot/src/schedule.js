@@ -8,23 +8,35 @@
 // desincronicen. Última sincronización: 2026-09-09.
 
 export const STATIONS = [
-  { id: 0, name: "Once", km: 0, sec: 1 },
-  { id: 1, name: "Caballito", km: 4, sec: 1 },
-  { id: 2, name: "Flores", km: 7, sec: 1 },
-  { id: 3, name: "Floresta", km: 9, sec: 1 },
-  { id: 4, name: "Villa Luro", km: 11, sec: 1 },
-  { id: 5, name: "Liniers", km: 13, sec: 2 },
-  { id: 6, name: "Ciudadela", km: 16, sec: 2 },
-  { id: 7, name: "Ramos Mejía", km: 19, sec: 2 },
-  { id: 8, name: "Haedo", km: 22, sec: 2 },
-  { id: 9, name: "Morón", km: 28, sec: 3 },
-  { id: 10, name: "Castelar", km: 32, sec: 3 },
-  { id: 11, name: "Ituzaingó", km: 35, sec: 3 },
-  { id: 12, name: "San Antonio de Padua", km: 39, sec: 3, aliases: ["San A. de Padua", "San Antonio"] },
-  { id: 13, name: "Merlo", km: 42, sec: 3 },
-  { id: 14, name: "Paso del Rey", km: 46, sec: 3 },
-  { id: 15, name: "Moreno", km: 52, sec: 3 },
+  { id: 0, name: "Once", km: 0, sec: 1, direccion: "Av. Pueyrredón y B. Mitre, Balvanera, CABA", colectivos: ["5","7","12","19","24","26","29","32","37","41","56","57","61","62","64","68","71","75","86","88","95","98","99","101","104","105","106","109","115","118","124","132","140","146","151","165","168","188"], subte: ["Línea A (Plaza Miserere)", "Línea H (Once)"], conexiones: [], nota: "Terminal principal del Tren Sarmiento." },
+  { id: 1, name: "Caballito", km: 4, sec: 1, direccion: "Rojas s/n, Caballito, CABA", colectivos: ["2","6","25","26","36","55","63","68","71","86","92","96","106","135","149","163","168","178","180"], subte: ["Línea A (Primera Junta, Carabobo)", "Línea E (Medrano)"], conexiones: [], nota: "" },
+  { id: 2, name: "Flores", km: 7, sec: 1, direccion: "Av. Rivadavia 6200, Flores, CABA", colectivos: ["2","25","36","55","86","92","96","116","135","141","149","157","163","180","188"], subte: ["Línea A (Flores, Carabobo)"], conexiones: [], nota: "" },
+  { id: 3, name: "Floresta", km: 9, sec: 1, direccion: "Habana esq. Olivera, Floresta, CABA", colectivos: ["55","96","116","135","141","157","163","180","188"], subte: [], conexiones: [], nota: "" },
+  { id: 4, name: "Villa Luro", km: 11, sec: 1, direccion: "Av. Luro esq. Ramón L. Falcón, Villa Luro, CABA", colectivos: ["55","96","100","116","135","141","157","163","180","188"], subte: [], conexiones: [], nota: "" },
+  { id: 5, name: "Liniers", km: 13, sec: 2, direccion: "Av. Rivadavia 11900, Liniers, CABA", colectivos: ["96","97","99","100","103","107","116","126","128","136","141","180","188"], subte: [], conexiones: [], nota: "Importante nodo de transporte del oeste porteño." },
+  { id: 6, name: "Ciudadela", km: 16, sec: 2, direccion: "Av. Rivadavia, Ciudadela, La Matanza", colectivos: ["99","100","103","117","126","136","141","164","180","188","237"], subte: [], conexiones: [], nota: "" },
+  { id: 7, name: "Ramos Mejía", km: 19, sec: 2, direccion: "Av. Rivadavia s/n, Ramos Mejía, La Matanza", colectivos: ["1","88","96","100","136","153","163","172","182","205","237","238","242","247","264"], subte: [], conexiones: [], nota: "" },
+  { id: 8, name: "Haedo", km: 22, sec: 2, direccion: "Av. Rivadavia s/n, Haedo, Morón", colectivos: ["103","136","141","164","180","238","247","264","308"], subte: [], conexiones: ["Línea Roca ramal Haedo–Temperley"], nota: "Combinación con Línea Roca hacia el sur del conurbano." },
+  { id: 9, name: "Morón", km: 28, sec: 3, direccion: "Av. Victorino de la Plaza s/n, Morón", colectivos: ["141","164","180","183","236","237","238","242","247","257","264","308","325"], subte: [], conexiones: [], nota: "⚠️ Andén provisorio hacia Once. Acceso por Sarmiento y Azcuénaga." },
+  { id: 10, name: "Castelar", km: 32, sec: 3, direccion: "Av. Rivadavia s/n, Castelar, Morón", colectivos: ["141","164","180","236","238","264","308","325"], subte: [], conexiones: [], nota: "" },
+  { id: 11, name: "Ituzaingó", km: 35, sec: 3, direccion: "Gaona s/n, Ituzaingó", colectivos: ["141","164","180","236","238","264","308","325","441"], subte: [], conexiones: [], nota: "" },
+  { id: 12, name: "San Antonio de Padua", km: 39, sec: 3, aliases: ["San A. de Padua", "San Antonio"], direccion: "Dr. Horacio Varela s/n, San Antonio de Padua, Merlo", colectivos: ["180","236","264","308","350","441","455"], subte: [], conexiones: [], nota: "" },
+  { id: 13, name: "Merlo", km: 42, sec: 3, direccion: "Av. Libertad s/n, Merlo", colectivos: ["180","236","240","264","281","282","283","284","350","408","440","441","455"], subte: [], conexiones: ["Ramal Merlo–Lobos (diésel)"], nota: "Cabecera del ramal diésel hacia Lobos." },
+  { id: 14, name: "Paso del Rey", km: 46, sec: 3, direccion: "Av. San Martín s/n, Paso del Rey, Moreno", colectivos: ["180","236","440","441","500"], subte: [], conexiones: [], nota: "" },
+  { id: 15, name: "Moreno", km: 52, sec: 3, direccion: "Av. Libertad 1000, Moreno", colectivos: ["180","267","440","500","501","502"], subte: [], conexiones: ["Ramal Moreno–Mercedes (diésel)"], nota: "Terminal oeste del ramal eléctrico. Conexión con ramal diésel a Mercedes." },
 ];
+
+// Devuelve un resumen legible de colectivos/subte/conexiones de una estación.
+export function infoTransporteEstacion(nombreEstacion) {
+  const est = buscarEstacion(nombreEstacion);
+  if (!est) return null;
+  const partes = [`Dirección: ${est.direccion}.`];
+  if (est.colectivos?.length) partes.push(`Colectivos en la zona: ${est.colectivos.join(", ")}.`);
+  if (est.subte?.length) partes.push(`Subte: ${est.subte.join(", ")}.`);
+  if (est.conexiones?.length) partes.push(`Conexiones: ${est.conexiones.join(", ")}.`);
+  if (est.nota) partes.push(est.nota);
+  return partes.join(" ");
+}
 
 // Tarifas vigentes desde septiembre 2026 (Resolución 27/2026). El sitio web
 // todavía tiene los valores anteriores ($310/$420/$520) — al actualizarlos ahí,

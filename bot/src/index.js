@@ -13,10 +13,12 @@ import NodeCache from "node-cache";
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
 import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
-import { responderPregunta } from "./gemini.js";
-import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType } from "./schedule.js";
+import { responderPregunta, SIN_RESPUESTA_SENTINEL } from "./gemini.js";
+import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
+import { consultarParoEnVivo } from "./paroSearch.js";
+import { esInsulto } from "./insultDetector.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -74,6 +76,17 @@ function limpiarMencion(text) {
   return text.replace(new RegExp(`@${botUsername}`, "gi"), "").trim();
 }
 
+// Si el modelo no tuvo una respuesta concreta: cuando le hablaron directo
+// (mención, reply, o chat privado) el bot lo dice con honestidad; cuando fue
+// una pregunta "al aire" sin que lo mencionen, el bot prefiere quedarse
+// callado antes que meter ruido en el grupo con un "no sé" sin que se lo
+// pidan. Devuelve el texto a enviar, o null si no hay que responder nada.
+function manejarSinRespuesta(respuestaCruda, fueEtiquetado) {
+  const esSinRespuesta = respuestaCruda.trim() === SIN_RESPUESTA_SENTINEL;
+  if (!esSinRespuesta) return respuestaCruda;
+  return fueEtiquetado ? RESPUESTA_SIN_DATO : null;
+}
+
 async function armarContexto(pregunta) {
   const partes = [TREN_SARMIENTO_INFO];
 
@@ -98,6 +111,17 @@ async function armarContexto(pregunta) {
     );
   }
 
+  // Solo para paros/medidas gremiales: caso extremo donde vale la pena una
+  // búsqueda web real (cacheada unas horas para no repetirla de más).
+  if (/\bparo\b|paros|huelga|medida gremial|medida de fuerza|cese de (actividades|servicio)|gremial(es)?/i.test(pregunta)) {
+    const paro = await consultarParoEnVivo();
+    if (paro) {
+      partes.push(
+        `\n== BÚSQUEDA WEB EN VIVO — PAROS/MEDIDAS GREMIALES (${paro.deCache ? "resultado en caché, buscado" : "recién buscado"} el ${paro.buscadoEn}) ==\n${paro.texto}\nEsto viene de una búsqueda web real (no es un dato fijo cargado a mano). Aclará que conviene confirmar cerca del horario de viaje en @TrenSarmiento, @InfoTSarmiento o trensarmientoenlinea.com.ar, porque estas cosas pueden cambiar de último momento.`
+      );
+    }
+  }
+
   // Si preguntan por el Diferencial, calculamos la próxima salida real.
   if (/diferencial|preferencial/i.test(pregunta)) {
     const ahora = new Date();
@@ -120,6 +144,10 @@ async function armarContexto(pregunta) {
     const ahora = new Date();
     const proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora });
     const ultimos = ultimosTrenes(ahora);
+    const transporte = infoTransporteEstacion(estacion.name);
+    partes.push(`
+== TRANSPORTE EN LA ZONA DE "${estacion.name}" ==
+${transporte || "Sin datos de colectivos/subte cargados para esta estación."}`);
     partes.push(`
 == HORARIOS REALES CALCULADOS AHORA PARA "${estacion.name}" (cronograma oficial, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==
 Próximos trenes hacia Moreno desde ${estacion.name}: ${proximos.haciaMoreno.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
@@ -185,6 +213,23 @@ bot.on("text", async (ctx) => {
     // que sea un mensaje de grupo, aunque no le hablen al bot directamente.
     if (esGrupo) registrarMensajeGrupo(textoOriginal);
 
+    // Aviso al admin si detecta un insulto/agravio en el grupo.
+    if (esGrupo && esInsulto(textoOriginal) && process.env.ADMIN_TELEGRAM_ID) {
+      const from = ctx.from || {};
+      const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
+      const fechaHora = new Intl.DateTimeFormat("es-AR", {
+        timeZone: "America/Argentina/Buenos_Aires",
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(new Date());
+      bot.telegram
+        .sendMessage(
+          process.env.ADMIN_TELEGRAM_ID,
+          `⚠️ Posible insulto/agravio detectado\nUsuario: ${quien}\nGrupo: ${ctx.chat?.title || "sin nombre"}\nFecha y hora: ${fechaHora}\nMensaje: "${textoOriginal}"`
+        )
+        .catch((err) => console.error("Error avisando al admin sobre insulto:", err.message));
+    }
+
     const fueEtiquetado = mencionaAlBot(ctx);
     const esPreguntaAlAire =
       esGrupo && !fueEtiquetado && process.env.RESPONDER_SIN_MENCION === "true" &&
@@ -197,19 +242,28 @@ bot.on("text", async (ctx) => {
 
     const cacheKey = pregunta.toLowerCase().trim();
     const cacheada = cache.get(cacheKey);
-    if (cacheada) {
-      await ctx.reply(cacheada, { reply_to_message_id: ctx.message.message_id });
-      if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: cacheada });
+    if (cacheada !== undefined) {
+      const respuestaCacheada = manejarSinRespuesta(cacheada, fueEtiquetado);
+      if (respuestaCacheada) {
+        await ctx.reply(respuestaCacheada, { reply_to_message_id: ctx.message.message_id });
+        if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: respuestaCacheada });
+      }
       return;
     }
 
     await ctx.sendChatAction("typing");
     const contexto = await armarContexto(pregunta);
-    const respuesta = await responderPregunta({ pregunta, contexto });
+    const respuestaCruda = await responderPregunta({ pregunta, contexto });
 
-    cache.set(cacheKey, respuesta);
-    await ctx.reply(respuesta, { reply_to_message_id: ctx.message.message_id });
-    if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta });
+    cache.set(cacheKey, respuestaCruda);
+    const respuesta = manejarSinRespuesta(respuestaCruda, fueEtiquetado);
+    if (respuesta) {
+      await ctx.reply(respuesta, { reply_to_message_id: ctx.message.message_id });
+      if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta });
+    }
+    // Si respuesta es null (pregunta al aire sin dato concreto), el bot se
+    // queda callado a propósito — no hace falta contestar cada cosa que se
+    // dice en el grupo si no tiene algo útil que aportar.
   } catch (err) {
     console.error("Error respondiendo mensaje:", err);
     if (ctx.chat?.type === "private") {

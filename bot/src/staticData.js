@@ -48,9 +48,15 @@ SERVICIO DIFERENCIAL (opcional, más caro, no es el servicio común):
 - Se compra antes de subir (plataforma oficial online o boletería de larga distancia), no se vende a bordo.
 
 CONEXIONES CON OTROS TRANSPORTES (AMBA):
-- Estación Once: combina con subte Línea A y Línea H, y numerosas líneas de colectivo.
-- Estación Liniers/Ciudadela: combina con colectivos hacia zona oeste del GBA.
-- Estación Morón/Castelar/Merlo: combinan con líneas de colectivo locales de cada partido.
+- Los colectivos y combinaciones específicas de cada estación del Sarmiento están en la sección "TRANSPORTE EN LA ZONA" que se agrega cuando preguntan por una estación puntual (datos reales, no aproximados).
+- SUBTE (Buenos Aires): 6 líneas — A (Plaza de Mayo-San Pedrito/Flores), B (L.N. Alem-Juan M. de Rosas), C (Retiro-Constitución, conecta con casi todos los trenes de la zona norte/sur), D (Catedral-Congreso de Tucumán), E (Retiro-Plaza de los Virreyes), H (Facultad de Derecho-Hospitales). Se paga con SUBE, tarifa plana independiente de la distancia (más barata que el tren en general). Frecuencia habitual: 3-5 minutos en hora pico.
+- OTRAS LÍNEAS DE TREN DEL AMBA (para quien pregunte por otro ramal, no confundir con el Sarmiento):
+  · Línea Mitre: Retiro hacia Tigre, José León Suárez y Mitre (zona norte).
+  · Línea Roca: Constitución hacia La Plata, Ezeiza, Alejandro Korn, Bosques/Temperley (zona sur).
+  · Línea San Martín: Retiro hacia Pilar (zona oeste/noroeste).
+  · Línea Belgrano Norte: Retiro hacia Villa Rosa (zona norte).
+  · Línea Belgrano Sur: Buenos Aires (Puente Alsina/Barracas) hacia González Catán/Marinos del Crucero Gral. Belgrano (zona oeste/sur).
+  · Todas también se pagan con SUBE, con tarifas por sección similares en lógica a las del Sarmiento.
 
 CANALES OFICIALES PARA CONFIRMAR CASOS PUNTUALES (demoras del momento, horario exacto de un tren específico, cambios de último momento):
 - Twitter/X: @TrenSarmiento (cuenta oficial) y @InfoTSarmiento

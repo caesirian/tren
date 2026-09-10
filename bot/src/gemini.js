@@ -38,8 +38,12 @@ Reglas:
   en su horario de atención. Sé empático, es una situación molesta para
   quien pregunta.
 - No inventes cifras que no estén en el contexto ni en el estado en vivo.
-  Si el contexto no alcanza, decilo con honestidad y ahí sí sugerí dónde
-  confirmar.
+  Si el contexto NO tiene lo necesario para dar una respuesta concreta y útil
+  (no es un simple saludo ni una pregunta genérica que sepas responder con
+  seguridad), respondé ÚNICAMENTE con este texto exacto, sin nada más:
+  SIN_RESPUESTA_CONCRETA
+  No lo uses si podés dar una respuesta razonable aunque sea parcial — es
+  solo para cuando genuinamente no tenés con qué responder.
 - Sé breve: 2 a 5 líneas salvo que la pregunta pida más detalle.
 - Si preguntan específicamente por un "local" en una estación, esto significa
   una formación que arranca VACÍA ahí (no cualquier tren que pasa) — usá la
@@ -51,6 +55,10 @@ Reglas:
   locales, cuando en realidad solo es que ya pasó el horario de hoy. Ofrecé
   como alternativa el próximo tren regular (que sí pasa pero puede venir con
   gente).
+- Si el contexto incluye una sección "BÚSQUEDA WEB EN VIVO — PAROS/MEDIDAS
+  GREMIALES", esa es la única fuente que tenés sobre paros o medidas de
+  fuerza — usala como base de la respuesta, con la salvedad de que conviene
+  reconfirmar cerca del horario de viaje.
 - Si el contexto incluye una sección "HORARIOS REALES CALCULADOS AHORA" para una
   estación, esa es la fuente más precisa que existe (calculada al momento con
   el cronograma oficial real, no una aproximación) — usala como respuesta
@@ -60,6 +68,8 @@ Reglas:
   vivo" en el contexto, usalos como fuente principal por sobre las
   frecuencias del cronograma oficial.
 `.trim();
+
+export const SIN_RESPUESTA_SENTINEL = "SIN_RESPUESTA_CONCRETA";
 
 function esperar(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
