@@ -404,6 +404,7 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   font-weight: 600;
   transition: background .18s, color .18s;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .nav-bell:hover, .nav-bell:focus-visible { background: rgba(255,255,255,.12); color: rgba(255,255,255,.85); }
 .nav-bell.subscribed { color: var(--celeste); }
@@ -422,6 +423,7 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   color: #fff;
   white-space: nowrap;
   transition: background .18s;
+  flex-shrink: 0;
 }
 .nav-status:hover, .nav-status:focus-visible { background: rgba(255,255,255,.16); }
 .nav-status-dot {
@@ -433,9 +435,6 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 }
 .nav-status-dot.amarillo { background: #f59e0b; box-shadow: 0 0 6px 1px rgba(245,158,11,.7); }
 .nav-status-dot.rojo { background: #ef4444; box-shadow: 0 0 6px 1px rgba(239,68,68,.7); }
-@media (max-width: 640px) {
-  .nav-status-label { display: none; }
-}
 
 /* ─── Geo / ubicación ─────────────────────────────────────── */
 .geo-btn {
@@ -661,8 +660,21 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
     background: #001f45; padding: 10px; gap: 2px; z-index: 100;
   }
   .nav-links.open { display: flex; }
-  .nav-toggle { display: block; }
-  .nav-brand-name { font-size: 1rem; }
+  .nav-toggle { display: block; flex-shrink: 0; }
+  .nav-brand-sub { display: none; }
+  .nav-brand-name { font-size: .92rem; }
+  .nav-inner { padding: 0 12px; gap: 6px; }
+  .nav-brand { min-width: 0; flex-shrink: 1; overflow: hidden; }
+  .nav-brand-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 140px; }
+  .nav-status-label { display: none; }
+  .nav-status { padding: 6px 8px; flex-shrink: 0; }
+  .nav-bell { padding: 6px 8px; flex-shrink: 0; }
+  .nav-bell-label { font-size: .68rem; }
+}
+@media(max-width:400px){
+  .nav-brand-name { max-width: 90px; font-size: .82rem; }
+  .nav-logo-box { width: 36px; height: 36px; }
+  .nav-logo-box img { width: 36px; height: 36px; }
 }
 
 /* Widget últimos trenes: debajo del navbar fijo en móvil */
@@ -1867,8 +1879,11 @@ console.log('[Firebase] Listener de estado inicializado');
   position:fixed;
   bottom:80px;
   right:20px;
+  left:20px;
   z-index:998;
-  width:320px;
+  width:auto;
+  max-width:320px;
+  margin-left:auto;
   transition:all .28s ease;
   font-family:'Inter',system-ui,sans-serif;
 ">
