@@ -106,6 +106,18 @@ function limpiarMencion(text) {
   return text.replace(new RegExp(`@${botUsername}`, "gi"), "").trim();
 }
 
+// En grupos con "Temas" (forum topics) activados, si no le decimos a Telegram
+// en qué tema responder, el mensaje cae en "General" y la persona que
+// preguntó en otro tema nunca lo ve. Este helper arma las opciones de reply
+// incluyendo el tema correcto cuando corresponde.
+function opcionesRespuesta(ctx) {
+  const opciones = { reply_to_message_id: ctx.message.message_id };
+  if (ctx.message.message_thread_id) {
+    opciones.message_thread_id = ctx.message.message_thread_id;
+  }
+  return opciones;
+}
+
 // Si el modelo no tuvo una respuesta concreta: cuando le hablaron directo
 // (mención, reply, o chat privado) el bot lo dice con honestidad; cuando fue
 // una pregunta "al aire" sin que lo mencionen, el bot prefiere quedarse
@@ -314,7 +326,7 @@ bot.on("text", async (ctx) => {
       if (fueEtiquetado) {
         await ctx.reply(
           "Che, me preguntaste bastante seguido 😅 esperá unos minutos y probá de nuevo.",
-          { reply_to_message_id: ctx.message.message_id }
+          opcionesRespuesta(ctx)
         );
       }
       // Si fue una pregunta al aire, directamente no contesta nada.
@@ -326,7 +338,7 @@ bot.on("text", async (ctx) => {
     if (cacheada !== undefined) {
       const respuestaCacheada = manejarSinRespuesta(cacheada, fueEtiquetado);
       if (respuestaCacheada) {
-        await ctx.reply(respuestaCacheada, { reply_to_message_id: ctx.message.message_id });
+        await ctx.reply(respuestaCacheada, opcionesRespuesta(ctx));
         if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: respuestaCacheada });
       }
       return;
@@ -339,7 +351,7 @@ bot.on("text", async (ctx) => {
     cache.set(cacheKey, respuestaCruda);
     const respuesta = manejarSinRespuesta(respuestaCruda, fueEtiquetado);
     if (respuesta) {
-      await ctx.reply(respuesta, { reply_to_message_id: ctx.message.message_id });
+      await ctx.reply(respuesta, opcionesRespuesta(ctx));
       if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta });
     }
     // Si respuesta es null (pregunta al aire sin dato concreto), el bot se
@@ -355,7 +367,7 @@ bot.on("text", async (ctx) => {
         error: err.message,
       });
     }
-    await ctx.reply(RESPUESTA_ERROR_TECNICO);
+    await ctx.reply(RESPUESTA_ERROR_TECNICO, ctx.message ? opcionesRespuesta(ctx) : undefined);
   }
 });
 
