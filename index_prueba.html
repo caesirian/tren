@@ -183,7 +183,7 @@
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
-  window.__MOSTRAR_TITULARES = false; // oculto hasta que Firestore confirme
+  window.__MOSTRAR_TITULARES = true; // PREVIEW — forzado true (ver comentario abajo)
   OneSignalDeferred.push(async function(OneSignal) {
     await OneSignal.init({
       appId: "114f6665-eede-42d0-90ad-4d6480f10c76",
@@ -1386,6 +1386,31 @@ footer { Buenas: #001533; color: rgb(18 17 17 / 55%); padding: 32px 20px 20px; f
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- FIREBASE - CONEXIÓN EN TIEMPO REAL PARA SEMÁFORO Y ALERTAS     -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- Fecha/hora actual como placeholder inmediato en los badges "Verificado",
+     antes de que responda Firestore. Se sobreescribe con el dato real cuando
+     llega el snapshot de estadoServicio/actual (ver módulo Firebase abajo). -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  function fmtAhora() {
+    const d = new Date();
+    const p2 = n => String(n).padStart(2,'0');
+    const dia  = p2(d.getDate());
+    const mes  = p2(d.getMonth()+1);
+    const anio = String(d.getFullYear()).slice(-2);
+    let horas  = d.getHours();
+    const mins = p2(d.getMinutes());
+    const ampm = horas >= 12 ? 'pm' : 'am';
+    horas = horas % 12; if (horas === 0) horas = 12;
+    return `${dia}/${mes}/${anio} ${horas}:${mins}${ampm}`;
+  }
+  const texto = '🕐 Verificado: ' + fmtAhora();
+  const b1 = document.getElementById('lastUpdateBadge');
+  const b2 = document.getElementById('lastUpdateSection');
+  if (b1) b1.textContent = texto;
+  if (b2) b2.textContent = texto;
+});
+</script>
+
 <script type="module">
 
 /* =========================
@@ -1486,11 +1511,27 @@ onSnapshot(estadoRef, (snapshot) => {
     }
   }
 
-  // Actualizar badge "Verificado"
-  const badge = document.getElementById('lastUpdateSection');
-  if (badge && data.ultimaActualizacion) {
-    badge.textContent = '🕐 Verificado: ' + data.ultimaActualizacion;
+  // Actualizar badges "Verificado" (status bar + sección Estado)
+  // Usa el campo real que guarda el admin (actualizado, ISO) — antes buscaba
+  // ultimaActualizacion, que el admin nunca escribe, por eso quedaba en "—".
+  function fmtVerificado(iso) {
+    const d = iso ? new Date(iso) : new Date();
+    if (isNaN(d.getTime())) return null;
+    const p2 = n => String(n).padStart(2,'0');
+    const dia  = p2(d.getDate());
+    const mes  = p2(d.getMonth()+1);
+    const anio = String(d.getFullYear()).slice(-2);
+    let horas  = d.getHours();
+    const mins = p2(d.getMinutes());
+    const ampm = horas >= 12 ? 'pm' : 'am';
+    horas = horas % 12; if (horas === 0) horas = 12;
+    return `${dia}/${mes}/${anio} ${horas}:${mins}${ampm}`;
   }
+  const verificadoTexto = '🕐 Verificado: ' + fmtVerificado(data.actualizado);
+  const badgeTop     = document.getElementById('lastUpdateBadge');
+  const badgeSection = document.getElementById('lastUpdateSection');
+  if (badgeTop)     badgeTop.textContent     = verificadoTexto;
+  if (badgeSection) badgeSection.textContent = verificadoTexto;
 
   // Exponer en window para scripts externos (buscador de colectivos)
   window.__ESTADO_DIA = {
@@ -1503,7 +1544,9 @@ onSnapshot(estadoRef, (snapshot) => {
   };
 
   // Mostrar/ocultar card de noticias según campo mostrarTitulares
-  window.__MOSTRAR_TITULARES = data.mostrarTitulares === true; // oculto por defecto
+  // ⚠️ SOLO EN index_prueba.html: noticias forzadas a visible para previsualizar.
+  // En index.html (producción) esto respeta el campo mostrarTitulares de Firestore.
+  window.__MOSTRAR_TITULARES = true; // PREVIEW — forzado true en la copia de prueba
   const gridNoticias = document.getElementById('noticiasGrid');
   if (gridNoticias) {
     const cardNoticias = gridNoticias.closest('.today-card');
@@ -1770,7 +1813,7 @@ onSnapshot(noticiasQuery, snap => {
   }
 
   // Respetar la preferencia de mostrarTitulares del admin
-  const mostrar = window.__MOSTRAR_TITULARES === true; // oculto por defecto
+  const mostrar = window.__MOSTRAR_TITULARES === true; // PREVIEW: forzado arriba
   const cardNoticias = grid.closest('.today-card');
   if (cardNoticias) cardNoticias.style.display = mostrar ? '' : 'none';
 
