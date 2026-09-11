@@ -304,6 +304,15 @@ app.listen(PORT, async () => {
   if (publicUrl) {
     await bot.telegram.setWebhook(`${publicUrl}${WEBHOOK_PATH}`);
     console.log("Webhook configurado en:", `${publicUrl}${WEBHOOK_PATH}`);
+
+    // Evita que Render (free tier) duerma el servicio por inactividad: nos
+    // pingueamos a nosotros mismos cada 10 min. Así el servicio ya está
+    // despierto cuando alguien le escribe por primera vez, en vez de que
+    // esa primera persona se coma un arranque en frío (y probablemente
+    // ningún mensaje de respuesta si Telegram no llega a esperar tanto).
+    setInterval(() => {
+      fetch(publicUrl).catch(() => {});
+    }, 10 * 60 * 1000);
   } else {
     console.warn(
       "PUBLIC_URL no configurada: seteá el webhook manualmente una vez desplegado."
