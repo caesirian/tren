@@ -12,10 +12,20 @@ const PALABRAS_INSULTO = [
   "sos un inútil", "sos una inútil", "sos un inutil", "sos un basura",
   "cornudo", "puto de mierda", "puta de mierda", "villero", "negro de mierda",
   "sorete", "garca", "chorro de mierda", "cagón", "cagon", "sos un pelotudo",
-  "callate la boca", "cállate la boca", "and ate a la re mil", "reputa",
+  "callate la boca", "cállate la boca", "reputa",
 ];
 
+// Uso "límite de palabra" manual (en vez de String.includes) para que
+// "gil" no dispare con "frágil"/"vigilante", ni "reputa" con "reputado".
+// \b de JS no reconoce vocales acentuadas como parte de una palabra, así que
+// definimos manualmente qué cuenta como "letra" en español.
+function contieneComoPalabra(texto, frase) {
+  const escapada = frase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(^|[^a-zA-ZÀ-ÿ0-9])${escapada}([^a-zA-ZÀ-ÿ0-9]|$)`, "i");
+  return regex.test(texto);
+}
+
 export function esInsulto(texto) {
-  const lower = (texto || "").toLowerCase();
-  return PALABRAS_INSULTO.some((p) => lower.includes(p));
+  if (!texto) return false;
+  return PALABRAS_INSULTO.some((p) => contieneComoPalabra(texto, p));
 }

@@ -19,6 +19,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { esInsulto } from "./insultDetector.js";
+import { excedioLimite } from "./rateLimiter.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -239,6 +240,18 @@ bot.on("text", async (ctx) => {
 
     const pregunta = limpiarMencion(textoOriginal);
     if (!pregunta) return;
+
+    // Límite de uso por persona: protege la cuota gratuita de Gemini.
+    if (excedioLimite(ctx.from?.id)) {
+      if (fueEtiquetado) {
+        await ctx.reply(
+          "Che, me preguntaste bastante seguido 😅 esperá unos minutos y probá de nuevo.",
+          { reply_to_message_id: ctx.message.message_id }
+        );
+      }
+      // Si fue una pregunta al aire, directamente no contesta nada.
+      return;
+    }
 
     const cacheKey = pregunta.toLowerCase().trim();
     const cacheada = cache.get(cacheKey);
