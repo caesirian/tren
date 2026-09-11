@@ -11,7 +11,7 @@ export const TREN_SARMIENTO_INFO = `
 Última actualización de este bloque: 2026-09-08 (actualizar cuando cambien tarifas o el cronograma oficial)
 
 RAMALES DEL FERROCARRIL SARMIENTO:
-- Once - Moreno: ramal principal, eléctrico, 16 estaciones, circula todos los días del año, las 24 horas.
+- Once - Moreno: ramal principal, eléctrico, 16 estaciones, circula todos los días del año con un servicio muy amplio (desde temprano en la madrugada hasta pasada la medianoche), pero NO es 24 horas continuas — hay un corte de varias horas en la madrugada. El horario exacto del primer y último tren de hoy está en la sección de horarios calculados en vivo si preguntan por eso puntualmente.
 - Moreno - Mercedes: diésel, 62 km, para en Luján y General Rodríguez, pocas frecuencias diarias.
 - Merlo - Lobos: diésel, 68 km, para en Marcos Paz y Las Heras, frecuencia limitada.
 - Tren a Bragado: larga distancia, 363 km, sale lunes, miércoles y viernes, dura aprox. 5 h 20 min.

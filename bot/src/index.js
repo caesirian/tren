@@ -216,6 +216,18 @@ ${
     : "No quedan más locales programados por hoy (o no es día hábil)."
 }
 Esta es la lista completa y precisa — no derives a la app, esto ya responde la pregunta.`);
+  } else if (/último|ultimo|primer(o)?\s+tren|primeros?\s+servicios?/i.test(pregunta)) {
+    // Preguntan por el primer/último tren sin decir de qué estación — les doy
+    // el horario real de las terminales (Once y Moreno), que es lo más útil.
+    const ahora = new Date();
+    const ext = ultimosTrenes(ahora);
+    const tipoDia = ext.diaTipo === "lv" ? "día hábil" : ext.diaTipo === "sab" ? "sábado" : "domingo/feriado";
+    partes.push(`
+== PRIMER Y ÚLTIMO TREN DE HOY (calculado ahora, ${tipoDia}, cronograma oficial real) ==
+IMPORTANTE: el servicio NO es 24 horas continuas — hay un corte real en la madrugada. Esta es la info exacta, no derives a la app.
+Desde Once: primer tren ${ext.desdeOnce.primero} hs, último tren ${ext.desdeOnce.ultimo} hs (penúltimo ${ext.desdeOnce.penultimo} hs).
+Desde Moreno: primer tren ${ext.desdeMoreno.primero} hs, último tren ${ext.desdeMoreno.ultimo} hs (penúltimo ${ext.desdeMoreno.penultimo} hs).
+Si preguntan por una estación intermedia puntual, avisá que el horario ahí es un poco después del de Once (yendo hacia Moreno) o un poco después del de Moreno (yendo hacia Once), y sugerí preguntar mencionando esa estación para el cálculo exacto.`);
   }
 
   return partes.join("\n");

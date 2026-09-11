@@ -175,8 +175,18 @@ export function ultimosTrenes(ahora = new Date()) {
   const mo = S[dt].moreno;
   return {
     diaTipo: dt,
-    desdeOnce: { ultimo: fmt(on[on.length - 1]), penultimo: fmt(on[on.length - 2]) },
-    desdeMoreno: { ultimo: fmt(mo[mo.length - 1]), penultimo: fmt(mo[mo.length - 2]) },
+    desdeOnce: {
+      primero: fmt(on[0]),
+      segundo: fmt(on[1]),
+      ultimo: fmt(on[on.length - 1]),
+      penultimo: fmt(on[on.length - 2]),
+    },
+    desdeMoreno: {
+      primero: fmt(mo[0]),
+      segundo: fmt(mo[1]),
+      ultimo: fmt(mo[mo.length - 1]),
+      penultimo: fmt(mo[mo.length - 2]),
+    },
   };
 }
 
