@@ -41,6 +41,35 @@ bot.telegram.getMe().then((me) => {
   console.log(`Bot iniciado como @${botUsername}`);
 });
 
+// Restricción al grupo autorizado: si alguien agrega el bot a otro grupo,
+// se va solo apenas Telegram le avisa del cambio de membresía (no hace
+// falta esperar a que alguien le escriba).
+bot.on("my_chat_member", async (ctx) => {
+  const chat = ctx.myChatMember.chat;
+  if (chat.type === "private") return;
+  if (!process.env.ALLOWED_GROUP_ID) return; // sin restricción configurada, no hace nada
+
+  const nuevoEstado = ctx.myChatMember.new_chat_member?.status;
+  const fueAgregado = nuevoEstado === "member" || nuevoEstado === "administrator";
+  if (fueAgregado && String(chat.id) !== String(process.env.ALLOWED_GROUP_ID)) {
+    console.warn(`Bot agregado a un grupo NO autorizado (${chat.id} — "${chat.title}"). Saliendo...`);
+    try {
+      await ctx.leaveChat();
+    } catch (err) {
+      console.error("Error al intentar salir del grupo no autorizado:", err.message);
+    }
+  }
+});
+
+// Defensa adicional: si por algún motivo el bot sigue en un grupo no
+// autorizado (ej. quedó agregado antes de configurar esta variable), no
+// procesa ningún mensaje de ahí.
+function esChatAutorizado(ctx) {
+  if (ctx.chat?.type === "private") return true;
+  if (!process.env.ALLOWED_GROUP_ID) return true;
+  return String(ctx.chat.id) === String(process.env.ALLOWED_GROUP_ID);
+}
+
 function mencionaAlBot(ctx) {
   const text = ctx.message?.text ?? "";
   const esRespuestaAlBot =
@@ -204,8 +233,34 @@ bot.help((ctx) =>
   )
 );
 
+// Reenvía al admin cualquier foto, audio, nota de voz o video que le
+// manden al bot por chat PRIVADO (no en el grupo, ahí es tráfico normal).
+async function reenviarMediaAlAdmin(ctx, tipo) {
+  if (ctx.chat?.type !== "private") return;
+  if (!process.env.ADMIN_TELEGRAM_ID) return;
+  try {
+    const from = ctx.from || {};
+    const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
+    await bot.telegram.sendMessage(
+      process.env.ADMIN_TELEGRAM_ID,
+      `📎 Recibí un(a) ${tipo} de ${quien} por privado:`
+    );
+    await ctx.forwardMessage(process.env.ADMIN_TELEGRAM_ID);
+  } catch (err) {
+    console.error(`Error reenviando ${tipo} al admin:`, err.message);
+  }
+}
+
+bot.on("photo", (ctx) => reenviarMediaAlAdmin(ctx, "imagen"));
+bot.on("voice", (ctx) => reenviarMediaAlAdmin(ctx, "audio/nota de voz"));
+bot.on("audio", (ctx) => reenviarMediaAlAdmin(ctx, "audio"));
+bot.on("video", (ctx) => reenviarMediaAlAdmin(ctx, "video"));
+bot.on("video_note", (ctx) => reenviarMediaAlAdmin(ctx, "video nota"));
+
 bot.on("text", async (ctx) => {
   try {
+    if (!esChatAutorizado(ctx)) return;
+
     const textoOriginal = ctx.message.text;
     const esGrupo = ctx.chat?.type !== "private";
     const esChatPrivado = !esGrupo;
@@ -214,8 +269,8 @@ bot.on("text", async (ctx) => {
     // que sea un mensaje de grupo, aunque no le hablen al bot directamente.
     if (esGrupo) registrarMensajeGrupo(textoOriginal);
 
-    // Aviso al admin si detecta un insulto/agravio en el grupo.
-    if (esGrupo && esInsulto(textoOriginal) && process.env.ADMIN_TELEGRAM_ID) {
+    // Aviso al admin ante insultos o groserías, en grupo O privado.
+    if (esInsulto(textoOriginal) && process.env.ADMIN_TELEGRAM_ID) {
       const from = ctx.from || {};
       const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
       const fechaHora = new Intl.DateTimeFormat("es-AR", {
@@ -223,10 +278,11 @@ bot.on("text", async (ctx) => {
         dateStyle: "short",
         timeStyle: "short",
       }).format(new Date());
+      const origen = esGrupo ? `Grupo: ${ctx.chat?.title || "sin nombre"}` : "Origen: chat privado con el bot";
       bot.telegram
         .sendMessage(
           process.env.ADMIN_TELEGRAM_ID,
-          `⚠️ Posible insulto/agravio detectado\nUsuario: ${quien}\nGrupo: ${ctx.chat?.title || "sin nombre"}\nFecha y hora: ${fechaHora}\nMensaje: "${textoOriginal}"`
+          `⚠️ Lenguaje ofensivo detectado (insulto o grosería)\nUsuario: ${quien}\n${origen}\nFecha y hora: ${fechaHora}\nMensaje: "${textoOriginal}"`
         )
         .catch((err) => console.error("Error avisando al admin sobre insulto:", err.message));
     }
@@ -304,15 +360,6 @@ app.listen(PORT, async () => {
   if (publicUrl) {
     await bot.telegram.setWebhook(`${publicUrl}${WEBHOOK_PATH}`);
     console.log("Webhook configurado en:", `${publicUrl}${WEBHOOK_PATH}`);
-
-    // Evita que Render (free tier) duerma el servicio por inactividad: nos
-    // pingueamos a nosotros mismos cada 10 min. Así el servicio ya está
-    // despierto cuando alguien le escribe por primera vez, en vez de que
-    // esa primera persona se coma un arranque en frío (y probablemente
-    // ningún mensaje de respuesta si Telegram no llega a esperar tanto).
-    setInterval(() => {
-      fetch(publicUrl).catch(() => {});
-    }, 10 * 60 * 1000);
   } else {
     console.warn(
       "PUBLIC_URL no configurada: seteá el webhook manualmente una vez desplegado."

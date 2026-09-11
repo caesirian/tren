@@ -13,6 +13,9 @@ const PALABRAS_INSULTO = [
   "cornudo", "puto de mierda", "puta de mierda", "villero", "negro de mierda",
   "sorete", "garca", "chorro de mierda", "cagón", "cagon", "sos un pelotudo",
   "callate la boca", "cállate la boca", "reputa",
+  // Groserías generales (no necesariamente dirigidas a una persona puntual)
+  "mierda", "carajo", "la concha de la lora", "pelotudez", "cagada",
+  "qué cagada", "que cagada", "hijo de re mil putas", "puto", "puta madre",
 ];
 
 // Uso "límite de palabra" manual (en vez de String.includes) para que
