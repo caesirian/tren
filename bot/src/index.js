@@ -84,15 +84,23 @@ function mencionaAlBot(ctx) {
 const PALABRAS_TEMA = [
   "tren", "sarmiento", "horario", "horarios", "frecuencia", "frecuencias",
   "tarifa", "tarifas", "boleto", "boletos", "sube", "estación", "estacion",
-  "andén", "anden", "demora", "demorado", "para", "parado", "combinación",
+  "andén", "anden", "demora", "demorado", "parado", "combinación",
   "combinacion", "subte", "colectivo", "amba", "moreno", "once", "liniers",
   "castelar", "morón", "moron", "merlo", "ramos mejía", "haedo", "ituzaingó",
   "perdí", "perdi", "perdido", "perdida", "encontré", "encontre", "encontrado",
   "objeto", "mochila", "celular", "olvidé", "olvide", "quedó", "quede",
+  "local", "locales", "diferencial", "preferencial", "paro", "huelga",
+  "gremial", "gremiales", "cese", "medida de fuerza", "primer tren",
+  "último tren", "ultimo tren", "flores", "floresta", "villa luro",
+  "ciudadela", "san antonio", "padua", "paso del rey", "transporte",
 ];
 
 // Palabras/signos que indican que es una pregunta.
-const PISTAS_PREGUNTA = ["?", "¿", "cuándo", "cuando", "cuánto", "cuanto", "dónde", "donde", "cómo", "como", "hay", "sabe", "alguien sabe"];
+const PISTAS_PREGUNTA = [
+  "?", "¿", "cuándo", "cuando", "cuánto", "cuanto", "dónde", "donde", "cómo",
+  "como", "hay", "sabe", "alguien sabe", "a qué hora", "a que hora",
+  "qué hora", "que hora",
+];
 
 function pareceConsultaRelevante(text) {
   const lower = text.toLowerCase();
@@ -312,9 +320,18 @@ bot.on("text", async (ctx) => {
     }
 
     const fueEtiquetado = mencionaAlBot(ctx);
+    // Al aire (sin mención): intenta responder siempre que el tema suene
+    // relevante — si no tiene una respuesta concreta, se queda callado
+    // (ver manejarSinRespuesta). Si lo mencionan, SIEMPRE responde, y si no
+    // sabe, lo dice con honestidad. Es la lógica fija, no un toggle.
+    // Si el mensaje es una respuesta (reply) a OTRA PERSONA (no al bot), es
+    // casi seguro parte de una charla entre usuarios — el bot no debe meterse
+    // ahí aunque las palabras coincidan con el filtro de tema/pregunta.
+    const esReplyAOtraPersona =
+      ctx.message.reply_to_message && ctx.message.reply_to_message.from?.username !== botUsername;
+
     const esPreguntaAlAire =
-      esGrupo && !fueEtiquetado && process.env.RESPONDER_SIN_MENCION === "true" &&
-      pareceConsultaRelevante(textoOriginal);
+      esGrupo && !fueEtiquetado && !esReplyAOtraPersona && pareceConsultaRelevante(textoOriginal);
 
     if (!fueEtiquetado && !esPreguntaAlAire) return;
 
