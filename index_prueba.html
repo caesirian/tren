@@ -1116,6 +1116,13 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .noticias-articulo-cuerpo img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
 .noticias-articulo-cuerpo strong { color: var(--navy); }
 .noticias-articulo-pie { font-size: .75rem; color: var(--muted); margin-top: 16px; font-style: italic; }
+.noticias-articulo-compartir { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.noticias-copiar-link {
+  background: var(--cel-bg); border: 1px solid var(--celeste); color: var(--celeste);
+  font-size: .82rem; font-weight: 700; padding: 8px 16px; border-radius: 20px;
+  cursor: pointer; transition: background .18s;
+}
+.noticias-copiar-link:hover { background: var(--celeste); color: #fff; }
 
 /* Listado completo dentro del modal */
 .noticias-modal-lista { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
@@ -1423,6 +1430,7 @@ from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import {
   getFirestore,
   doc,
+  getDoc,
   collection,
   query,
   orderBy,
@@ -1690,7 +1698,7 @@ function actualizarAlerta(texto) {
 const noticiasRef   = collection(db, 'noticias');
 const noticiasQuery = query(noticiasRef, orderBy('fechaMs', 'desc'), limit(3));
 
-let _todasNoticias = []; // cache para el modal de "ver todas"
+let _todasNoticias = []; // cache para el modal de "ver todas" (últimas 3)
 
 function fmtFecha(fechaMs) {
   if (!fechaMs) return '';
@@ -1706,7 +1714,12 @@ function copete(html) {
   return (div.textContent || '').substring(0, 120);
 }
 
-function buildCard(n, idx) {
+// URL directa a una noticia — para compartir (bot, redes, etc.)
+function urlNoticia(id) {
+  return `https://trensarmientoenlinea.com.ar/?noticia=${id}`;
+}
+
+function buildCard(n) {
   const btn = document.createElement('button');
   btn.className = 'noticia-card';
   btn.setAttribute('aria-label', `Leer noticia: ${n.titulo}`);
@@ -1722,14 +1735,34 @@ function buildCard(n, idx) {
       <div class="noticia-card-copete">${copete(n.contenido)}</div>
       <span class="noticia-card-leer">Leer nota →</span>
     </div>`;
-  btn.addEventListener('click', () => abrirArticulo(idx));
+  btn.addEventListener('click', () => abrirArticulo(n.id));
   return btn;
 }
 
-function abrirArticulo(idx) {
-  const n    = _todasNoticias[idx];
+// Abre el modal con una noticia puntual por su ID de Firestore.
+// Busca primero en caché (_todasNoticias); si no está (ej: alguien
+// abrió un link viejo de una noticia que ya no está en el top 3),
+// la consulta directo a Firestore por ID.
+async function abrirArticulo(id) {
+  let n = _todasNoticias.find(x => x.id === id);
+
+  if (!n) {
+    try {
+      const snap = await getDoc(doc(db, 'noticias', id));
+      if (snap.exists()) n = { id: snap.id, ...snap.data() };
+    } catch(e) {
+      console.warn('[Noticias] No se pudo cargar la noticia', id, e.message);
+    }
+  }
+
   const body = document.getElementById('noticiasModalBody');
-  if (!n || !body) return;
+  if (!body) return;
+
+  if (!n) {
+    body.innerHTML = '<p style="padding:24px;color:var(--muted);">No se encontró esta noticia. Puede haber sido eliminada.</p>';
+    abrirModal();
+    return;
+  }
 
   body.innerHTML = `
     ${n.foto ? `<img class="noticias-articulo-foto" src="${n.foto}" alt="${n.titulo || ''}">` : ''}
@@ -1738,7 +1771,30 @@ function abrirArticulo(idx) {
       <div class="noticias-articulo-fecha">${fmtFecha(n.fechaMs)}</div>
       <div class="noticias-articulo-cuerpo">${n.contenido || ''}</div>
       ${n.piedefoto ? `<p class="noticias-articulo-pie">📷 ${n.piedefoto}</p>` : ''}
+      <div class="noticias-articulo-compartir">
+        <button class="noticias-copiar-link" data-url="${urlNoticia(n.id)}">🔗 Copiar link a esta noticia</button>
+      </div>
     </div>`;
+
+  // Botón de copiar link
+  const btnCopiar = body.querySelector('.noticias-copiar-link');
+  if (btnCopiar) {
+    btnCopiar.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btnCopiar.dataset.url);
+        btnCopiar.textContent = '✅ Link copiado';
+        setTimeout(() => { btnCopiar.textContent = '🔗 Copiar link a esta noticia'; }, 2000);
+      } catch(e) {
+        btnCopiar.textContent = btnCopiar.dataset.url;
+      }
+    });
+  }
+
+  // Actualizar la URL sin recargar la página (permite compartir desde el navegador)
+  const nuevaUrl = urlNoticia(n.id);
+  if (window.location.href !== nuevaUrl) {
+    history.pushState({ noticia: n.id }, '', `/?noticia=${n.id}`);
+  }
 
   abrirModal();
 }
@@ -1755,7 +1811,7 @@ function abrirListadoCompleto() {
 
   const lista = document.createElement('div');
   lista.className = 'noticias-modal-lista';
-  _todasNoticias.forEach((n, i) => lista.appendChild(buildCard(n, i)));
+  _todasNoticias.forEach(n => lista.appendChild(buildCard(n)));
   body.innerHTML = '';
   body.appendChild(lista);
   abrirModal();
@@ -1772,6 +1828,10 @@ function cerrarModal() {
   const overlay = document.getElementById('noticiasOverlay');
   overlay.style.display = 'none';
   document.body.style.overflow = '';
+  // Si la URL tenía ?noticia=, la limpiamos al cerrar (sin recargar)
+  if (new URLSearchParams(window.location.search).has('noticia')) {
+    history.pushState({}, '', '/');
+  }
 }
 
 // Cerrar con botón ✕
@@ -1793,10 +1853,17 @@ document.addEventListener('keydown', e => {
 document.getElementById('noticiasVerTodas')
   .addEventListener('click', abrirListadoCompleto);
 
+// Deep link: si la URL trae ?noticia=ID, abrir esa noticia automáticamente
+(function abrirNoticiaDesdeUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('noticia');
+  if (id) abrirArticulo(id);
+})();
+
 // Listener de Firestore — carga las 3 más recientes
 onSnapshot(noticiasQuery, snap => {
   const publicadas = snap.docs
-    .map(d => d.data())
+    .map(d => ({ id: d.id, ...d.data() }))
     .filter(n => n.publicado !== false);
 
   _todasNoticias = publicadas; // cache para modal
@@ -1912,6 +1979,7 @@ console.log('[Firebase] Listener de estado inicializado');
       <li><a href="#estaciones">🚌 Colectivos</a></li>
       <li><a href="#mapa">🗺️ Mapa</a></li>
       <li><a href="#faq">❓ FAQ</a></li>
+      <li><a href="#ultimos-trenes">🚆 Últimos Trenes</a></li>
     </ul>
   </div>
 </nav>
@@ -2275,6 +2343,23 @@ console.log('[Firebase] Listener de estado inicializado');
       }, 2000); // 2 segundos después de cargar
     }
   })();
+
+  // Deep link: si la URL trae #ultimos-trenes, abrir el widget automáticamente
+  function abrirWidgetUltimosTrenes() {
+    bubble.style.display = 'none';
+    card.style.display = 'block';
+    card.style.opacity = '1';
+    card.style.transform = 'scale(1)';
+    card.style.pointerEvents = 'auto';
+    document.getElementById('lastTrainWidget')
+      .scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  if (window.location.hash === '#ultimos-trenes') {
+    setTimeout(abrirWidgetUltimosTrenes, 300);
+  }
+  window.addEventListener('hashchange', () => {
+    if (window.location.hash === '#ultimos-trenes') abrirWidgetUltimosTrenes();
+  });
 
 })();
 </script>
