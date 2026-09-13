@@ -87,6 +87,10 @@ Reglas:
 - Si preguntan por el estado del servicio AHORA y hay datos de "estado en
   vivo" en el contexto, usalos como fuente principal por sobre las
   frecuencias del cronograma oficial.
+- Si el contexto incluye una sección "NOTICIAS", seguí EXACTAMENTE la
+  instrucción que trae esa sección (si sugerir el link #noticias o el sitio
+  general) — es un dato en vivo, no lo reemplaces por tu propio criterio ni
+  por el link de "Estado del servicio" de la lista de arriba.
 `.trim();
 
 export const SIN_RESPUESTA_SENTINEL = "SIN_RESPUESTA_CONCRETA";

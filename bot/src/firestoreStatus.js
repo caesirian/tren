@@ -66,6 +66,7 @@ export async function getEstadoServicio() {
       ultimaActualizacion: d.ultimaActualizacion || null,
       actualizado: d.actualizado || null,
       vigencia: d.vigencia || null,
+      mostrarTitulares: d.mostrarTitulares === true,
     };
   } catch (err) {
     console.error("Error leyendo estado de Firestore:", err.message);

@@ -17,6 +17,7 @@ import { responderPregunta, SIN_RESPUESTA_SENTINEL } from "./gemini.js";
 import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
+import { registrarChatGrupo } from "./groupChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
 import { esInsulto } from "./insultDetector.js";
@@ -186,6 +187,20 @@ async function armarContexto(pregunta) {
       texto += `Próxima salida hoy: desde ${dif.desde} hacia ${dif.hacia} a las ${dif.hora} (en ${dif.enMinutos} min).`;
     }
     partes.push(texto);
+  }
+
+  // Si preguntan por noticias, la fuente de verdad es si el sitio tiene
+  // activada la sección de noticias (campo mostrarTitulares en Firestore,
+  // el mismo toggle que usa el admin del sitio).
+  if (/\bnoticia(s)?\b/i.test(pregunta)) {
+    const activas = estado?.mostrarTitulares === true;
+    partes.push(`
+== NOTICIAS ==
+${
+  activas
+    ? `La sección de noticias del sitio está activa ahora mismo. Sugerí entrar a https://trensarmientoenlinea.com.ar/#noticias para ver los últimos titulares. No inventes ni resumas ninguna noticia puntual, no la tenés cargada acá — solo derivá al link.`
+    : `La sección de noticias del sitio está desactivada por ahora (no hay titulares publicados). NO menciones la sección de noticias ni uses el link #noticias — sugerí directamente entrar a https://trensarmientoenlinea.com.ar para lo último del servicio.`
+}`);
   }
 
   // Si la pregunta menciona una estación, calculamos horarios reales de HOY
@@ -358,6 +373,7 @@ bot.on("text", async (ctx) => {
       if (respuestaCacheada) {
         await ctx.reply(respuestaCacheada, opcionesRespuesta(ctx));
         if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: respuestaCacheada });
+        if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: respuestaCacheada });
       }
       return;
     }
@@ -371,6 +387,7 @@ bot.on("text", async (ctx) => {
     if (respuesta) {
       await ctx.reply(respuesta, opcionesRespuesta(ctx));
       if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta });
+      if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta });
     }
     // Si respuesta es null (pregunta al aire sin dato concreto), el bot se
     // queda callado a propósito — no hace falta contestar cada cosa que se
@@ -384,8 +401,19 @@ bot.on("text", async (ctx) => {
         respuesta: null,
         error: err.message,
       });
+    } else {
+      await registrarChatGrupo({
+        ctx,
+        pregunta: ctx.message?.text ?? null,
+        respuesta: null,
+        error: err.message,
+      });
     }
-    await ctx.reply(RESPUESTA_ERROR_TECNICO, ctx.message ? opcionesRespuesta(ctx) : undefined);
+    // Si el error fue por falta de permiso para escribir (Tema restringido,
+    // bot sin rango, etc.), reintentar el aviso de error es inútil — va a
+    // fallar exactamente igual. Evita un loop de errores en el log.
+    if (/not enough rights|CHAT_WRITE_FORBIDDEN/i.test(err.message || "")) return;
+    await ctx.reply(RESPUESTA_ERROR_TECNICO, ctx.message ? opcionesRespuesta(ctx) : undefined).catch(() => {});
   }
 });
 
