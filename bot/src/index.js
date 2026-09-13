@@ -18,6 +18,7 @@ import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentin
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
+import { chequearYNotificar } from "./monitor.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
 
@@ -393,6 +394,21 @@ const WEBHOOK_PATH = `/webhook/${BOT_TOKEN}`;
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
 app.get("/", (_req, res) => res.send("Bot Tren Sarmiento activo."));
+
+// Disparado por un ping externo (cron-job.org, ver README) cada 10-15 min.
+// Protegido por CHECK_SECRET para que nadie más lo pueda gatillar.
+app.get("/internal/check", async (req, res) => {
+  if (!process.env.CHECK_SECRET || req.query.secret !== process.env.CHECK_SECRET) {
+    return res.status(403).send("forbidden");
+  }
+  try {
+    const resultado = await chequearYNotificar(bot);
+    res.json(resultado);
+  } catch (err) {
+    console.error("Error en /internal/check:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {

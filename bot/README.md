@@ -84,6 +84,49 @@ En el grupo, mencioná al bot o respondé uno de sus mensajes:
 
 En chat privado con el bot no hace falta mencionarlo, responde todo.
 
+## 6bis. Responder preguntas sin que lo mencionen (opcional)
+
+Si activás `RESPONDER_SIN_MENCION=true` en Render, el bot también va a
+contestar mensajes "al aire" en el grupo (sin tag ni reply), siempre que
+detecte una combinación de:
+- una palabra del rubro (tren, sarmiento, horario, tarifa, sube, estación,
+  demora, subte, colectivo, algún nombre de estación, etc.)
+- una señal de pregunta (signo `?`, "cuándo", "cuánto", "dónde", "alguien
+  sabe", etc.)
+
+La lista de palabras clave está en `src/index.js` (`PALABRAS_TEMA` y
+`PISTAS_PREGUNTA`) — sumale o sacale términos según cómo hable tu comunidad.
+
+Ojo con esto: aunque el filtro reduce mucho los falsos positivos, en un
+grupo activo el bot va a intervenir más seguido. Si ves que contesta cosas
+que no correspondía, ajustá las listas o volvé a dejarlo en `false`
+(solo responde si lo mencionan).
+
+## 6ter. Avisos automáticos de cambios (opcional)
+
+El bot puede avisarte por Telegram si:
+- Cambia el estado del semáforo (`estadoServicio` en Firestore).
+- Aparece una novedad en la búsqueda de paros/medidas gremiales.
+
+Como Render free "duerme" sin tráfico, esto no corre solo — necesita que
+algo externo lo despierte cada tanto. La forma gratuita de hacerlo:
+
+1. Generá una clave secreta cualquiera (ej. una tira larga de letras y
+   números) y cargala en Render como `CHECK_SECRET`.
+2. Creá una cuenta gratis en [cron-job.org](https://cron-job.org).
+3. Creá un nuevo cronjob apuntando a:
+   ```
+   https://tu-url-de-render.onrender.com/internal/check?secret=TU_CHECK_SECRET
+   ```
+4. Configurá que se ejecute cada 10-15 minutos.
+
+Con esto, además de recibir los avisos, el ping mantiene el servicio
+despierto la mayor parte del tiempo (efecto secundario útil: menos demora
+en la primera respuesta del día).
+
+La primera vez que corra no te va a avisar nada (no tiene con qué comparar
+todavía) — recién a partir del segundo chequeo empieza a detectar cambios.
+
 ## 7. Mantenimiento
 
 - Actualizar tarifas/frecuencias: editar `src/staticData.js` y volver a
