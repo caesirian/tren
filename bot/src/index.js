@@ -19,7 +19,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
-import { chequearYEnviarInformeDiario } from "./dailyReport.js";
+import { chequearYEnviarInformeDiario, generarInformeTexto } from "./dailyReport.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
 
@@ -268,6 +268,21 @@ bot.help((ctx) =>
     "Ejemplos:\n- ¿Cada cuánto pasa el tren en hora pico?\n- ¿Cuánto sale el boleto?\n- ¿Cómo va el servicio ahora?\n- ¿Con qué combina en Once?"
   )
 );
+
+// Comando manual para pedir el informe de logs de las últimas 24hs sin
+// depender de que el ping externo llegue justo dentro de la ventana de
+// las 18hs (si el servicio free de Render está dormido en ese momento,
+// el informe automático no dispara). Solo el admin puede usarlo.
+bot.command("informe", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  try {
+    const texto = await generarInformeTexto();
+    await ctx.reply(texto);
+  } catch (err) {
+    console.error("Error generando informe manual:", err.message);
+    await ctx.reply("No pude generar el informe: " + err.message);
+  }
+});
 
 // Reenvía al admin cualquier foto, audio, nota de voz o video que le
 // manden al bot por chat PRIVADO (no en el grupo, ahí es tráfico normal).
