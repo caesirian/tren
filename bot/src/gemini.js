@@ -65,6 +65,9 @@ Reglas:
   ejemplo varios horarios de locales); si no, texto corrido y breve.
   Excepción: si la pregunta pide explícitamente más detalle o explicación,
   ahí sí podés extenderte un poco más.
+- Si la pregunta menciona más de una estación (ej. "Merlo y Castelar"), el
+  contexto va a traer una sección de horarios/locales para CADA una por
+  separado — respondé sobre todas las que preguntaron, no solo la primera.
 - Si preguntan específicamente por un "local" en una estación, esto significa
   una formación que arranca VACÍA ahí (no cualquier tren que pasa) — usá la
   sección "LOCALES" del contexto para esa respuesta, no la de horarios
@@ -87,10 +90,6 @@ Reglas:
 - Si preguntan por el estado del servicio AHORA y hay datos de "estado en
   vivo" en el contexto, usalos como fuente principal por sobre las
   frecuencias del cronograma oficial.
-- Si el contexto incluye una sección "NOTICIAS", seguí EXACTAMENTE la
-  instrucción que trae esa sección (si sugerir el link #noticias o el sitio
-  general) — es un dato en vivo, no lo reemplaces por tu propio criterio ni
-  por el link de "Estado del servicio" de la lista de arriba.
 `.trim();
 
 export const SIN_RESPUESTA_SENTINEL = "SIN_RESPUESTA_CONCRETA";

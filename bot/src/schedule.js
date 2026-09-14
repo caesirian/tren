@@ -113,15 +113,39 @@ export function buscarEstacion(nombre) {
 }
 
 // Detecta si el texto menciona alguna estación conocida.
+// Límite de palabra manual (mismo criterio que insultDetector.js), para que
+// "Floresta" no matchee por error con la estación "Flores" (sería un
+// substring válido si solo miráramos "incluye").
+function contieneComoPalabra(texto, frase) {
+  const escapada = frase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(^|[^a-zA-ZÀ-ÿ0-9])${escapada}([^a-zA-ZÀ-ÿ0-9]|$)`, "i");
+  return regex.test(texto);
+}
+
 export function detectarEstacion(texto) {
   const norm = (s) =>
     s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const t = norm(texto);
   for (const st of STATIONS) {
     const nombres = [st.name, ...(st.aliases || [])];
-    if (nombres.some((n) => t.includes(norm(n)))) return st;
+    if (nombres.some((n) => contieneComoPalabra(t, norm(n)))) return st;
   }
   return null;
+}
+
+// Igual que detectarEstacion, pero devuelve TODAS las estaciones mencionadas
+// en el texto (no solo la primera) — para preguntas tipo "¿hay local de
+// Merlo y Castelar?" que mencionan más de una.
+export function detectarEstaciones(texto) {
+  const norm = (s) =>
+    s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const t = norm(texto);
+  const encontradas = [];
+  for (const st of STATIONS) {
+    const nombres = [st.name, ...(st.aliases || [])];
+    if (nombres.some((n) => contieneComoPalabra(t, norm(n)))) encontradas.push(st);
+  }
+  return encontradas;
 }
 
 // Próximos trenes que pasan por una estación, en ambos sentidos (o uno solo).

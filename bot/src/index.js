@@ -14,10 +14,9 @@ import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from
 import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL } from "./gemini.js";
-import { detectarEstacion, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
+import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
-import { registrarChatGrupo } from "./groupChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
 import { esInsulto } from "./insultDetector.js";
@@ -189,32 +188,19 @@ async function armarContexto(pregunta) {
     partes.push(texto);
   }
 
-  // Si preguntan por noticias, la fuente de verdad es si el sitio tiene
-  // activada la sección de noticias (campo mostrarTitulares en Firestore,
-  // el mismo toggle que usa el admin del sitio).
-  if (/\bnoticia(s)?\b/i.test(pregunta)) {
-    const activas = estado?.mostrarTitulares === true;
-    partes.push(`
-== NOTICIAS ==
-${
-  activas
-    ? `La sección de noticias del sitio está activa ahora mismo. Sugerí entrar a https://trensarmientoenlinea.com.ar/#noticias para ver los últimos titulares. No inventes ni resumas ninguna noticia puntual, no la tenés cargada acá — solo derivá al link.`
-    : `La sección de noticias del sitio está desactivada por ahora (no hay titulares publicados). NO menciones la sección de noticias ni uses el link #noticias — sugerí directamente entrar a https://trensarmientoenlinea.com.ar para lo último del servicio.`
-}`);
-  }
-
-  // Si la pregunta menciona una estación, calculamos horarios reales de HOY
-  // usando el mismo cronograma que trensarmientoenlinea.com.ar (no aproximado).
-  const estacion = detectarEstacion(pregunta);
-  if (estacion) {
+  // Si la pregunta menciona una o más estaciones, calculamos horarios reales
+  // de HOY para CADA UNA (antes solo tomaba la primera y omitía el resto).
+  const estacionesDetectadas = detectarEstaciones(pregunta);
+  if (estacionesDetectadas.length) {
     const ahora = new Date();
-    const proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora });
-    const ultimos = ultimosTrenes(ahora);
-    const transporte = infoTransporteEstacion(estacion.name);
-    partes.push(`
+    for (const estacion of estacionesDetectadas) {
+      const proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora });
+      const ultimos = ultimosTrenes(ahora);
+      const transporte = infoTransporteEstacion(estacion.name);
+      partes.push(`
 == TRANSPORTE EN LA ZONA DE "${estacion.name}" ==
 ${transporte || "Sin datos de colectivos/subte cargados para esta estación."}`);
-    partes.push(`
+      partes.push(`
 == HORARIOS REALES CALCULADOS AHORA PARA "${estacion.name}" (cronograma oficial, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==
 Próximos trenes hacia Moreno desde ${estacion.name}: ${proximos.haciaMoreno.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
 Próximos trenes hacia Once desde ${estacion.name}: ${proximos.haciaOnce.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
@@ -222,22 +208,23 @@ Próximos trenes hacia Once desde ${estacion.name}: ${proximos.haciaOnce.map((t)
 Último tren de hoy saliendo de Moreno: ${ultimos.desdeMoreno.ultimo} (penúltimo: ${ultimos.desdeMoreno.penultimo})
 Estos horarios están calculados en el momento con el cronograma base oficial vigente y son la fuente más precisa disponible — no derives a la app si esta sección ya responde la pregunta.`);
 
-    const locales = proximosLocales(estacion.name, ahora);
-    const todosLosHorarios = horariosLocalesEstacion(estacion.name);
-    let bloqueLocales;
-    if (!todosLosHorarios.length) {
-      bloqueLocales = `Esta estación NO tiene servicios "locales" designados en ningún horario del día (los locales solo existen en Flores, Liniers, Merlo y Castelar). Puede tomar cualquier tren regular con los horarios de arriba.`;
-    } else if (getDayType(ahora) !== "lv") {
-      bloqueLocales = `Hoy no circula ningún local porque los locales solo son de lunes a viernes. En días hábiles, los horarios habituales en esta estación son: ${todosLosHorarios.map((l) => `${l.hora} ${l.direccion}`).join(", ")}.`;
-    } else if (!locales.length) {
-      bloqueLocales = `Ya pasaron todos los locales programados de HOY en esta estación (eran a las ${todosLosHorarios.map((l) => `${l.hora} ${l.direccion}`).join(", ")}) — no es que el servicio dejó de funcionar, simplemente ya no quedan más locales por salir hoy. Puede tomar cualquier tren regular con los horarios de arriba, o volver a preguntar mañana por los mismos horarios.`;
-    } else {
-      bloqueLocales = locales.map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ");
-    }
-    partes.push(`
+      const locales = proximosLocales(estacion.name, ahora);
+      const todosLosHorarios = horariosLocalesEstacion(estacion.name);
+      let bloqueLocales;
+      if (!todosLosHorarios.length) {
+        bloqueLocales = `Esta estación NO tiene servicios "locales" designados en ningún horario del día (los locales solo existen en Flores, Liniers, Merlo y Castelar). Puede tomar cualquier tren regular con los horarios de arriba.`;
+      } else if (getDayType(ahora) !== "lv") {
+        bloqueLocales = `Hoy no circula ningún local porque los locales solo son de lunes a viernes. En días hábiles, los horarios habituales en esta estación son: ${todosLosHorarios.map((l) => `${l.hora} ${l.direccion}`).join(", ")}.`;
+      } else if (!locales.length) {
+        bloqueLocales = `Ya pasaron todos los locales programados de HOY en esta estación (eran a las ${todosLosHorarios.map((l) => `${l.hora} ${l.direccion}`).join(", ")}) — no es que el servicio dejó de funcionar, simplemente ya no quedan más locales por salir hoy. Puede tomar cualquier tren regular con los horarios de arriba, o volver a preguntar mañana por los mismos horarios.`;
+      } else {
+        bloqueLocales = locales.map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ");
+      }
+      partes.push(`
 == "LOCALES" (formaciones que arrancan VACÍAS) EN "${estacion.name}" ==
 IMPORTANTE: un "local" NO es cualquier tren que pasa por la estación — es una formación puntual que arranca vacía ahí mismo, muy buscada porque conviene subirse antes de que se llene.
 ${bloqueLocales}`);
+    }
   } else if (/\blocal(es)?\b/i.test(pregunta)) {
     // Preguntan por "locales" sin decir de qué estación — les paso el listado completo de hoy.
     const ahora = new Date();
@@ -373,7 +360,6 @@ bot.on("text", async (ctx) => {
       if (respuestaCacheada) {
         await ctx.reply(respuestaCacheada, opcionesRespuesta(ctx));
         if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: respuestaCacheada });
-        if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: respuestaCacheada });
       }
       return;
     }
@@ -387,7 +373,6 @@ bot.on("text", async (ctx) => {
     if (respuesta) {
       await ctx.reply(respuesta, opcionesRespuesta(ctx));
       if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta });
-      if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta });
     }
     // Si respuesta es null (pregunta al aire sin dato concreto), el bot se
     // queda callado a propósito — no hace falta contestar cada cosa que se
@@ -401,19 +386,8 @@ bot.on("text", async (ctx) => {
         respuesta: null,
         error: err.message,
       });
-    } else {
-      await registrarChatGrupo({
-        ctx,
-        pregunta: ctx.message?.text ?? null,
-        respuesta: null,
-        error: err.message,
-      });
     }
-    // Si el error fue por falta de permiso para escribir (Tema restringido,
-    // bot sin rango, etc.), reintentar el aviso de error es inútil — va a
-    // fallar exactamente igual. Evita un loop de errores en el log.
-    if (/not enough rights|CHAT_WRITE_FORBIDDEN/i.test(err.message || "")) return;
-    await ctx.reply(RESPUESTA_ERROR_TECNICO, ctx.message ? opcionesRespuesta(ctx) : undefined).catch(() => {});
+    await ctx.reply(RESPUESTA_ERROR_TECNICO, ctx.message ? opcionesRespuesta(ctx) : undefined);
   }
 });
 
