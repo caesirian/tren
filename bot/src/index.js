@@ -19,6 +19,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
+import { chequearYEnviarInformeDiario } from "./dailyReport.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
 
@@ -405,7 +406,8 @@ app.get("/internal/check", async (req, res) => {
   }
   try {
     const resultado = await chequearYNotificar(bot);
-    res.json(resultado);
+    const informeDiario = await chequearYEnviarInformeDiario(bot);
+    res.json({ ...resultado, informeDiario });
   } catch (err) {
     console.error("Error en /internal/check:", err.message);
     res.status(500).json({ ok: false, error: err.message });
