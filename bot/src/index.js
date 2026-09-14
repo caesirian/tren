@@ -414,9 +414,13 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send("Bot Tren Sarmiento activo."));
 
 // Disparado por un ping externo (cron-job.org, ver README) cada 10-15 min.
-// Protegido por CHECK_SECRET para que nadie más lo pueda gatillar.
+// Protegido por CHECK_SECRET (o CRON_SECRET, para el cron nativo de Render)
+// para que nadie más lo pueda gatillar.
 app.get("/internal/check", async (req, res) => {
-  if (!process.env.CHECK_SECRET || req.query.secret !== process.env.CHECK_SECRET) {
+  const secretValido =
+    (process.env.CHECK_SECRET && req.query.secret === process.env.CHECK_SECRET) ||
+    (process.env.CRON_SECRET && req.query.secret === process.env.CRON_SECRET);
+  if (!secretValido) {
     return res.status(403).send("forbidden");
   }
   try {
