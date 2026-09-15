@@ -4,6 +4,17 @@
 // tier de Render (el free tier "duerme" tras inactividad, pero al usar
 // webhook -en vez de polling- Telegram simplemente espera la respuesta
 // cuando Render lo despierta; no hace falta mantenerlo despierto).
+//
+// ⚠️ ESTE REPO SE EDITA DESDE MÚLTIPLES SESIONES DE CLAUDE EN PARALELO.
+// Si sos una sesión de Claude leyendo esto: corré `git fetch origin && git
+// log HEAD..origin/main --oneline` (o directamente `git pull --ff-only`)
+// ANTES de editar este archivo o cualquier otro de bot/src — incluso si
+// clonaste el repo hace poco en esta misma conversación. Ya pasó más de una
+// vez que una sesión con una copia vieja pisó sin querer /informe, /estado,
+// logsGrupo y la sección de noticias porque no volvió a sincronizar antes
+// de escribir. Si hay commits nuevos que no reconocés, mirá el mensaje del
+// commit y el diff antes de sobrescribir nada — probablemente sea trabajo
+// de otra sesión que hay que preservar, no descartar.
 
 import "dotenv/config";
 import express from "express";

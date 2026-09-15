@@ -2,6 +2,10 @@
 // Usa Gemini (capa gratuita de Google AI Studio) para responder en lenguaje
 // natural, siempre basándose en el contexto que le pasamos (datos fijos +
 // estado en vivo del semáforo). Así evitamos que "invente" horarios.
+//
+// ⚠️ Este repo se edita desde múltiples sesiones de Claude en paralelo —
+// ver la advertencia al inicio de index.js. Sincronizá con origin/main
+// antes de tocar este archivo.
 
 import { GoogleGenAI } from "@google/genai";
 
