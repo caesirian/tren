@@ -366,7 +366,7 @@ bot.on("text", async (ctx) => {
 
     // Alimenta la señal informal de "nadie se queja" — se registra SIEMPRE
     // que sea un mensaje de grupo, aunque no le hablen al bot directamente.
-    if (esGrupo) registrarMensajeGrupo(textoOriginal);
+    if (esGrupo) registrarMensajeGrupo(textoOriginal, ctx.from?.id);
 
     // Aviso al admin ante insultos o groserías, en grupo O privado.
     if (esInsulto(textoOriginal) && process.env.ADMIN_TELEGRAM_ID) {

@@ -1,52 +1,69 @@
 // src/complaintTracker.js
-// Señal AUXILIAR e informal: si el grupo está activo y nadie se queja de
-// demoras/paro, es un indicio (no una confirmación) de que el servicio
-// viene funcionando con normalidad. Nunca reemplaza al semáforo oficial
-// de Firestore — solo suma contexto cuando no hay nada mejor.
+// Señal AUXILIAR e informal del grupo: categoriza cada mensaje como
+// "demora", "cancelacion", "normalidad" (reporte explícito de que anda
+// bien) o ninguna de las tres (charla neutra, no cuenta para nada).
+// Nunca reemplaza al semáforo oficial de Firestore — solo suma contexto
+// cuando no hay nada mejor, y alimenta el resumen de última hora del
+// /informe.
 //
 // Se guarda en memoria (no en base de datos): al reiniciarse el servicio
 // (Render free tier duerme y despierta) la ventana se reinicia sola, lo
-// cual está bien para este propósito.
+// cual está bien para este propósito — es señal de corto plazo, no
+// histórico.
 
-const VENTANA_MS = 3 * 60 * 60 * 1000; // 3 horas — para que las quejas de
-// "hoy más temprano" sigan pesando cuando preguntan por el estado más tarde.
+const VENTANA_SENAL_MS = 3 * 60 * 60 * 1000; // 3 horas, para responder preguntas de estado
+const VENTANA_RESUMEN_MS = 60 * 60 * 1000; // 1 hora, para el resumen del /informe
 const MIN_MENSAJES_PARA_OPINAR = 5; // solo aplica para decir "viene todo bien"
 
-const PALABRAS_QUEJA = [
+const PALABRAS_DEMORA = [
   "demora", "demorado", "atrasad", "tardanza", "tardando", "tarda ", "tardó",
-  "no arranca", "no anda", "no llega", "no sale", "parado", "paro", "varad",
-  "cortad", "corte", "falla", "rotura", "roto", "descarril", "choque",
-  "chocó", "colapsad", "sin luz", "quedamos", "quedé", "no funciona",
-  "suspendid", "cancela", "espera", "esperando", "esperamos", "20 min",
-  "media hora", "hora esperando",
+  "no arranca", "no anda", "no llega", "no sale", "parado", "varad",
+  "espera", "esperando", "esperamos", "20 min", "media hora", "hora esperando",
+];
+const PALABRAS_CANCELACION = [
+  "cancela", "suspendid", "paro", "cortad", "corte", "no funciona",
+  "descarril", "choque", "chocó", "colapsad", "sin luz", "quedamos",
+  "quedé", "falla", "rotura", "roto",
+];
+const PALABRAS_NORMALIDAD = [
+  "anda bien", "todo bien", "llegó a horario", "llegue a horario",
+  "llegó puntual", "a horario", "sin problemas", "sin demoras",
+  "ninguna demora", "viene normal", "anda normal", "todo normal",
+  "puntual",
 ];
 
-// Ventana deslizante en memoria: [{ ts, esQueja }]
+function categorizar(texto) {
+  const lower = (texto || "").toLowerCase();
+  // Cancelación y demora pesan más que "normalidad" ante cualquier
+  // superposición de palabras — mejor sobre-reportar un problema que
+  // taparlo con un falso "todo bien".
+  if (PALABRAS_CANCELACION.some((p) => lower.includes(p))) return "cancelacion";
+  if (PALABRAS_DEMORA.some((p) => lower.includes(p))) return "demora";
+  if (PALABRAS_NORMALIDAD.some((p) => lower.includes(p))) return "normalidad";
+  return null;
+}
+
+// Ventana deslizante en memoria: [{ ts, userId, categoria }]
 let mensajes = [];
 
 function limpiarVentana(ahoraMs) {
-  mensajes = mensajes.filter((m) => ahoraMs - m.ts < VENTANA_MS);
+  mensajes = mensajes.filter((m) => ahoraMs - m.ts < VENTANA_SENAL_MS);
 }
 
-export function registrarMensajeGrupo(texto) {
+export function registrarMensajeGrupo(texto, userId) {
   const ahoraMs = Date.now();
   limpiarVentana(ahoraMs);
-  const lower = (texto || "").toLowerCase();
-  const esQueja = PALABRAS_QUEJA.some((p) => lower.includes(p));
-  mensajes.push({ ts: ahoraMs, esQueja });
+  mensajes.push({ ts: ahoraMs, userId: userId ?? null, categoria: categorizar(texto) });
 }
 
-// Devuelve la señal actual, o null si no hay nada útil para opinar.
+// Devuelve la señal actual (ventana de 3hs), o null si no hay nada útil
+// para opinar. Usada para contestar preguntas de estado del servicio.
 export function getSenalComunidad() {
   limpiarVentana(Date.now());
   const total = mensajes.length;
-  const quejas = mensajes.filter((m) => m.esQueja).length;
-  const minutos = Math.round(VENTANA_MS / 60000);
+  const quejas = mensajes.filter((m) => m.categoria === "demora" || m.categoria === "cancelacion").length;
+  const minutos = Math.round(VENTANA_SENAL_MS / 60000);
 
-  // Si NO hay quejas, solo vale la pena opinar con actividad suficiente
-  // (poca charla no alcanza para decir "todo normal"). Si SÍ hay quejas,
-  // valen igual aunque sean pocos mensajes en total — 1 o 2 quejas ya son
-  // información, no hace falta esperar a que haya mucho tráfico.
   if (quejas === 0 && total < MIN_MENSAJES_PARA_OPINAR) return null;
 
   let interpretacion;
@@ -59,4 +76,26 @@ export function getSenalComunidad() {
   }
 
   return { total, quejas, minutos, interpretacion };
+}
+
+// Resumen de la última hora para el /informe: cuántas CUENTAS DISTINTAS
+// reportaron cada categoría (no cuenta mensajes repetidos de la misma
+// persona, para que un solo usuario insistente no infle el número).
+export function getResumenUltimaHora() {
+  const ahoraMs = Date.now();
+  const ventana = mensajes.filter((m) => ahoraMs - m.ts < VENTANA_RESUMEN_MS);
+
+  const usuariosPorCategoria = { demora: new Set(), cancelacion: new Set(), normalidad: new Set() };
+  for (const m of ventana) {
+    if (m.categoria && usuariosPorCategoria[m.categoria]) {
+      usuariosPorCategoria[m.categoria].add(m.userId ?? `anon-${m.ts}`);
+    }
+  }
+
+  return {
+    totalMensajes: ventana.length,
+    cuentasDemora: usuariosPorCategoria.demora.size,
+    cuentasCancelacion: usuariosPorCategoria.cancelacion.size,
+    cuentasNormalidad: usuariosPorCategoria.normalidad.size,
+  };
 }

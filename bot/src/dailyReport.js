@@ -15,6 +15,7 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { RESPUESTA_SIN_DATO } from "./staticData.js";
+import { getResumenUltimaHora } from "./complaintTracker.js";
 
 const ZONA = "America/Argentina/Buenos_Aires";
 const HORA_ENVIO = 18; // 18:00 hs Argentina
@@ -128,7 +129,22 @@ export async function generarInformeTexto() {
   const listaUsuarios = [...privados.porUsuario.entries()].map(([u, n]) => `  · ${u}: ${n}`).join("\n") || "  (nadie)";
   const listaGrupos = [...grupo.porGrupo.entries()].map(([g, n]) => `  · ${g}: ${n}`).join("\n") || "  (sin actividad)";
 
+  const resumenHora = getResumenUltimaHora();
+  let bloqueResumenHora;
+  if (resumenHora.totalMensajes === 0) {
+    bloqueResumenHora = "  (sin actividad en el grupo)";
+  } else {
+    bloqueResumenHora =
+      `  🐢 Demoras/esperas: ${resumenHora.cuentasDemora} cuenta(s) distinta(s)\n` +
+      `  🚫 Cancelaciones/paro: ${resumenHora.cuentasCancelacion} cuenta(s) distinta(s)\n` +
+      `  ✅ Reportan normalidad: ${resumenHora.cuentasNormalidad} cuenta(s) distinta(s)\n` +
+      `  (${resumenHora.totalMensajes} mensajes totales en el grupo en la última hora)`;
+  }
+
   return `📊 Informe diario del bot (últimas 24hs)
+
+🗣️ Última hora en el grupo (cuentas distintas que reportaron algo):
+${bloqueResumenHora}
 
 💬 Privados recibidos: ${privados.total}
 ${listaUsuarios}
