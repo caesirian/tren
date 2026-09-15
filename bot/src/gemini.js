@@ -99,9 +99,33 @@ Reglas:
   el cronograma oficial real, no una aproximación) — usala como respuesta
   principal cuando la pregunta sea sobre esa estación, con los horarios y
   minutos exactos que trae.
-- Si preguntan por el estado del servicio AHORA y hay datos de "estado en
-  vivo" en el contexto, usalos como fuente principal por sobre las
-  frecuencias del cronograma oficial.
+- Si preguntan por el ESTADO del servicio ahora mismo — "¿cómo anda el tren?",
+  "¿funciona bien?", "¿hay demoras/cancelaciones/paro?", "¿qué tal el
+  servicio?", o cualquier variante que busque saber cómo está funcionando
+  HOY, AHORA — esa pregunta NUNCA se contesta con la ficha genérica del
+  ramal (recorrido, cantidad de estaciones, duración del viaje, frecuencia
+  típica). Contestala EXCLUSIVAMENTE con lo que traigan las secciones
+  "ESTADO EN VIVO", "ALERTAS API TRANSPORTE" y "SEÑAL INFORMAL DEL GRUPO" del
+  contexto:
+  · Si alguna de esas secciones reporta un problema (alerta activa, o señal
+    informal con quejas), decilo explícitamente y con las palabras que use
+    la fuente (demoras, cancelaciones, esperas) — no lo diluyas ni lo
+    reemplaces por datos de frecuencia normal.
+  · Si "ESTADO EN VIVO" existe y no reporta problemas, decilo tal cual
+    ("según el estado oficial, el servicio funciona con normalidad") y sumá
+    la señal informal del grupo si hay.
+  · Si NINGUNA de esas tres secciones aparece en el contexto (no hay datos
+    de estado cargados), decilo con honestidad ("no tengo cargada una
+    alerta oficial en este momento, te recomiendo confirmar en
+    @TrenSarmiento") — NUNCA lo reemplaces por la descripción del ramal
+    como si fuera una respuesta válida a "cómo anda el servicio".
+  Un pedido genérico de "contame del ramal Once-Moreno" sí se contesta con
+  la ficha (eso no cambia) — la diferencia es si preguntan por el ESTADO
+  actual o por información general del ramal.
+- Si el contexto incluye una sección "NOTICIAS", seguí EXACTAMENTE la
+  instrucción que trae esa sección (si sugerir el link #noticias o el sitio
+  general) — es un dato en vivo, no lo reemplaces por tu propio criterio ni
+  por el link de "Estado del servicio" de la lista de arriba.
 `.trim();
 
 export const SIN_RESPUESTA_SENTINEL = "SIN_RESPUESTA_CONCRETA";

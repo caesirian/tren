@@ -11,14 +11,16 @@ import { Telegraf } from "telegraf";
 import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
-import { getEstadoServicio } from "./firestoreStatus.js";
+import { getEstadoServicio, actualizarEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
+import { registrarChatGrupo } from "./groupChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
+import { chequearYEnviarInformeDiario, generarInformeTexto } from "./dailyReport.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
 
@@ -188,6 +190,20 @@ async function armarContexto(pregunta) {
     partes.push(texto);
   }
 
+  // Si preguntan por noticias, la fuente de verdad es si el sitio tiene
+  // activada la sección de noticias (campo mostrarTitulares en Firestore,
+  // el mismo toggle que usa el admin del sitio).
+  if (/\bnoticia(s)?\b/i.test(pregunta)) {
+    const activas = estado?.mostrarTitulares === true;
+    partes.push(`
+== NOTICIAS ==
+${
+  activas
+    ? `La sección de noticias del sitio está activa ahora mismo. Sugerí entrar a https://trensarmientoenlinea.com.ar/#noticias para ver los últimos titulares. No inventes ni resumas ninguna noticia puntual, no la tenés cargada acá — solo derivá al link.`
+    : `La sección de noticias del sitio está desactivada por ahora (no hay titulares publicados). NO menciones la sección de noticias ni uses el link #noticias — sugerí directamente entrar a https://trensarmientoenlinea.com.ar para lo último del servicio.`
+}`);
+  }
+
   // Si la pregunta menciona una o más estaciones, calculamos horarios reales
   // de HOY para CADA UNA (antes solo tomaba la primera y omitía el resto).
   const estacionesDetectadas = detectarEstaciones(pregunta);
@@ -268,6 +284,69 @@ bot.help((ctx) =>
   )
 );
 
+// Lista de administradores habilitados para /estado — separada de
+// ADMIN_TELEGRAM_ID (que sigue siendo el único destinatario de /informe y
+// de los avisos automáticos). Pensada para sumar gente sin tocar código:
+// ESTADO_ADMIN_IDS="123456,789012". Si no está seteada, cae a ADMIN_TELEGRAM_ID.
+function esAdminEstado(ctx) {
+  const lista = (process.env.ESTADO_ADMIN_IDS || process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  return lista.includes(String(ctx.from?.id));
+}
+
+const ESTADOS_VALIDOS = { normal: "normal", demoras: "modificado", paro: "paro" };
+const ETIQUETAS_CONFIRMACION = {
+  normal: "Servicio normal",
+  modificado: "Servicio con demoras",
+  paro: "Servicio interrumpido",
+};
+
+bot.command("estado", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const partes = (ctx.message.text || "").split(" ").slice(1);
+  const subcomando = (partes[0] || "").toLowerCase();
+  const mensaje = partes.slice(1).join(" ").trim();
+
+  if (!ESTADOS_VALIDOS[subcomando]) {
+    await ctx.reply(
+      "Uso: /estado <normal|demoras|paro> [mensaje]\n\nEj: /estado demoras Demoras de 15-20 min por falla de señales en Ramos Mejía"
+    );
+    return;
+  }
+  if (subcomando !== "normal" && !mensaje) {
+    await ctx.reply(`Falta el mensaje para "${subcomando}". Ej: /estado ${subcomando} Demoras de 15-20 min en Ramos Mejía`);
+    return;
+  }
+
+  try {
+    const estado = ESTADOS_VALIDOS[subcomando];
+    await actualizarEstadoServicio({ estado, mensaje, editor: "Telegram (HG)" });
+    const etiqueta = ETIQUETAS_CONFIRMACION[estado];
+    await ctx.reply(`✅ Estado actualizado: ${etiqueta}${mensaje ? ` — "${mensaje}"` : ""}`);
+  } catch (err) {
+    console.error("Error actualizando estado:", err.message);
+    await ctx.reply("No pude actualizar el estado: " + err.message);
+  }
+});
+
+// Comando manual para pedir el informe de logs de las últimas 24hs sin
+// depender de que el ping externo llegue justo dentro de la ventana de
+// las 18hs (si el servicio free de Render está dormido en ese momento,
+// el informe automático no dispara). Solo el admin puede usarlo.
+bot.command("informe", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  try {
+    const texto = await generarInformeTexto();
+    await ctx.reply(texto);
+  } catch (err) {
+    console.error("Error generando informe manual:", err.message);
+    await ctx.reply("No pude generar el informe: " + err.message);
+  }
+});
+
 // Reenvía al admin cualquier foto, audio, nota de voz o video que le
 // manden al bot por chat PRIVADO (no en el grupo, ahí es tráfico normal).
 async function reenviarMediaAlAdmin(ctx, tipo) {
@@ -303,7 +382,7 @@ bot.on("text", async (ctx) => {
 
     // Alimenta la señal informal de "nadie se queja" — se registra SIEMPRE
     // que sea un mensaje de grupo, aunque no le hablen al bot directamente.
-    if (esGrupo) registrarMensajeGrupo(textoOriginal);
+    if (esGrupo) registrarMensajeGrupo(textoOriginal, ctx.from?.id);
 
     // Aviso al admin ante insultos o groserías, en grupo O privado.
     if (esInsulto(textoOriginal) && process.env.ADMIN_TELEGRAM_ID) {
@@ -361,6 +440,7 @@ bot.on("text", async (ctx) => {
       if (respuestaCacheada) {
         await ctx.reply(respuestaCacheada, opcionesRespuesta(ctx));
         if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: respuestaCacheada });
+        if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: respuestaCacheada });
       }
       return;
     }
@@ -374,6 +454,7 @@ bot.on("text", async (ctx) => {
     if (respuesta) {
       await ctx.reply(respuesta, opcionesRespuesta(ctx));
       if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta });
+      if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta });
     }
     // Si respuesta es null (pregunta al aire sin dato concreto), el bot se
     // queda callado a propósito — no hace falta contestar cada cosa que se
@@ -387,8 +468,19 @@ bot.on("text", async (ctx) => {
         respuesta: null,
         error: err.message,
       });
+    } else {
+      await registrarChatGrupo({
+        ctx,
+        pregunta: ctx.message?.text ?? null,
+        respuesta: null,
+        error: err.message,
+      });
     }
-    await ctx.reply(RESPUESTA_ERROR_TECNICO, ctx.message ? opcionesRespuesta(ctx) : undefined);
+    // Si el error fue por falta de permiso para escribir (Tema restringido,
+    // bot sin rango, etc.), reintentar el aviso de error es inútil — va a
+    // fallar exactamente igual. Evita un loop de errores en el log.
+    if (/not enough rights|CHAT_WRITE_FORBIDDEN/i.test(err.message || "")) return;
+    await ctx.reply(RESPUESTA_ERROR_TECNICO, ctx.message ? opcionesRespuesta(ctx) : undefined).catch(() => {});
   }
 });
 
@@ -399,14 +491,19 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send("Bot Tren Sarmiento activo."));
 
 // Disparado por un ping externo (cron-job.org, ver README) cada 10-15 min.
-// Protegido por CHECK_SECRET para que nadie más lo pueda gatillar.
+// Protegido por CHECK_SECRET (o CRON_SECRET, para el cron nativo de Render)
+// para que nadie más lo pueda gatillar.
 app.get("/internal/check", async (req, res) => {
-  if (!process.env.CHECK_SECRET || req.query.secret !== process.env.CHECK_SECRET) {
+  const secretValido =
+    (process.env.CHECK_SECRET && req.query.secret === process.env.CHECK_SECRET) ||
+    (process.env.CRON_SECRET && req.query.secret === process.env.CRON_SECRET);
+  if (!secretValido) {
     return res.status(403).send("forbidden");
   }
   try {
     const resultado = await chequearYNotificar(bot);
-    res.json(resultado);
+    const informeDiario = await chequearYEnviarInformeDiario(bot);
+    res.json({ ...resultado, informeDiario });
   } catch (err) {
     console.error("Error en /internal/check:", err.message);
     res.status(500).json({ ok: false, error: err.message });
