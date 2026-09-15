@@ -11,7 +11,7 @@ import { Telegraf } from "telegraf";
 import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
-import { getEstadoServicio } from "./firestoreStatus.js";
+import { getEstadoServicio, actualizarEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
@@ -268,6 +268,54 @@ bot.help((ctx) =>
     "Ejemplos:\n- ¿Cada cuánto pasa el tren en hora pico?\n- ¿Cuánto sale el boleto?\n- ¿Cómo va el servicio ahora?\n- ¿Con qué combina en Once?"
   )
 );
+
+// Lista de administradores habilitados para /estado — separada de
+// ADMIN_TELEGRAM_ID (que sigue siendo el único destinatario de /informe y
+// de los avisos automáticos). Pensada para sumar gente sin tocar código:
+// ESTADO_ADMIN_IDS="123456,789012". Si no está seteada, cae a ADMIN_TELEGRAM_ID.
+function esAdminEstado(ctx) {
+  const lista = (process.env.ESTADO_ADMIN_IDS || process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  return lista.includes(String(ctx.from?.id));
+}
+
+const ESTADOS_VALIDOS = { normal: "normal", demoras: "modificado", paro: "paro" };
+const ETIQUETAS_CONFIRMACION = {
+  normal: "Servicio normal",
+  modificado: "Servicio con demoras",
+  paro: "Servicio interrumpido",
+};
+
+bot.command("estado", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const partes = (ctx.message.text || "").split(" ").slice(1);
+  const subcomando = (partes[0] || "").toLowerCase();
+  const mensaje = partes.slice(1).join(" ").trim();
+
+  if (!ESTADOS_VALIDOS[subcomando]) {
+    await ctx.reply(
+      "Uso: /estado <normal|demoras|paro> [mensaje]\n\nEj: /estado demoras Demoras de 15-20 min por falla de señales en Ramos Mejía"
+    );
+    return;
+  }
+  if (subcomando !== "normal" && !mensaje) {
+    await ctx.reply(`Falta el mensaje para "${subcomando}". Ej: /estado ${subcomando} Demoras de 15-20 min en Ramos Mejía`);
+    return;
+  }
+
+  try {
+    const estado = ESTADOS_VALIDOS[subcomando];
+    await actualizarEstadoServicio({ estado, mensaje, editor: "Telegram (HG)" });
+    const etiqueta = ETIQUETAS_CONFIRMACION[estado];
+    await ctx.reply(`✅ Estado actualizado: ${etiqueta}${mensaje ? ` — "${mensaje}"` : ""}`);
+  } catch (err) {
+    console.error("Error actualizando estado:", err.message);
+    await ctx.reply("No pude actualizar el estado: " + err.message);
+  }
+});
 
 // Comando manual para pedir el informe de logs de las últimas 24hs sin
 // depender de que el ping externo llegue justo dentro de la ventana de

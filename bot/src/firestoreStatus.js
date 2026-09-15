@@ -49,6 +49,25 @@ const ETIQUETAS_ESTADO = {
   paro: "Servicio interrumpido",
 };
 
+export async function actualizarEstadoServicio({ estado, mensaje, editor }) {
+  const firestore = ensureInit();
+  if (!firestore) throw new Error("Firestore no está configurado (faltan credenciales).");
+
+  const datos = {
+    estado,
+    actualizado: new Date().toISOString(),
+    editor,
+  };
+  // "normal" limpia el mensaje de alerta; demoras/paro sí lo necesitan.
+  if (mensaje) datos.mensaje = mensaje;
+  else if (estado === "normal") datos.mensaje = "Sin alertas activas.";
+
+  // merge:true a propósito — el panel de Admin usa setDoc sin merge y
+  // pisa todo el documento; acá lo evitamos para no borrar mostrarTitulares
+  // ni otros campos que no tocamos desde el bot.
+  await firestore.collection("estadoServicio").doc("actual").set(datos, { merge: true });
+}
+
 export async function getEstadoServicio() {
   const firestore = ensureInit();
   if (!firestore) return null;
