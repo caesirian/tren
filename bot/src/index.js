@@ -11,7 +11,7 @@ import { Telegraf } from "telegraf";
 import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
-import { getEstadoServicio, actualizarEstadoServicio } from "./firestoreStatus.js";
+import { getEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
@@ -19,7 +19,6 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
-import { chequearYEnviarInformeDiario, generarInformeTexto } from "./dailyReport.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
 
@@ -269,80 +268,18 @@ bot.help((ctx) =>
   )
 );
 
-// Lista de administradores habilitados para /estado — separada de
-// ADMIN_TELEGRAM_ID (que sigue siendo el único destinatario de /informe y
-// de los avisos automáticos). Pensada para sumar gente sin tocar código:
-// ESTADO_ADMIN_IDS="123456,789012". Si no está seteada, cae a ADMIN_TELEGRAM_ID.
-function esAdminEstado(ctx) {
-  const lista = (process.env.ESTADO_ADMIN_IDS || process.env.ADMIN_TELEGRAM_ID || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  return lista.includes(String(ctx.from?.id));
-}
-
-const ESTADOS_VALIDOS = { normal: "normal", demoras: "modificado", paro: "paro" };
-const ETIQUETAS_CONFIRMACION = {
-  normal: "Servicio normal",
-  modificado: "Servicio con demoras",
-  paro: "Servicio interrumpido",
-};
-
-bot.command("estado", async (ctx) => {
-  if (!esAdminEstado(ctx)) return;
-
-  const partes = (ctx.message.text || "").split(" ").slice(1);
-  const subcomando = (partes[0] || "").toLowerCase();
-  const mensaje = partes.slice(1).join(" ").trim();
-
-  if (!ESTADOS_VALIDOS[subcomando]) {
-    await ctx.reply(
-      "Uso: /estado <normal|demoras|paro> [mensaje]\n\nEj: /estado demoras Demoras de 15-20 min por falla de señales en Ramos Mejía"
-    );
-    return;
-  }
-  if (subcomando !== "normal" && !mensaje) {
-    await ctx.reply(`Falta el mensaje para "${subcomando}". Ej: /estado ${subcomando} Demoras de 15-20 min en Ramos Mejía`);
-    return;
-  }
-
-  try {
-    const estado = ESTADOS_VALIDOS[subcomando];
-    await actualizarEstadoServicio({ estado, mensaje, editor: "Telegram (HG)" });
-    const etiqueta = ETIQUETAS_CONFIRMACION[estado];
-    await ctx.reply(`✅ Estado actualizado: ${etiqueta}${mensaje ? ` — "${mensaje}"` : ""}`);
-  } catch (err) {
-    console.error("Error actualizando estado:", err.message);
-    await ctx.reply("No pude actualizar el estado: " + err.message);
-  }
-});
-
-// Comando manual para pedir el informe de logs de las últimas 24hs sin
-// depender de que el ping externo llegue justo dentro de la ventana de
-// las 18hs (si el servicio free de Render está dormido en ese momento,
-// el informe automático no dispara). Solo el admin puede usarlo.
-bot.command("informe", async (ctx) => {
-  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
-  try {
-    const texto = await generarInformeTexto();
-    await ctx.reply(texto);
-  } catch (err) {
-    console.error("Error generando informe manual:", err.message);
-    await ctx.reply("No pude generar el informe: " + err.message);
-  }
-});
-
 // Reenvía al admin cualquier foto, audio, nota de voz o video que le
 // manden al bot por chat PRIVADO (no en el grupo, ahí es tráfico normal).
 async function reenviarMediaAlAdmin(ctx, tipo) {
-  if (ctx.chat?.type !== "private") return;
+  if (!esChatAutorizado(ctx)) return;
   if (!process.env.ADMIN_TELEGRAM_ID) return;
   try {
     const from = ctx.from || {};
     const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
+    const origen = ctx.chat?.type === "private" ? "por privado" : `en el grupo (${ctx.chat?.title || "sin nombre"})`;
     await bot.telegram.sendMessage(
       process.env.ADMIN_TELEGRAM_ID,
-      `📎 Recibí un(a) ${tipo} de ${quien} por privado:`
+      `📎 Recibí un(a) ${tipo} de ${quien} ${origen}:`
     );
     await ctx.forwardMessage(process.env.ADMIN_TELEGRAM_ID);
   } catch (err) {
@@ -366,7 +303,7 @@ bot.on("text", async (ctx) => {
 
     // Alimenta la señal informal de "nadie se queja" — se registra SIEMPRE
     // que sea un mensaje de grupo, aunque no le hablen al bot directamente.
-    if (esGrupo) registrarMensajeGrupo(textoOriginal, ctx.from?.id);
+    if (esGrupo) registrarMensajeGrupo(textoOriginal);
 
     // Aviso al admin ante insultos o groserías, en grupo O privado.
     if (esInsulto(textoOriginal) && process.env.ADMIN_TELEGRAM_ID) {
@@ -462,19 +399,14 @@ app.use(bot.webhookCallback(WEBHOOK_PATH));
 app.get("/", (_req, res) => res.send("Bot Tren Sarmiento activo."));
 
 // Disparado por un ping externo (cron-job.org, ver README) cada 10-15 min.
-// Protegido por CHECK_SECRET (o CRON_SECRET, para el cron nativo de Render)
-// para que nadie más lo pueda gatillar.
+// Protegido por CHECK_SECRET para que nadie más lo pueda gatillar.
 app.get("/internal/check", async (req, res) => {
-  const secretValido =
-    (process.env.CHECK_SECRET && req.query.secret === process.env.CHECK_SECRET) ||
-    (process.env.CRON_SECRET && req.query.secret === process.env.CRON_SECRET);
-  if (!secretValido) {
+  if (!process.env.CHECK_SECRET || req.query.secret !== process.env.CHECK_SECRET) {
     return res.status(403).send("forbidden");
   }
   try {
     const resultado = await chequearYNotificar(bot);
-    const informeDiario = await chequearYEnviarInformeDiario(bot);
-    res.json({ ...resultado, informeDiario });
+    res.json(resultado);
   } catch (err) {
     console.error("Error en /internal/check:", err.message);
     res.status(500).json({ ok: false, error: err.message });
