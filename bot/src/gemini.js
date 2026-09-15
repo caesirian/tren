@@ -144,9 +144,14 @@ function esperar(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function esErrorTransitorio(err) {
+export function esErrorTransitorio(err) {
   const status = err?.status ?? err?.error?.code;
-  return status === 500 || status === 503 || /internal|unavailable/i.test(err?.message || "");
+  return (
+    status === 429 ||
+    status === 500 ||
+    status === 503 ||
+    /internal|unavailable|resource_exhausted|quota/i.test(err?.message || "")
+  );
 }
 
 export async function responderPregunta({ pregunta, contexto }) {

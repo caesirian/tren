@@ -110,6 +110,41 @@ function contarGrupo(docs) {
   return { total: docs.length, porGrupo, exitosos, sinPermiso, fallidos };
 }
 
+// Lista los mensajes que fallaron (error técnico) en las últimas N horas,
+// juntando privados y grupo — para cuando el log de Render ya rotó y no
+// se puede ver qué fue lo que no se pudo responder.
+export async function listarFallidosRecientes(horas = 24) {
+  const firestore = ensureInit();
+  if (!firestore) return { texto: "Firestore no está configurado (faltan credenciales).", items: [] };
+
+  const desde = Timestamp.fromDate(new Date(Date.now() - horas * 60 * 60 * 1000));
+  const [privadosSnap, grupoSnap] = await Promise.all([
+    firestore.collection("logsPrivados").where("creadoEn", ">=", desde).get(),
+    firestore.collection("logsGrupo").where("creadoEn", ">=", desde).get(),
+  ]);
+
+  const items = [];
+  for (const doc of privadosSnap.docs) {
+    const d = doc.data();
+    if (d.error) items.push({ tipo: "privado", quien: d.username ? `@${d.username}` : d.nombre || `ID ${d.userId}`, pregunta: d.pregunta, error: d.error, ts: d.timestamp });
+  }
+  for (const doc of grupoSnap.docs) {
+    const d = doc.data();
+    if (d.error) items.push({ tipo: "grupo", quien: d.username ? `@${d.username}` : d.nombre || `ID ${d.userId}`, pregunta: d.pregunta, error: d.error, ts: d.timestamp, sinPermiso: d.sinPermiso });
+  }
+  items.sort((a, b) => new Date(a.ts) - new Date(b.ts));
+
+  if (items.length === 0) {
+    return { texto: `✅ Sin mensajes fallidos en las últimas ${horas}hs.`, items };
+  }
+
+  const lineas = items.map(
+    (i) =>
+      `• [${i.tipo}${i.sinPermiso ? " · sin permiso" : ""}] ${i.quien}: "${i.pregunta}"\n  ${new Date(i.ts).toLocaleString("es-AR", { timeZone: ZONA })}`
+  );
+  return { texto: `❌ ${items.length} mensaje(s) fallido(s) en las últimas ${horas}hs:\n\n${lineas.join("\n\n")}`, items };
+}
+
 export async function generarInformeTexto() {
   const firestore = ensureInit();
   if (!firestore) {

@@ -24,14 +24,15 @@ import NodeCache from "node-cache";
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
 import { getEstadoServicio, actualizarEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
-import { responderPregunta, SIN_RESPUESTA_SENTINEL } from "./gemini.js";
+import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo } from "./groupChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
-import { chequearYEnviarInformeDiario, generarInformeTexto } from "./dailyReport.js";
+import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes } from "./dailyReport.js";
+import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "./retryQueue.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
 
@@ -358,6 +359,20 @@ bot.command("informe", async (ctx) => {
   }
 });
 
+// Lista mensajes que fallaron por error técnico (Firestore lo guarda aunque
+// el log de Render ya haya rotado). Uso: /fallidos [horas] — default 24hs.
+bot.command("fallidos", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  const horas = parseInt((ctx.message.text || "").split(" ")[1], 10) || 24;
+  try {
+    const { texto } = await listarFallidosRecientes(horas);
+    await ctx.reply(texto);
+  } catch (err) {
+    console.error("Error listando fallidos:", err.message);
+    await ctx.reply("No pude listar los fallidos: " + err.message);
+  }
+});
+
 // Reenvía al admin cualquier foto, audio, nota de voz o video que le
 // manden al bot por chat PRIVADO (no en el grupo, ahí es tráfico normal).
 async function reenviarMediaAlAdmin(ctx, tipo) {
@@ -384,6 +399,7 @@ bot.on("video", (ctx) => reenviarMediaAlAdmin(ctx, "video"));
 bot.on("video_note", (ctx) => reenviarMediaAlAdmin(ctx, "video nota"));
 
 bot.on("text", async (ctx) => {
+  let preguntaParaReintento = null;
   try {
     if (!esChatAutorizado(ctx)) return;
 
@@ -431,6 +447,7 @@ bot.on("text", async (ctx) => {
 
     const pregunta = limpiarMencion(textoOriginal);
     if (!pregunta) return;
+    preguntaParaReintento = pregunta;
 
     // Límite de uso por persona: protege la cuota gratuita de Gemini.
     if (excedioLimite(ctx.from?.id)) {
@@ -492,6 +509,30 @@ bot.on("text", async (ctx) => {
     // fallar exactamente igual. Evita un loop de errores en el log.
     if (/not enough rights|CHAT_WRITE_FORBIDDEN/i.test(err.message || "")) return;
     await ctx.reply(RESPUESTA_ERROR_TECNICO, ctx.message ? opcionesRespuesta(ctx) : undefined).catch(() => {});
+
+    // Si fue un error TRANSITORIO (Gemini saturado/cuota) y llegamos a tener
+    // una pregunta armada, la encolamos para reintentar sola en el próximo
+    // ping periódico, y avisamos al admin ahora mismo con el contenido del
+    // mensaje — así no depende de mirar el log de Render (que rota) para
+    // enterarse de qué se perdió.
+    if (esErrorTransitorio(err) && preguntaParaReintento && process.env.ADMIN_TELEGRAM_ID) {
+      const from = ctx.from || {};
+      const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
+      encolarReintento({
+        tipo: ctx.chat?.type === "private" ? "privado" : "grupo",
+        chatId: ctx.chat?.id,
+        threadId: ctx.message?.message_thread_id ?? null,
+        userId: from.id,
+        pregunta: preguntaParaReintento,
+        quien,
+      });
+      bot.telegram
+        .sendMessage(
+          process.env.ADMIN_TELEGRAM_ID,
+          `⚠️ No pude responder por error técnico (${ctx.chat?.type === "private" ? "privado" : "grupo"}), lo voy a reintentar solo:\nDe: ${quien}\nMensaje: "${preguntaParaReintento}"\nError: ${err.message}`
+        )
+        .catch((e) => console.error("Error avisando al admin sobre fallo:", e.message));
+    }
   }
 });
 
@@ -500,6 +541,40 @@ const WEBHOOK_PATH = `/webhook/${BOT_TOKEN}`;
 app.use(bot.webhookCallback(WEBHOOK_PATH));
 
 app.get("/", (_req, res) => res.send("Bot Tren Sarmiento activo."));
+
+// Reintenta las preguntas encoladas por error transitorio. Si esta vez
+// Gemini responde, se la manda a quien preguntó (tarde, pero llega) y se
+// registra como resuelta; si se agotan los intentos o pasó demasiado
+// tiempo, se descarta sola (ver retryQueue.js) sin generar más ruido.
+async function procesarColaReintentos() {
+  const pendientes = listaPendientes();
+  let resueltos = 0;
+  for (const item of pendientes) {
+    marcarIntento(item);
+    try {
+      const contexto = await armarContexto(item.pregunta);
+      const respuestaCruda = await responderPregunta({ pregunta: item.pregunta, contexto });
+      const respuesta = manejarSinRespuesta(respuestaCruda, true);
+      if (respuesta) {
+        const prefijo = `(Perdón la demora, tuve un problema técnico antes) `;
+        await bot.telegram.sendMessage(item.chatId, prefijo + respuesta, item.threadId ? { message_thread_id: item.threadId } : undefined);
+      }
+      const ctxFalso = { chat: { id: item.chatId, title: null, type: item.tipo === "privado" ? "private" : "group" }, from: { id: item.userId }, message: { message_thread_id: item.threadId } };
+      if (item.tipo === "grupo") {
+        await registrarChatGrupo({ ctx: ctxFalso, pregunta: item.pregunta, respuesta });
+      } else {
+        await registrarChatPrivado({ ctx: ctxFalso, pregunta: item.pregunta, respuesta });
+      }
+      quitarDeCola(item);
+      resueltos++;
+    } catch (err) {
+      // Sigue en la cola (marcarIntento ya sumó el intento); si esErrorTransitorio
+      // sigue fallando, se reintenta en el próximo ping hasta agotar MAX_INTENTOS.
+      console.error("Reintento fallido para:", item.pregunta, "-", err.message);
+    }
+  }
+  return { resueltos, pendientes: listaPendientes().length };
+}
 
 // Disparado por un ping externo (cron-job.org, ver README) cada 10-15 min.
 // Protegido por CHECK_SECRET (o CRON_SECRET, para el cron nativo de Render)
@@ -514,7 +589,8 @@ app.get("/internal/check", async (req, res) => {
   try {
     const resultado = await chequearYNotificar(bot);
     const informeDiario = await chequearYEnviarInformeDiario(bot);
-    res.json({ ...resultado, informeDiario });
+    const reintentos = await procesarColaReintentos();
+    res.json({ ...resultado, informeDiario, reintentos });
   } catch (err) {
     console.error("Error en /internal/check:", err.message);
     res.status(500).json({ ok: false, error: err.message });
