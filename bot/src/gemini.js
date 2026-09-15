@@ -6,7 +6,13 @@
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const MODEL = "gemini-3.6-flash";
+// gemini-3.5-flash-lite en vez de 3.6-flash: la cuota gratuita diaria de
+// 3.6-flash es de apenas 20 requests/día, insuficiente para tráfico real
+// de un bot. Flash-Lite está pensado para alto volumen y viene con una
+// cuota gratuita muchísimo mayor (Google ya no publica el número exacto,
+// pero es un salto de orden de magnitud). Sin "thinking" por default, lo
+// cual para preguntas simples de horarios es más rápido, no peor.
+const MODEL = "gemini-3.5-flash-lite";
 
 const SYSTEM_INSTRUCTION = `
 Sos el asistente del grupo de Telegram de la comunidad del Tren Sarmiento
