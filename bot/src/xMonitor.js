@@ -74,17 +74,43 @@ async function fetchConTimeout(url) {
 }
 
 // Devuelve { texto, fecha, fuente } del tweet más reciente, o null si
-// ninguna instancia de Nitter respondió.
+// ninguna fuente respondió. Primero prueba el endpoint de sindicación de
+// X (el que usa el propio X para los widgets de "insertar tuit" — oficial,
+// pensado para lectura pública, no requiere cuenta ni API key), y si falla
+// cae a las instancias de Nitter.
 export async function obtenerUltimoTweet() {
+  try {
+    const json = await fetchConTimeout(
+      `https://cdn.syndication.twimg.com/timeline/profile?screen_name=${CUENTA_X}&showReplies=false&lang=es`
+    );
+    const data = JSON.parse(json);
+    // El endpoint devuelve un HTML embebido con los tuits (headerContent) o,
+    // según la versión, un array de entries — probamos ambas formas.
+    const bloque = data?.body || JSON.stringify(data);
+    const textoMatch = bloque.match(/<p[^>]*class="[^"]*tweet-text[^"]*"[^>]*>([\s\S]*?)<\/p>/);
+    if (textoMatch) {
+      return { texto: limpiarEntidadesHtml(textoMatch[1]), fecha: null, fuente: "syndication.twimg.com" };
+    }
+    console.error("xMonitor: syndication.twimg.com respondió pero no matcheó el formato esperado");
+  } catch (err) {
+    console.error("xMonitor: syndication.twimg.com falló:", err.message);
+  }
+
   for (const instancia of NITTER_INSTANCIAS) {
     try {
       const xml = await fetchConTimeout(`https://${instancia}/${CUENTA_X}/rss`);
       const match = xml.match(/<item>([\s\S]*?)<\/item>/);
-      if (!match) continue;
+      if (!match) {
+        console.error(`xMonitor: instancia ${instancia} respondió pero sin <item> en el RSS (primeros 200 caracteres): ${xml.slice(0, 200).replace(/\n/g, " ")}`);
+        continue;
+      }
       const item = match[1];
       const tituloMatch = item.match(/<title>([\s\S]*?)<\/title>/);
       const fechaMatch = item.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
-      if (!tituloMatch) continue;
+      if (!tituloMatch) {
+        console.error(`xMonitor: instancia ${instancia} tiene <item> pero sin <title>`);
+        continue;
+      }
       return {
         texto: limpiarEntidadesHtml(tituloMatch[1]),
         fecha: fechaMatch ? new Date(fechaMatch[1].trim()) : null,
