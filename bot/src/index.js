@@ -29,6 +29,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo } from "./groupChatLogger.js";
+import { guardarReporte } from "./reportLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
 import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados, listarUsuariosPrivados, getHistorialUsuario } from "./dailyReport.js";
@@ -406,9 +407,32 @@ async function reenviarMediaAlAdmin(ctx, tipo) {
     const from = ctx.from || {};
     const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
     const origen = ctx.chat?.type === "private" ? "por privado" : `en el grupo (${ctx.chat?.title || "sin nombre"})`;
+
+    // file_id según el tipo de media — para las fotos, Telegram manda un
+    // array de tamaños, nos quedamos con el más grande (el último).
+    const fileId =
+      ctx.message?.photo?.[ctx.message.photo.length - 1]?.file_id ??
+      ctx.message?.voice?.file_id ??
+      ctx.message?.audio?.file_id ??
+      ctx.message?.video?.file_id ??
+      ctx.message?.video_note?.file_id ??
+      null;
+
+    let lineaLink = "";
+    if (fileId) {
+      try {
+        const url = await bot.telegram.getFileLink(fileId);
+        // El link de Telegram está garantizado válido por al menos 1 hora
+        // (después puede vencer) — es para abrir rápido, no para guardar.
+        lineaLink = `\n🔗 ${url.href} (válido ~1 hora)`;
+      } catch (err) {
+        console.error(`Error generando link de ${tipo}:`, err.message);
+      }
+    }
+
     await bot.telegram.sendMessage(
       process.env.ADMIN_TELEGRAM_ID,
-      `📎 Recibí un(a) ${tipo} de ${quien} ${origen}:`
+      `📎 Recibí un(a) ${tipo} de ${quien} ${origen}:${lineaLink}`
     );
     await ctx.forwardMessage(process.env.ADMIN_TELEGRAM_ID);
   } catch (err) {
@@ -454,6 +478,64 @@ bot.action(/^hist:(.+)$/, async (ctx) => {
   } catch (err) {
     console.error("Error trayendo historial:", err.message);
     await ctx.reply("No pude traer el historial: " + err.message).catch(() => {});
+  }
+});
+
+// Cualquier usuario puede reportar algo (mal estado de un coche, un
+// guarda, lo que sea) sin que quede publicado en el grupo. Uso:
+// /reporte <mensaje>. Se guarda en Firestore y te llega copia por privado.
+bot.command("reporte", async (ctx) => {
+  if (!esChatAutorizado(ctx)) return;
+
+  const texto = (ctx.message.text || "").split(" ").slice(1).join(" ").trim();
+  if (!texto) {
+    await ctx.reply("Contame qué querés reportar así: /reporte tu mensaje. Ej: /reporte El coche 3 del tren de las 8 estaba muy sucio.");
+    return;
+  }
+
+  const esGrupo = ctx.chat?.type !== "private";
+
+  // Intenta borrar el mensaje del grupo para que el reporte no quede
+  // expuesto — requiere que el bot sea admin con permiso de borrado; si
+  // no lo tiene, sigue igual pero queda visible en el grupo (se avisa).
+  let borrado = false;
+  if (esGrupo) {
+    try {
+      await ctx.deleteMessage();
+      borrado = true;
+    } catch (err) {
+      console.error("No pude borrar el mensaje de /reporte:", err.message);
+    }
+  }
+
+  try {
+    const registro = await guardarReporte({ ctx, mensaje: texto });
+
+    if (process.env.ADMIN_TELEGRAM_ID) {
+      await bot.telegram
+        .sendMessage(process.env.ADMIN_TELEGRAM_ID, `📋 Nuevo reporte de ${registro.quien} (${registro.origen}):\n\n"${texto}"`)
+        .catch((e) => console.error("Error avisando al admin sobre reporte:", e.message));
+    }
+
+    const confirmacion = "✅ Recibimos tu reporte, gracias por ayudarnos a mejorar el servicio.";
+    if (esGrupo) {
+      // Preferimos confirmar por privado para no repetir el contenido en
+      // el grupo. Si el usuario nunca le escribió al bot, Telegram no deja
+      // mandarle DM en frío — ahí sí confirmamos en el grupo (sin repetir
+      // el texto del reporte, solo un genérico).
+      try {
+        await bot.telegram.sendMessage(ctx.from.id, confirmacion);
+      } catch {
+        await ctx
+          .reply(`${confirmacion}${borrado ? "" : "\n(no pude borrar tu mensaje del grupo, puede que siga visible)"}`)
+          .catch(() => {});
+      }
+    } else {
+      await ctx.reply(confirmacion);
+    }
+  } catch (err) {
+    console.error("Error guardando reporte:", err.message);
+    await ctx.reply("Uh, no pude guardar el reporte. Probá de nuevo en un rato, por favor.").catch(() => {});
   }
 });
 
