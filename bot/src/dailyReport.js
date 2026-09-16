@@ -145,6 +145,62 @@ export async function listarFallidosRecientes(horas = 24) {
   return { texto: `❌ ${items.length} mensaje(s) fallido(s) en las últimas ${horas}hs:\n\n${lineas.join("\n\n")}`, items };
 }
 
+// Reintenta los fallidos guardados en Firestore (sin el límite de 3hs de
+// retryQueue.js — esto lo dispara el admin a mano con /reintentar, así que
+// puede ir tan atrás como pida). generarRespuesta y enviarMensaje se pasan
+// desde index.js para no acoplar este módulo a Gemini/Telegram directamente.
+export async function reintentarFallidosGuardados({ horas = 24, generarRespuesta, enviarMensaje }) {
+  const firestore = ensureInit();
+  if (!firestore) return { texto: "Firestore no está configurado (faltan credenciales).", resueltos: 0, siguenFallando: 0 };
+
+  const desde = Timestamp.fromDate(new Date(Date.now() - horas * 60 * 60 * 1000));
+  const [privadosSnap, grupoSnap] = await Promise.all([
+    firestore.collection("logsPrivados").where("creadoEn", ">=", desde).get(),
+    firestore.collection("logsGrupo").where("creadoEn", ">=", desde).get(),
+  ]);
+
+  const candidatos = [];
+  for (const doc of privadosSnap.docs) {
+    const d = doc.data();
+    if (d.error && !d.reintentadoOk) candidatos.push({ ref: doc.ref, tipo: "privado", chatId: d.chatId, threadId: null, pregunta: d.pregunta, quien: d.username ? `@${d.username}` : d.nombre || `ID ${d.userId}` });
+  }
+  for (const doc of grupoSnap.docs) {
+    const d = doc.data();
+    if (d.error && !d.sinPermiso && !d.reintentadoOk) candidatos.push({ ref: doc.ref, tipo: "grupo", chatId: d.chatId, threadId: d.temaId ?? null, pregunta: d.pregunta, quien: d.username ? `@${d.username}` : d.nombre || `ID ${d.userId}` });
+  }
+
+  let resueltos = 0;
+  let siguenFallando = 0;
+  const detalle = [];
+
+  for (const c of candidatos) {
+    if (!c.pregunta || !c.chatId) continue; // sin suficiente info para reintentar
+    try {
+      const respuesta = await generarRespuesta(c.pregunta);
+      if (respuesta) {
+        await enviarMensaje({ chatId: c.chatId, threadId: c.threadId, texto: `(Perdón la demora, tuve un problema técnico antes) ${respuesta}` });
+        await c.ref.set({ reintentadoOk: true, respuesta }, { merge: true });
+        resueltos++;
+        detalle.push(`✅ ${c.quien}: "${c.pregunta}"`);
+      } else {
+        siguenFallando++;
+        detalle.push(`🤷 ${c.quien}: "${c.pregunta}" (sin dato concreto, no se le mandó nada)`);
+        await c.ref.set({ reintentadoOk: true }, { merge: true }); // no vale la pena reintentar de nuevo
+      }
+    } catch (err) {
+      siguenFallando++;
+      detalle.push(`❌ ${c.quien}: "${c.pregunta}" — sigue fallando (${err.message})`);
+    }
+  }
+
+  const texto =
+    candidatos.length === 0
+      ? `No hay fallidos pendientes de reintentar en las últimas ${horas}hs.`
+      : `Reintento terminado: ${resueltos} resuelto(s), ${siguenFallando} sin resolver, de ${candidatos.length} candidato(s).\n\n${detalle.join("\n")}`;
+
+  return { texto, resueltos, siguenFallando };
+}
+
 export async function generarInformeTexto() {
   const firestore = ensureInit();
   if (!firestore) {

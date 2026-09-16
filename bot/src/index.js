@@ -31,7 +31,7 @@ import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo } from "./groupChatLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
-import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes } from "./dailyReport.js";
+import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados } from "./dailyReport.js";
 import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "./retryQueue.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
@@ -370,6 +370,30 @@ bot.command("fallidos", async (ctx) => {
   } catch (err) {
     console.error("Error listando fallidos:", err.message);
     await ctx.reply("No pude listar los fallidos: " + err.message);
+  }
+});
+
+// Reintenta a mano los fallidos guardados en Firestore, sin el límite de
+// 3hs de la cola automática (retryQueue.js). Uso: /reintentar [horas].
+bot.command("reintentar", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  const horas = parseInt((ctx.message.text || "").split(" ")[1], 10) || 24;
+  await ctx.reply(`Reintentando fallidos de las últimas ${horas}hs, esto puede tardar un toque...`);
+  try {
+    const { texto } = await reintentarFallidosGuardados({
+      horas,
+      generarRespuesta: async (pregunta) => {
+        const contexto = await armarContexto(pregunta);
+        const respuestaCruda = await responderPregunta({ pregunta, contexto });
+        return manejarSinRespuesta(respuestaCruda, true);
+      },
+      enviarMensaje: ({ chatId, threadId, texto }) =>
+        bot.telegram.sendMessage(chatId, texto, threadId ? { message_thread_id: threadId } : undefined),
+    });
+    await ctx.reply(texto);
+  } catch (err) {
+    console.error("Error reintentando fallidos:", err.message);
+    await ctx.reply("No pude reintentar los fallidos: " + err.message);
   }
 });
 
