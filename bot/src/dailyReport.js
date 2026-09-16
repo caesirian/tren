@@ -168,6 +168,19 @@ export async function getHistorialUsuario(userId) {
   return { texto: encabezado + lineas.join("\n\n") };
 }
 
+// Solo la última pregunta de un usuario (para "Retomar conversación" desde
+// /historial — no hace falta traer todo el historial para eso).
+export async function getUltimaPreguntaUsuario(userId) {
+  const firestore = ensureInit();
+  if (!firestore) return { ultimaPregunta: null };
+
+  const snap = await firestore.collection("logsPrivados").where("userId", "==", Number(userId)).get();
+  if (snap.empty) return { ultimaPregunta: null };
+
+  const docs = snap.docs.map((d) => d.data()).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  return { ultimaPregunta: docs[0].pregunta };
+}
+
 export async function listarFallidosRecientes(horas = 24) {
   const firestore = ensureInit();
   if (!firestore) return { texto: "Firestore no está configurado (faltan credenciales).", items: [] };

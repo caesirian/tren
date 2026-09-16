@@ -184,3 +184,20 @@ Respuesta:`;
   }
   throw ultimoError;
 }
+
+// Redacta un mensaje corto para retomar una charla vieja con alguien, a
+// partir de su última pregunta guardada. Lo dispara el admin a mano desde
+// /historial → botón "Retomar conversación".
+export async function generarMensajeRetomar(ultimaPregunta) {
+  const prompt = `Sos el asistente de la comunidad del Tren Sarmiento en Telegram (trensarmientoenlinea.com.ar), con onda informal, motivadora y cordial (voseo rioplatense). Le vas a escribir por privado a alguien que ya habló con vos antes — no es la primera vez, así que NO te presentes de nuevo ni saludes como si no se conocieran.
+
+Su última pregunta guardada fue: "${ultimaPregunta}"
+
+Escribí un mensaje corto (2-3 líneas), natural, para retomar la charla: preguntale si sigue necesitando una mano con eso, si ya se le resolvió, o si tiene alguna otra duda ahora. No repitas la pregunta palabra por palabra, parafraseala. No inventes que "pasó tiempo" con un número concreto de días — dejalo genérico ("hace un tiempo", "el otro día").`;
+
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: prompt,
+  });
+  return response.text.trim();
+}

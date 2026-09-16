@@ -24,7 +24,7 @@ import NodeCache from "node-cache";
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
 import { getEstadoServicio, actualizarEstadoServicio } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
-import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio } from "./gemini.js";
+import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
@@ -32,7 +32,7 @@ import { registrarChatGrupo } from "./groupChatLogger.js";
 import { guardarReporte } from "./reportLogger.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
-import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados, listarUsuariosPrivados, getHistorialUsuario } from "./dailyReport.js";
+import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados, listarUsuariosPrivados, getHistorialUsuario, getUltimaPreguntaUsuario } from "./dailyReport.js";
 import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "./retryQueue.js";
 import { chequearYActualizarDesdeX } from "./xMonitor.js";
 import { esInsulto } from "./insultDetector.js";
@@ -453,7 +453,10 @@ bot.command("historial", async (ctx) => {
     const TOPE_USUARIOS = 25;
     const botones = usuarios
       .slice(0, TOPE_USUARIOS)
-      .map((u) => [Markup.button.callback(`${u.quien} (${u.cantidad})`, `hist:${u.userId}`)]);
+      .map((u) => [
+        Markup.button.callback(`📜 ${u.quien} (${u.cantidad})`, `hist:${u.userId}`),
+        Markup.button.callback("💬 Retomar", `retomar:${u.userId}`),
+      ]);
 
     await ctx.reply(
       `Elegí un usuario para ver el historial${usuarios.length > TOPE_USUARIOS ? ` (mostrando los ${TOPE_USUARIOS} más recientes de ${usuarios.length})` : ""}:`,
@@ -479,6 +482,29 @@ bot.action(/^hist:(.+)$/, async (ctx) => {
   } catch (err) {
     console.error("Error trayendo historial:", err.message);
     await ctx.reply("No pude traer el historial: " + err.message).catch(() => {});
+  }
+});
+
+// Retoma la charla con un usuario puntual: redacta un mensaje natural con
+// Gemini a partir de su última pregunta guardada, y se lo manda por
+// privado en tu nombre (bot).
+bot.action(/^retomar:(.+)$/, async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return ctx.answerCbQuery();
+  const userId = ctx.match[1];
+  try {
+    await ctx.answerCbQuery("Retomando conversación...");
+    const { ultimaPregunta } = await getUltimaPreguntaUsuario(userId);
+    if (!ultimaPregunta) {
+      await ctx.reply("No encontré una pregunta previa guardada de ese usuario para retomar.");
+      return;
+    }
+    const mensaje = await generarMensajeRetomar(ultimaPregunta);
+    await bot.telegram.sendMessage(userId, mensaje);
+    await ctx.reply(`✅ Retomé la charla con ese usuario:\n\n"${mensaje}"`);
+  } catch (err) {
+    console.error("Error retomando conversación:", err.message);
+    const motivo = err.response?.description || err.message;
+    await ctx.reply(`No pude retomarla: ${motivo}`).catch(() => {});
   }
 });
 
