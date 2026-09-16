@@ -34,6 +34,7 @@ import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
 import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados, listarUsuariosPrivados, getHistorialUsuario } from "./dailyReport.js";
 import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "./retryQueue.js";
+import { chequearYActualizarDesdeX } from "./xMonitor.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
 
@@ -734,10 +735,19 @@ app.get("/internal/check", async (req, res) => {
     return res.status(403).send("forbidden");
   }
   try {
+    const desdeX = await chequearYActualizarDesdeX();
+    if (desdeX.avisarFalloPersistente && process.env.ADMIN_TELEGRAM_ID) {
+      await bot.telegram
+        .sendMessage(
+          process.env.ADMIN_TELEGRAM_ID,
+          `⚠️ El monitoreo de X (@InfoTSarmiento) lleva ${desdeX.fallosConsecutivos} chequeos seguidos sin poder leer ninguna instancia de Nitter. Puede que todas estén caídas — no te va a volver a avisar de esto hasta que se resuelva solo o reinicies el servicio.`
+        )
+        .catch(() => {});
+    }
     const resultado = await chequearYNotificar(bot);
     const informeDiario = await chequearYEnviarInformeDiario(bot);
     const reintentos = await procesarColaReintentos();
-    res.json({ ...resultado, informeDiario, reintentos });
+    res.json({ ...resultado, informeDiario, reintentos, desdeX });
   } catch (err) {
     console.error("Error en /internal/check:", err.message);
     res.status(500).json({ ok: false, error: err.message });
