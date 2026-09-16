@@ -113,6 +113,61 @@ function contarGrupo(docs) {
 // Lista los mensajes que fallaron (error técnico) en las últimas N horas,
 // juntando privados y grupo — para cuando el log de Render ya rotó y no
 // se puede ver qué fue lo que no se pudo responder.
+// Lista los usuarios distintos que le escribieron por privado, más
+// recientes primero, con cuántos mensajes mandó cada uno. Trae TODO
+// logsPrivados (sin filtro de fecha) — para un bot de este tamaño el
+// volumen no da problema; si en algún momento crece mucho, acá habría que
+// sumar un límite o paginar.
+export async function listarUsuariosPrivados() {
+  const firestore = ensureInit();
+  if (!firestore) return { error: "Firestore no está configurado (faltan credenciales)." };
+
+  const snap = await firestore.collection("logsPrivados").get();
+  const porUsuario = new Map();
+  for (const doc of snap.docs) {
+    const d = doc.data();
+    if (!d.userId) continue;
+    const actual = porUsuario.get(d.userId) || { userId: d.userId, quien: null, cantidad: 0, ultimoTs: null };
+    actual.cantidad++;
+    const etiqueta = d.username ? `@${d.username}` : d.nombre || `ID ${d.userId}`;
+    if (!actual.ultimoTs || new Date(d.timestamp) > new Date(actual.ultimoTs)) {
+      actual.ultimoTs = d.timestamp;
+      actual.quien = etiqueta; // se queda con la etiqueta del mensaje más reciente
+    }
+    porUsuario.set(d.userId, actual);
+  }
+
+  const usuarios = [...porUsuario.values()].sort((a, b) => new Date(b.ultimoTs) - new Date(a.ultimoTs));
+  return { usuarios };
+}
+
+// Historial de un usuario puntual, más viejo primero (para leer como
+// conversación). Tope de 40 mensajes para no romper el límite de Telegram
+// (4096 caracteres por mensaje) — si hay más, se recorta y se avisa.
+export async function getHistorialUsuario(userId) {
+  const firestore = ensureInit();
+  if (!firestore) return { texto: "Firestore no está configurado (faltan credenciales)." };
+
+  const snap = await firestore.collection("logsPrivados").where("userId", "==", Number(userId)).get();
+  const docs = snap.docs.map((d) => d.data()).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+  if (docs.length === 0) return { texto: "No encontré historial guardado para ese usuario." };
+
+  const TOPE = 40;
+  const recortado = docs.length > TOPE;
+  const mostrar = recortado ? docs.slice(-TOPE) : docs;
+
+  const quien = mostrar[mostrar.length - 1].username ? `@${mostrar[mostrar.length - 1].username}` : mostrar[mostrar.length - 1].nombre || `ID ${userId}`;
+  const lineas = mostrar.map((d) => {
+    const hora = new Date(d.timestamp).toLocaleString("es-AR", { timeZone: ZONA });
+    const resp = d.respuesta ? d.respuesta : d.error ? `[falló: ${d.error}]` : "[sin respuesta]";
+    return `🕐 ${hora}\n🙋 ${d.pregunta}\n🤖 ${resp}`;
+  });
+
+  const encabezado = `Historial con ${quien} (${docs.length} mensaje(s) total${recortado ? `, mostrando los últimos ${TOPE}` : ""}):\n\n`;
+  return { texto: encabezado + lineas.join("\n\n") };
+}
+
 export async function listarFallidosRecientes(horas = 24) {
   const firestore = ensureInit();
   if (!firestore) return { texto: "Firestore no está configurado (faltan credenciales).", items: [] };
