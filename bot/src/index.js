@@ -540,6 +540,24 @@ bot.command("reporte", async (ctx) => {
   }
 });
 
+// Fuerza un chequeo manual del monitor de X (útil para probar sin esperar
+// al ping externo, y para forzar una actualización si hace falta).
+bot.command("chequeox", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  await ctx.reply("Chequeando @InfoTSarmiento...");
+  try {
+    const resultado = await chequearYActualizarDesdeX();
+    if (resultado.actualizado) {
+      await ctx.reply(`✅ Estado actualizado desde X: ${resultado.estado}\n"${resultado.texto}"`);
+    } else {
+      await ctx.reply(`Sin cambios: ${resultado.motivo}${resultado.texto ? `\n"${resultado.texto}"` : ""}`);
+    }
+  } catch (err) {
+    console.error("Error en /chequeox:", err.message);
+    await ctx.reply("Falló el chequeo: " + err.message);
+  }
+});
+
 bot.on("photo", (ctx) => reenviarMediaAlAdmin(ctx, "imagen"));
 bot.on("voice", (ctx) => reenviarMediaAlAdmin(ctx, "audio/nota de voz"));
 bot.on("audio", (ctx) => reenviarMediaAlAdmin(ctx, "audio"));
