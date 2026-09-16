@@ -324,6 +324,21 @@ function esAdminEstado(ctx) {
   return lista.includes(String(ctx.from?.id));
 }
 
+// Lista APARTE (no mezclar con esAdminEstado, que da permiso de cambiar el
+// semáforo oficial) para quién puede disparar el análisis automático de
+// imágenes de comunicados. Acepta tanto IDs numéricos como @usuarios, para
+// no depender de conseguir el ID numérico de cada colaborador.
+// Variable: COLABORADORES_IMAGENES="123456,@vivigo81,@otrocolaborador"
+function esColaboradorImagenes(ctx) {
+  const lista = (process.env.COLABORADORES_IMAGENES || process.env.ADMIN_TELEGRAM_ID || "")
+    .split(",")
+    .map((s) => s.trim().replace(/^@/, "").toLowerCase())
+    .filter(Boolean);
+  const porId = lista.includes(String(ctx.from?.id).toLowerCase());
+  const porUsername = ctx.from?.username && lista.includes(ctx.from.username.toLowerCase());
+  return porId || porUsername;
+}
+
 const ESTADOS_VALIDOS = { normal: "normal", demoras: "modificado", paro: "paro" };
 const ETIQUETAS_CONFIRMACION = {
   normal: "Servicio normal",
@@ -598,12 +613,13 @@ bot.command("chequeox", async (ctx) => {
   }
 });
 
-// Si la foto la manda alguien de esAdminEstado() (piloto: por ahora vos),
-// la trata como un posible comunicado oficial y la analiza con Gemini
-// Vision en vez de solo reenviarla. Para cualquier otra persona, sigue
+// Si la foto la manda alguien de esColaboradorImagenes() (piloto: por ahora
+// vos; después se suman colaboradores por @usuario sin tocar código), la
+// trata como un posible comunicado oficial y la analiza con Gemini Vision
+// en vez de solo reenviarla. Para cualquier otra persona, sigue
 // funcionando como antes (reenvío simple).
 bot.on("photo", async (ctx) => {
-  if (esAdminEstado(ctx)) {
+  if (esColaboradorImagenes(ctx)) {
     await procesarComunicadoDeImagen(ctx);
   } else {
     await reenviarMediaAlAdmin(ctx, "imagen");
@@ -621,26 +637,37 @@ async function procesarComunicadoDeImagen(ctx) {
     const base64 = buffer.toString("base64");
 
     const datos = await analizarComunicadoImagen(base64);
+    const from = ctx.from || {};
+    const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
+    const esElAdminPrincipal = String(from.id) === String(process.env.ADMIN_TELEGRAM_ID);
 
     if (!datos.esComunicadoRelevante) {
       await ctx.reply(
-        "No me pareció un comunicado oficial de transporte, así que no lo guardé como fuente de la verdad. Si me equivoco, contame qué decía y lo cargo a mano."
+        "No me pareció un comunicado oficial de transporte, así que no lo guardé como fuente de la verdad. Si me equivoco, contame qué decía y lo cargo a mano.",
+        ctx.chat?.type !== "private" ? opcionesRespuesta(ctx) : undefined
       );
       return;
     }
 
-    const from = ctx.from || {};
-    const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
     await guardarComunicado(datos, { quien, userId: from.id });
 
-    await ctx.reply(
-      `📋 Comunicado guardado como fuente de la verdad:\n\n` +
-        `Tipo: ${datos.tipo}\n` +
-        `Fecha: ${datos.fecha || "no especificada"}\n` +
-        `Horario: ${datos.horario || "no especificado"}\n` +
-        `Resumen: ${datos.resumen}\n\n` +
-        `A partir de ahora el bot puede usar este dato al responder preguntas relacionadas.`
-    );
+    const resumenTexto =
+      `📋 Comunicado guardado como fuente de la verdad (subido por ${quien}):\n\n` +
+      `Tipo: ${datos.tipo}\n` +
+      `Fecha: ${datos.fecha || "no especificada"}\n` +
+      `Horario: ${datos.horario || "no especificado"}\n` +
+      `Resumen: ${datos.resumen}\n\n` +
+      `A partir de ahora el bot puede usar este dato al responder preguntas relacionadas.`;
+
+    await ctx.reply(resumenTexto, ctx.chat?.type !== "private" ? opcionesRespuesta(ctx) : undefined);
+
+    // Si quien subió la imagen NO sos vos, te avisa siempre por separado —
+    // así te enterás aunque no hayas estado mirando el grupo en ese momento.
+    if (!esElAdminPrincipal && process.env.ADMIN_TELEGRAM_ID) {
+      await bot.telegram
+        .sendMessage(process.env.ADMIN_TELEGRAM_ID, resumenTexto)
+        .catch((err) => console.error("Error avisando al admin sobre comunicado de colaborador:", err.message));
+    }
   } catch (err) {
     console.error("Error procesando imagen de comunicado:", err.message);
     await ctx.reply("No pude leer la imagen: " + err.message).catch(() => {});
