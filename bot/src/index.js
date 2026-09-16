@@ -37,6 +37,7 @@ import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "
 import { chequearYActualizarDesdeX } from "./xMonitor.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
+import { analizarComunicadoImagen, guardarComunicado, comunicadosRecientes } from "./imageIntel.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -167,6 +168,19 @@ async function armarContexto(pregunta) {
   const alertas = await getAlertasTrenes();
   if (alertas) {
     partes.push(`\n== ALERTAS API TRANSPORTE ==\n${JSON.stringify(alertas)}`);
+  }
+
+  // Comunicados oficiales leídos de imágenes (colaboradores/admin), últimas
+  // 48hs. Complementa al semáforo — puede traer datos más específicos
+  // (fecha, horario puntual) que el semáforo no tiene cargados.
+  const comunicados = await comunicadosRecientes(48);
+  if (comunicados.length) {
+    const listado = comunicados
+      .map((c) => `- [${c.tipo}] ${c.fecha ? `Fecha: ${c.fecha}. ` : ""}${c.horario ? `Horario: ${c.horario}. ` : ""}${c.resumen}`)
+      .join("\n");
+    partes.push(
+      `\n== COMUNICADOS OFICIALES RECIENTES (leídos de imágenes, últimas 48hs) ==\n${listado}\nEstos son extraídos automáticamente de fotos de comunicados — pueden tener algún error de lectura, pero son la fuente más específica si mencionan fecha/horario puntual.`
+    );
   }
 
   // Señal informal: actividad del grupo sin menciones de problemas.
@@ -584,7 +598,55 @@ bot.command("chequeox", async (ctx) => {
   }
 });
 
-bot.on("photo", (ctx) => reenviarMediaAlAdmin(ctx, "imagen"));
+// Si la foto la manda alguien de esAdminEstado() (piloto: por ahora vos),
+// la trata como un posible comunicado oficial y la analiza con Gemini
+// Vision en vez de solo reenviarla. Para cualquier otra persona, sigue
+// funcionando como antes (reenvío simple).
+bot.on("photo", async (ctx) => {
+  if (esAdminEstado(ctx)) {
+    await procesarComunicadoDeImagen(ctx);
+  } else {
+    await reenviarMediaAlAdmin(ctx, "imagen");
+  }
+});
+
+async function procesarComunicadoDeImagen(ctx) {
+  try {
+    await ctx.sendChatAction("typing");
+    const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+    const fileUrl = await bot.telegram.getFileLink(fileId);
+    const res = await fetch(fileUrl.href);
+    if (!res.ok) throw new Error(`No pude descargar la imagen de Telegram (${res.status})`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const base64 = buffer.toString("base64");
+
+    const datos = await analizarComunicadoImagen(base64);
+
+    if (!datos.esComunicadoRelevante) {
+      await ctx.reply(
+        "No me pareció un comunicado oficial de transporte, así que no lo guardé como fuente de la verdad. Si me equivoco, contame qué decía y lo cargo a mano."
+      );
+      return;
+    }
+
+    const from = ctx.from || {};
+    const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
+    await guardarComunicado(datos, { quien, userId: from.id });
+
+    await ctx.reply(
+      `📋 Comunicado guardado como fuente de la verdad:\n\n` +
+        `Tipo: ${datos.tipo}\n` +
+        `Fecha: ${datos.fecha || "no especificada"}\n` +
+        `Horario: ${datos.horario || "no especificado"}\n` +
+        `Resumen: ${datos.resumen}\n\n` +
+        `A partir de ahora el bot puede usar este dato al responder preguntas relacionadas.`
+    );
+  } catch (err) {
+    console.error("Error procesando imagen de comunicado:", err.message);
+    await ctx.reply("No pude leer la imagen: " + err.message).catch(() => {});
+  }
+}
+
 bot.on("voice", (ctx) => reenviarMediaAlAdmin(ctx, "audio/nota de voz"));
 bot.on("audio", (ctx) => reenviarMediaAlAdmin(ctx, "audio"));
 bot.on("video", (ctx) => reenviarMediaAlAdmin(ctx, "video"));
