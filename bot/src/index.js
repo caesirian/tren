@@ -416,6 +416,47 @@ async function reenviarMediaAlAdmin(ctx, tipo) {
   }
 }
 
+// Lista los usuarios que escribieron por privado como botones; al tocar
+// uno, muestra el historial de conversación guardado en Firestore.
+bot.command("historial", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  try {
+    const { usuarios, error } = await listarUsuariosPrivados();
+    if (error) return ctx.reply(error);
+    if (!usuarios.length) return ctx.reply("Todavía no hay nadie que le haya escrito al bot por privado.");
+
+    const TOPE_USUARIOS = 25;
+    const botones = usuarios
+      .slice(0, TOPE_USUARIOS)
+      .map((u) => [Markup.button.callback(`${u.quien} (${u.cantidad})`, `hist:${u.userId}`)]);
+
+    await ctx.reply(
+      `Elegí un usuario para ver el historial${usuarios.length > TOPE_USUARIOS ? ` (mostrando los ${TOPE_USUARIOS} más recientes de ${usuarios.length})` : ""}:`,
+      Markup.inlineKeyboard(botones)
+    );
+  } catch (err) {
+    console.error("Error listando usuarios para /historial:", err.message);
+    await ctx.reply("No pude armar la lista: " + err.message);
+  }
+});
+
+bot.action(/^hist:(.+)$/, async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return ctx.answerCbQuery();
+  const userId = ctx.match[1];
+  try {
+    await ctx.answerCbQuery("Buscando historial...");
+    const { texto } = await getHistorialUsuario(userId);
+    // Telegram corta mensajes de más de 4096 caracteres — se manda en
+    // pedazos si hace falta, en vez de que falle el envío.
+    for (let i = 0; i < texto.length; i += 4000) {
+      await ctx.reply(texto.slice(i, i + 4000));
+    }
+  } catch (err) {
+    console.error("Error trayendo historial:", err.message);
+    await ctx.reply("No pude traer el historial: " + err.message).catch(() => {});
+  }
+});
+
 bot.on("photo", (ctx) => reenviarMediaAlAdmin(ctx, "imagen"));
 bot.on("voice", (ctx) => reenviarMediaAlAdmin(ctx, "audio/nota de voz"));
 bot.on("audio", (ctx) => reenviarMediaAlAdmin(ctx, "audio"));
@@ -557,47 +598,6 @@ bot.on("text", async (ctx) => {
         )
         .catch((e) => console.error("Error avisando al admin sobre fallo:", e.message));
     }
-  }
-});
-
-// Lista los usuarios que escribieron por privado como botones; al tocar
-// uno, muestra el historial de conversación guardado en Firestore.
-bot.command("historial", async (ctx) => {
-  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
-  try {
-    const { usuarios, error } = await listarUsuariosPrivados();
-    if (error) return ctx.reply(error);
-    if (!usuarios.length) return ctx.reply("Todavía no hay nadie que le haya escrito al bot por privado.");
-
-    const TOPE_USUARIOS = 25;
-    const botones = usuarios
-      .slice(0, TOPE_USUARIOS)
-      .map((u) => [Markup.button.callback(`${u.quien} (${u.cantidad})`, `hist:${u.userId}`)]);
-
-    await ctx.reply(
-      `Elegí un usuario para ver el historial${usuarios.length > TOPE_USUARIOS ? ` (mostrando los ${TOPE_USUARIOS} más recientes de ${usuarios.length})` : ""}:`,
-      Markup.inlineKeyboard(botones)
-    );
-  } catch (err) {
-    console.error("Error listando usuarios para /historial:", err.message);
-    await ctx.reply("No pude armar la lista: " + err.message);
-  }
-});
-
-bot.action(/^hist:(.+)$/, async (ctx) => {
-  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return ctx.answerCbQuery();
-  const userId = ctx.match[1];
-  try {
-    await ctx.answerCbQuery("Buscando historial...");
-    const { texto } = await getHistorialUsuario(userId);
-    // Telegram corta mensajes de más de 4096 caracteres — se manda en
-    // pedazos si hace falta, en vez de que falle el envío.
-    for (let i = 0; i < texto.length; i += 4000) {
-      await ctx.reply(texto.slice(i, i + 4000));
-    }
-  } catch (err) {
-    console.error("Error trayendo historial:", err.message);
-    await ctx.reply("No pude traer el historial: " + err.message).catch(() => {});
   }
 });
 
