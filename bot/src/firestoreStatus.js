@@ -11,7 +11,7 @@
 // Si no se configuran, el bot sigue funcionando solo con datos fijos.
 
 import { initializeApp, cert, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 let db = null;
 
@@ -48,6 +48,20 @@ const ETIQUETAS_ESTADO = {
   modificado: "Servicio con demoras",
   paro: "Servicio interrumpido",
 };
+
+// Suma un texto al array "alertas" del documento — el sitio ya lo muestra
+// independiente del color del semáforo (pensado justo para avisos tipo
+// "obra programada" con servicio aún normal). NO toca estado ni mensaje,
+// es un complemento, no un reemplazo. arrayUnion evita duplicar el mismo
+// texto si se sube el mismo comunicado dos veces.
+export async function agregarAlertaComplementaria(texto) {
+  const firestore = ensureInit();
+  if (!firestore) throw new Error("Firestore no está configurado (faltan credenciales).");
+  await firestore
+    .collection("estadoServicio")
+    .doc("actual")
+    .set({ alertas: FieldValue.arrayUnion(texto) }, { merge: true });
+}
 
 export async function actualizarEstadoServicio({ estado, mensaje, editor }) {
   const firestore = ensureInit();

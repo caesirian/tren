@@ -22,7 +22,7 @@ import { Telegraf, Markup } from "telegraf";
 import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
-import { getEstadoServicio, actualizarEstadoServicio } from "./firestoreStatus.js";
+import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
@@ -708,21 +708,18 @@ async function procesarComunicadoDeImagen(ctx) {
 
     await guardarComunicado(datos, { quien, userId: from.id });
 
-    // Se publica también como noticia en el sitio — mensaje aparte del
-    // semáforo (que sigue reflejando el estado EN VIVO, no avisos de obras
-    // o cambios programados). Best-effort: si falla, no corta el flujo
-    // principal (el comunicado ya quedó guardado igual para el bot).
+    // Se suma como alerta COMPLEMENTARIA del semáforo (campo alertas[] que
+    // ya lee el sitio, independiente del color/mensaje principal) — no
+    // como noticia. Best-effort: si falla, no corta el flujo principal
+    // (el comunicado ya quedó guardado igual para el bot).
     let publicadoEnSitio = true;
     try {
       const tituloTipo = { paro: "Paro", demora: "Demoras", normalizacion: "Normalización del servicio", obra: "Obra programada", "aviso general": "Aviso", otro: "Aviso" }[datos.tipo] || "Aviso";
-      await publicarNoticia({
-        titulo: `${tituloTipo}${datos.fecha ? `: ${datos.fecha}` : ""}`,
-        contenido: datos.resumen + (datos.horario ? ` Horario: ${datos.horario}.` : ""),
-        creadoPor: `Auto (comunicado subido por ${quien})`,
-      });
+      const textoAlerta = `${tituloTipo}${datos.fecha ? ` (${datos.fecha})` : ""}: ${datos.resumen}${datos.horario ? ` Horario: ${datos.horario}.` : ""}`;
+      await agregarAlertaComplementaria(textoAlerta);
     } catch (err) {
       publicadoEnSitio = false;
-      console.error("Error publicando comunicado como noticia:", err.message);
+      console.error("Error agregando alerta complementaria del comunicado:", err.message);
     }
 
     const resumenTexto =
@@ -733,8 +730,8 @@ async function procesarComunicadoDeImagen(ctx) {
       `Resumen: ${datos.resumen}\n\n` +
       `A partir de ahora el bot puede usar este dato al responder preguntas relacionadas.` +
       (publicadoEnSitio
-        ? ` También se publicó como noticia en el sitio (revisá que "mostrarTitulares" esté activo si no se ve).`
-        : ` ⚠️ No se pudo publicar como noticia en el sitio, revisá los logs.`);
+        ? ` También se sumó como alerta complementaria del semáforo en el sitio (no cambia el color, es un aviso aparte).`
+        : ` ⚠️ No se pudo sumar la alerta al sitio, revisá los logs.`);
 
     await ctx.reply(resumenTexto, ctx.chat?.type !== "private" ? opcionesRespuesta(ctx) : undefined);
 
