@@ -27,6 +27,7 @@ import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
+import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire } from "./respuestaDedupe.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo } from "./groupChatLogger.js";
 import { guardarReporte } from "./reportLogger.js";
@@ -786,7 +787,10 @@ bot.on("text", async (ctx) => {
 
     // Alimenta la señal informal de "nadie se queja" — se registra SIEMPRE
     // que sea un mensaje de grupo, aunque no le hablen al bot directamente.
-    if (esGrupo) registrarMensajeGrupo(textoOriginal, ctx.from?.id);
+    if (esGrupo) {
+      registrarMensajeGrupo(textoOriginal, ctx.from?.id);
+      incrementarContadorMensajes();
+    }
 
     // Aviso al admin ante insultos o groserías, en grupo O privado.
     if (esInsulto(textoOriginal) && process.env.ADMIN_TELEGRAM_ID) {
@@ -817,8 +821,13 @@ bot.on("text", async (ctx) => {
     const esReplyAOtraPersona =
       ctx.message.reply_to_message && ctx.message.reply_to_message.from?.username !== botUsername;
 
+    const temaDeLaPregunta = detectarTema(textoOriginal);
     const esPreguntaAlAire =
-      esGrupo && !fueEtiquetado && !esReplyAOtraPersona && pareceConsultaRelevante(textoOriginal);
+      esGrupo &&
+      !fueEtiquetado &&
+      !esReplyAOtraPersona &&
+      pareceConsultaRelevante(textoOriginal) &&
+      !yaRespondidoRecientemente(temaDeLaPregunta); // no repetir el mismo tema en poco tiempo
 
     if (!fueEtiquetado && !esPreguntaAlAire) return;
 
@@ -846,6 +855,7 @@ bot.on("text", async (ctx) => {
         await ctx.reply(respuestaCacheada, opcionesRespuesta(ctx));
         if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: respuestaCacheada });
         if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: respuestaCacheada });
+        if (esGrupo && !fueEtiquetado) registrarRespuestaAlAire(temaDeLaPregunta);
       }
       return;
     }
@@ -860,6 +870,7 @@ bot.on("text", async (ctx) => {
       await ctx.reply(respuesta, opcionesRespuesta(ctx));
       if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta });
       if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta });
+      if (esGrupo && !fueEtiquetado) registrarRespuestaAlAire(temaDeLaPregunta);
     }
     // Si respuesta es null (pregunta al aire sin dato concreto), el bot se
     // queda callado a propósito — no hace falta contestar cada cosa que se
