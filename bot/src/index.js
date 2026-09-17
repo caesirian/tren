@@ -992,29 +992,4 @@ app.listen(PORT, async () => {
       "PUBLIC_URL no configurada: seteá el webhook manualmente una vez desplegado."
     );
   }
-
-  // Tarea única para corregir el comunicado del domingo 27 que había
-  // quedado mal publicado como noticia (bug ya corregido en el código).
-  // Se saca sola de acá en el próximo commit, no queda como deuda.
-  if (process.env.ONESHOT_FIX_27SEP === "true") {
-    try {
-      await agregarAlertaComplementaria(
-        "Obra programada (Domingo 27/09): servicio reducido entre Once y Castelar por obras de renovación de cables de señalamiento BRT entre Merlo y S.A. Padua. Los ramales Merlo-Las Heras y Moreno-Mercedes funcionarán con normalidad. Horario: desde el primer tren hasta el último."
-      );
-      console.log("ONESHOT: alerta complementaria del domingo 27 sumada.");
-
-      const { getFirestore } = await import("firebase-admin/firestore");
-      const firestore = getFirestore();
-      const todas = await firestore.collection("noticias").get();
-      console.log("ONESHOT: noticias existentes:", todas.docs.map((d) => `[${d.id}] "${d.data().titulo}"`).join(" | "));
-      for (const doc of todas.docs) {
-        if ((doc.data().titulo || "").toLowerCase().includes("domingo 27")) {
-          await doc.ref.delete();
-          console.log("ONESHOT: noticia errónea borrada, id", doc.id);
-        }
-      }
-    } catch (err) {
-      console.error("ONESHOT falló:", err.message);
-    }
-  }
 });
