@@ -30,6 +30,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo } from "./groupChatLogger.js";
 import { guardarReporte } from "./reportLogger.js";
+import { publicarNoticia } from "./noticiaPublisher.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
 import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados, listarUsuariosPrivados, getHistorialUsuario, getUltimaPreguntaUsuario } from "./dailyReport.js";
@@ -316,12 +317,18 @@ bot.help((ctx) =>
 // ADMIN_TELEGRAM_ID (que sigue siendo el único destinatario de /informe y
 // de los avisos automáticos). Pensada para sumar gente sin tocar código:
 // ESTADO_ADMIN_IDS="123456,789012". Si no está seteada, cae a ADMIN_TELEGRAM_ID.
+// ADMIN_TELEGRAM_ID siempre queda adentro, se pise o no ESTADO_ADMIN_IDS —
+// así nunca corre riesgo de auto-excluirse al sumar gente ahí. Acepta
+// tanto IDs numéricos como @usuarios (por si no se consigue el ID numérico
+// de un colaborador de confianza).
 function esAdminEstado(ctx) {
-  const lista = (process.env.ESTADO_ADMIN_IDS || process.env.ADMIN_TELEGRAM_ID || "")
+  const lista = `${process.env.ESTADO_ADMIN_IDS || ""},${process.env.ADMIN_TELEGRAM_ID || ""}`
     .split(",")
-    .map((id) => id.trim())
+    .map((s) => s.trim().replace(/^@/, "").toLowerCase())
     .filter(Boolean);
-  return lista.includes(String(ctx.from?.id));
+  const porId = lista.includes(String(ctx.from?.id).toLowerCase());
+  const porUsername = ctx.from?.username && lista.includes(ctx.from.username.toLowerCase());
+  return porId || porUsername;
 }
 
 // Lista APARTE (no mezclar con esAdminEstado, que da permiso de cambiar el
@@ -330,7 +337,7 @@ function esAdminEstado(ctx) {
 // no depender de conseguir el ID numérico de cada colaborador.
 // Variable: COLABORADORES_IMAGENES="123456,@vivigo81,@otrocolaborador"
 function esColaboradorImagenes(ctx) {
-  const lista = (process.env.COLABORADORES_IMAGENES || process.env.ADMIN_TELEGRAM_ID || "")
+  const lista = `${process.env.COLABORADORES_IMAGENES || ""},${process.env.ADMIN_TELEGRAM_ID || ""}`
     .split(",")
     .map((s) => s.trim().replace(/^@/, "").toLowerCase())
     .filter(Boolean);
@@ -618,6 +625,35 @@ bot.command("chequeox", async (ctx) => {
 // trata como un posible comunicado oficial y la analiza con Gemini Vision
 // en vez de solo reenviarla. Para cualquier otra persona, sigue
 // funcionando como antes (reenvío simple).
+// Publica una noticia en el sitio (misma colección Firestore que usa el
+// panel de Admin, mismo esquema). Uso: /noticia Título | contenido
+// Requiere que "mostrarTitulares" esté activo en el sitio para que se vea
+// (eso no lo toca este comando, es un toggle aparte del admin).
+bot.command("noticia", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const textoCrudo = (ctx.message.text || "").split(" ").slice(1).join(" ").trim();
+  const [titulo, ...resto] = textoCrudo.split("|").map((s) => s.trim());
+  const contenido = resto.join("|").trim();
+
+  if (!titulo || !contenido) {
+    await ctx.reply("Uso: /noticia Título | Contenido de la noticia\n\nEj: /noticia Servicio reducido el domingo 27 | El domingo 27 el Sarmiento circulará con frecuencias reducidas por trabajos de mantenimiento.");
+    return;
+  }
+
+  try {
+    await publicarNoticia({
+      titulo,
+      contenido,
+      creadoPor: `Telegram (${ctx.from?.username ? "@" + ctx.from.username : ctx.from?.id})`,
+    });
+    await ctx.reply(`✅ Noticia publicada: "${titulo}"\n\n(si no aparece en el sitio, revisá que "mostrarTitulares" esté activo)`);
+  } catch (err) {
+    console.error("Error publicando noticia:", err.message);
+    await ctx.reply("No pude publicar la noticia: " + err.message);
+  }
+});
+
 bot.on("photo", async (ctx) => {
   if (esColaboradorImagenes(ctx)) {
     await procesarComunicadoDeImagen(ctx);
