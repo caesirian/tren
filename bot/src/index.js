@@ -650,6 +650,25 @@ bot.command("comunicados", async (ctx) => {
   }
 });
 
+// Suma una alerta complementaria al semáforo a mano (mismo campo alertas[]
+// que usa el lector de imágenes) — para cuando no hay una imagen para
+// subir, o para cargar algo retroactivo. Uso: /alerta <texto>
+bot.command("alerta", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  const texto = (ctx.message.text || "").split(" ").slice(1).join(" ").trim();
+  if (!texto) {
+    await ctx.reply("Uso: /alerta <texto>\n\nEj: /alerta Obra programada (Domingo 27/09): servicio reducido entre Once y Castelar por obras de señalamiento. Horario: desde el primer tren hasta el último.");
+    return;
+  }
+  try {
+    await agregarAlertaComplementaria(texto);
+    await ctx.reply(`✅ Alerta sumada al semáforo del sitio (no cambia el color, es un aviso aparte):\n"${texto}"`);
+  } catch (err) {
+    console.error("Error en /alerta:", err.message);
+    await ctx.reply("No pude sumar la alerta: " + err.message);
+  }
+});
+
 bot.command("noticia", async (ctx) => {
   if (!esAdminEstado(ctx)) return;
 
