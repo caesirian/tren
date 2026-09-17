@@ -112,6 +112,9 @@ const PALABRAS_TEMA = [
   "gremial", "gremiales", "cese", "medida de fuerza", "primer tren",
   "último tren", "ultimo tren", "flores", "floresta", "villa luro",
   "ciudadela", "san antonio", "padua", "paso del rey", "transporte",
+  "servicio", "funciona", "funcionando", "circula",
+  "circulando", "esperando", "espera", "cancelado", "cancelada",
+  "cancelaron", "suspendido", "suspendida",
 ];
 
 // Palabras/signos que indican que es una pregunta.
