@@ -708,13 +708,33 @@ async function procesarComunicadoDeImagen(ctx) {
 
     await guardarComunicado(datos, { quien, userId: from.id });
 
+    // Se publica también como noticia en el sitio — mensaje aparte del
+    // semáforo (que sigue reflejando el estado EN VIVO, no avisos de obras
+    // o cambios programados). Best-effort: si falla, no corta el flujo
+    // principal (el comunicado ya quedó guardado igual para el bot).
+    let publicadoEnSitio = true;
+    try {
+      const tituloTipo = { paro: "Paro", demora: "Demoras", normalizacion: "Normalización del servicio", obra: "Obra programada", "aviso general": "Aviso", otro: "Aviso" }[datos.tipo] || "Aviso";
+      await publicarNoticia({
+        titulo: `${tituloTipo}${datos.fecha ? `: ${datos.fecha}` : ""}`,
+        contenido: datos.resumen + (datos.horario ? ` Horario: ${datos.horario}.` : ""),
+        creadoPor: `Auto (comunicado subido por ${quien})`,
+      });
+    } catch (err) {
+      publicadoEnSitio = false;
+      console.error("Error publicando comunicado como noticia:", err.message);
+    }
+
     const resumenTexto =
       `📋 Comunicado guardado como fuente de la verdad (subido por ${quien}):\n\n` +
       `Tipo: ${datos.tipo}\n` +
       `Fecha: ${datos.fecha || "no especificada"}\n` +
       `Horario: ${datos.horario || "no especificado"}\n` +
       `Resumen: ${datos.resumen}\n\n` +
-      `A partir de ahora el bot puede usar este dato al responder preguntas relacionadas.`;
+      `A partir de ahora el bot puede usar este dato al responder preguntas relacionadas.` +
+      (publicadoEnSitio
+        ? ` También se publicó como noticia en el sitio (revisá que "mostrarTitulares" esté activo si no se ve).`
+        : ` ⚠️ No se pudo publicar como noticia en el sitio, revisá los logs.`);
 
     await ctx.reply(resumenTexto, ctx.chat?.type !== "private" ? opcionesRespuesta(ctx) : undefined);
 
