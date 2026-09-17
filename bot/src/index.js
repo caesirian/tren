@@ -1005,12 +1005,14 @@ app.listen(PORT, async () => {
 
       const { getFirestore } = await import("firebase-admin/firestore");
       const firestore = getFirestore();
-      const snap = await firestore.collection("noticias").where("titulo", "==", "Obra programada: Domingo 27/09").get();
-      for (const doc of snap.docs) {
-        await doc.ref.delete();
-        console.log("ONESHOT: noticia errónea borrada, id", doc.id);
+      const todas = await firestore.collection("noticias").get();
+      console.log("ONESHOT: noticias existentes:", todas.docs.map((d) => `[${d.id}] "${d.data().titulo}"`).join(" | "));
+      for (const doc of todas.docs) {
+        if ((doc.data().titulo || "").toLowerCase().includes("domingo 27")) {
+          await doc.ref.delete();
+          console.log("ONESHOT: noticia errónea borrada, id", doc.id);
+        }
       }
-      if (snap.empty) console.log("ONESHOT: no encontré la noticia errónea (puede que ya la hayan borrado a mano).");
     } catch (err) {
       console.error("ONESHOT falló:", err.message);
     }
