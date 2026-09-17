@@ -113,6 +113,22 @@ export async function guardarComunicado(datos, meta) {
   }
 }
 
+// Todos los comunicados guardados en la ventana pedida, SIN filtrar por
+// esComunicadoRelevante — para poder revisar qué se guardó de verdad,
+// incluyendo los que Gemini descartó como no relevantes.
+export async function listarComunicados(horas = 72) {
+  const firestore = ensureInit();
+  if (!firestore) return null; // null = sin Firestore, distinto de [] = sin resultados
+  try {
+    const desde = new Date(Date.now() - horas * 60 * 60 * 1000).toISOString();
+    const snap = await firestore.collection("comunicados").where("timestamp", ">=", desde).get();
+    return snap.docs.map((d) => d.data()).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  } catch (err) {
+    console.error("Error listando comunicados:", err.message);
+    return null;
+  }
+}
+
 // Comunicados recientes (48hs por defecto) para sumar al contexto del bot.
 export async function comunicadosRecientes(horas = 48) {
   const firestore = ensureInit();

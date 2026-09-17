@@ -38,7 +38,7 @@ import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "
 import { chequearYActualizarDesdeX } from "./xMonitor.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
-import { analizarComunicadoImagen, guardarComunicado, comunicadosRecientes } from "./imageIntel.js";
+import { analizarComunicadoImagen, guardarComunicado, comunicadosRecientes, listarComunicados } from "./imageIntel.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -629,6 +629,27 @@ bot.command("chequeox", async (ctx) => {
 // panel de Admin, mismo esquema). Uso: /noticia Título | contenido
 // Requiere que "mostrarTitulares" esté activo en el sitio para que se vea
 // (eso no lo toca este comando, es un toggle aparte del admin).
+// Lista lo guardado en la colección "comunicados" (lectura de imágenes),
+// sin filtrar por relevancia, para poder confirmar qué se guardó de
+// verdad. Uso: /comunicados [horas] — default 72hs.
+bot.command("comunicados", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  const horas = parseInt((ctx.message.text || "").split(" ")[1], 10) || 72;
+  try {
+    const items = await listarComunicados(horas);
+    if (items === null) return ctx.reply("Firestore no está configurado (faltan credenciales).");
+    if (items.length === 0) return ctx.reply(`No hay ningún comunicado guardado en las últimas ${horas}hs.`);
+    const lineas = items.map(
+      (d) =>
+        `• [${d.esComunicadoRelevante ? "✅ relevante" : "❌ descartado"}] ${d.tipo} — ${d.cargadoPor}\n  Fecha del aviso: ${d.fecha || "no especificada"} | Horario: ${d.horario || "no especificado"}\n  ${d.resumen}\n  (subido ${new Date(d.timestamp).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })})`
+    );
+    await ctx.reply(`📋 ${items.length} comunicado(s) en las últimas ${horas}hs:\n\n${lineas.join("\n\n")}`);
+  } catch (err) {
+    console.error("Error en /comunicados:", err.message);
+    await ctx.reply("No pude listar los comunicados: " + err.message);
+  }
+});
+
 bot.command("noticia", async (ctx) => {
   if (!esAdminEstado(ctx)) return;
 
