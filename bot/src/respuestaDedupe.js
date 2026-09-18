@@ -7,7 +7,8 @@
 
 const VENTANA_MS = 10 * 60 * 1000;
 const VENTANA_MENSAJES = 10;
-const PODA_MS = 30 * 60 * 1000; // no dejar crecer el historial para siempre
+const LIMITE_MAX_MS = 90 * 60 * 1000; // pasado esto, contesta igual sin importar mensajes de por medio
+const PODA_MS = LIMITE_MAX_MS; // no podar antes de que el tope de arriba pueda aplicar
 
 // Agrupa palabras relacionadas bajo un mismo tema — así "¿anda el
 // servicio?" y "¿está funcionando?" cuentan como la misma pregunta a
@@ -45,9 +46,11 @@ export function yaRespondidoRecientemente(tema) {
   if (!tema) return false;
   const ahora = Date.now();
   historial = historial.filter((h) => ahora - h.ts < PODA_MS);
-  return historial.some(
-    (h) => h.tema === tema && (ahora - h.ts < VENTANA_MS || contadorMensajes - h.seq < VENTANA_MENSAJES)
-  );
+  return historial.some((h) => {
+    if (h.tema !== tema) return false;
+    if (ahora - h.ts >= LIMITE_MAX_MS) return false; // pasaron 90+ min: contesta igual
+    return ahora - h.ts < VENTANA_MS || contadorMensajes - h.seq < VENTANA_MENSAJES;
+  });
 }
 
 export function registrarRespuestaAlAire(tema) {
