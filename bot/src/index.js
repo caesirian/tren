@@ -335,6 +335,47 @@ function esAdminEstado(ctx) {
   return porId || porUsername;
 }
 
+// Comando privado (solo admin del estado): "/decir <instrucción>" — el bot
+// interpreta la instrucción con el mismo motor que usa para responder
+// preguntas normales (horarios, locales, tarifas, etc.) y PUBLICA la
+// respuesta en el grupo, en vez de contestarle al admin. Ej:
+// "/decir responde los locales de moreno" → el bot publica en el grupo la
+// respuesta real sobre los locales de Moreno, como si alguien hubiera
+// preguntado ahí.
+bot.command("decir", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const instruccion = (ctx.message.text || "").split(" ").slice(1).join(" ").trim();
+  if (!instruccion) {
+    await ctx.reply(
+      'Uso: /decir <instrucción>\n\nEj: "/decir responde los locales de moreno" — publica en el grupo la respuesta real sobre eso, como si alguien hubiera preguntado.'
+    );
+    return;
+  }
+
+  const grupoId = process.env.ALLOWED_GROUP_ID;
+  if (!grupoId) {
+    await ctx.reply("Falta configurar ALLOWED_GROUP_ID en Render para saber en qué grupo publicar.");
+    return;
+  }
+
+  try {
+    await ctx.sendChatAction("typing");
+    const contexto = await armarContexto(instruccion);
+    const respuestaCruda = await responderPregunta({ pregunta: instruccion, contexto });
+    // true = si no tiene un dato concreto, que lo diga con honestidad en
+    // vez de quedarse callado — acá SÍ queremos que publique algo siempre,
+    // ya que lo pediste vos explícitamente.
+    const respuesta = manejarSinRespuesta(respuestaCruda, true);
+
+    await bot.telegram.sendMessage(grupoId, respuesta);
+    await ctx.reply(`✅ Publicado en el grupo:\n\n${respuesta}`);
+  } catch (err) {
+    console.error("Error en /decir:", err.message);
+    await ctx.reply("No pude generar/publicar la respuesta: " + err.message).catch(() => {});
+  }
+});
+
 // Lista APARTE (no mezclar con esAdminEstado, que da permiso de cambiar el
 // semáforo oficial) para quién puede disparar el análisis automático de
 // imágenes de comunicados. Acepta tanto IDs numéricos como @usuarios, para
