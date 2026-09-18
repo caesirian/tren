@@ -90,10 +90,24 @@ function esChatAutorizado(ctx) {
   return String(ctx.chat.id) === String(process.env.ALLOWED_GROUP_ID);
 }
 
+// En grupos con Temas (forum), Telegram manda reply_to_message en TODOS los
+// mensajes de un tema, apuntando al mensaje de creación del tema (cuyo
+// message_id == message_thread_id). Eso NO es una respuesta real a nadie: si
+// lo tratamos como reply, el bot cree que le están hablando a otra persona y
+// se queda callado en todos los temas. Devuelve el reply real, o null.
+function replyReal(ctx) {
+  const r = ctx.message?.reply_to_message;
+  if (!r) return null;
+  if (r.forum_topic_created || r.forum_topic_edited || r.forum_topic_closed || r.forum_topic_reopened) return null;
+  const hilo = ctx.message?.message_thread_id;
+  if (hilo && r.message_id === hilo) return null;
+  return r;
+}
+
 function mencionaAlBot(ctx) {
   const text = ctx.message?.text ?? "";
   const esRespuestaAlBot =
-    ctx.message?.reply_to_message?.from?.username === botUsername;
+    replyReal(ctx)?.from?.username === botUsername;
   const loMencionan = botUsername && text.toLowerCase().includes(`@${botUsername.toLowerCase()}`);
   const esChatPrivado = ctx.chat?.type === "private";
   return esChatPrivado || esRespuestaAlBot || loMencionan;
@@ -907,16 +921,20 @@ bot.on("text", async (ctx) => {
     // Si el mensaje es una respuesta (reply) a OTRA PERSONA (no al bot), es
     // casi seguro parte de una charla entre usuarios — el bot no debe meterse
     // ahí aunque las palabras coincidan con el filtro de tema/pregunta.
-    const esReplyAOtraPersona =
-      ctx.message.reply_to_message && ctx.message.reply_to_message.from?.username !== botUsername;
+    const replyMsg = replyReal(ctx);
+    const esReplyAOtraPersona = !!replyMsg && replyMsg.from?.username !== botUsername;
 
     const temaDeLaPregunta = detectarTema(textoOriginal);
-    const esPreguntaAlAire =
-      esGrupo &&
-      !fueEtiquetado &&
-      !esReplyAOtraPersona &&
-      pareceConsultaRelevante(textoOriginal) &&
-      !yaRespondidoRecientemente(temaDeLaPregunta); // no repetir el mismo tema en poco tiempo
+    const esConsultaAlAire = esGrupo && !fueEtiquetado && pareceConsultaRelevante(textoOriginal);
+    const esRepetida = esConsultaAlAire && !esReplyAOtraPersona && yaRespondidoRecientemente(temaDeLaPregunta); // no repetir el mismo tema en poco tiempo
+    const esPreguntaAlAire = esConsultaAlAire && !esReplyAOtraPersona && !esRepetida;
+
+    // Log de diagnóstico: una consulta que parecía relevante y el bot NO tomó.
+    if (esConsultaAlAire && !esPreguntaAlAire) {
+      console.log(
+        `Al aire omitida (${esReplyAOtraPersona ? "es reply a otra persona" : `tema repetido: ${temaDeLaPregunta}`}) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`
+      );
+    }
 
     if (!fueEtiquetado && !esPreguntaAlAire) return;
 
@@ -933,6 +951,7 @@ bot.on("text", async (ctx) => {
         );
       }
       // Si fue una pregunta al aire, directamente no contesta nada.
+      else console.log(`Al aire omitida (límite de uso) usuario=${ctx.from?.id}`);
       return;
     }
 
@@ -961,6 +980,7 @@ bot.on("text", async (ctx) => {
       if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta });
       if (esGrupo && !fueEtiquetado) registrarRespuestaAlAire(temaDeLaPregunta);
     }
+    if (!respuesta && !fueEtiquetado) console.log(`Al aire omitida (Gemini sin respuesta concreta): "${pregunta.slice(0, 80)}"`);
     // Si respuesta es null (pregunta al aire sin dato concreto), el bot se
     // queda callado a propósito — no hace falta contestar cada cosa que se
     // dice en el grupo si no tiene algo útil que aportar.
