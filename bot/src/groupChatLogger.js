@@ -82,3 +82,37 @@ export async function registrarChatGrupo({ ctx, pregunta, respuesta, error = nul
     console.log("[logsGrupo fallback]", JSON.stringify(registro));
   }
 }
+
+// Lista los temas (topics) donde el bot ya respondió alguna vez, sacado de
+// lo que ya tenemos guardado en logsGrupo — así no hace falta ir a buscar
+// el ID a mano. Como esos mensajes se enviaron con éxito, el tema estaba
+// abierto en ese momento (puede que lo hayan cerrado después, no hay
+// garantía, pero es el mejor punto de partida).
+export async function listarTemasRecientes(dias = 30) {
+  const firestore = ensureInit();
+  if (!firestore) return [];
+
+  try {
+    const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+    const snap = await firestore.collection("logsGrupo").where("timestamp", ">=", desde).get();
+
+    const mapa = new Map(); // temaId -> { temaId, cantidad, ultimaPregunta, ultimaFecha }
+    for (const doc of snap.docs) {
+      const d = doc.data();
+      if (d.temaId == null || d.error) continue; // solo temas donde SÍ se logró responder
+      const key = String(d.temaId);
+      const actual = mapa.get(key) || { temaId: d.temaId, cantidad: 0, ultimaPregunta: null, ultimaFecha: null };
+      actual.cantidad++;
+      if (!actual.ultimaFecha || d.timestamp > actual.ultimaFecha) {
+        actual.ultimaFecha = d.timestamp;
+        actual.ultimaPregunta = d.pregunta;
+      }
+      mapa.set(key, actual);
+    }
+
+    return [...mapa.values()].sort((a, b) => new Date(b.ultimaFecha) - new Date(a.ultimaFecha));
+  } catch (err) {
+    console.error("Error listando temas recientes:", err.message);
+    return [];
+  }
+}

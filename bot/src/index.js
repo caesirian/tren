@@ -29,7 +29,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire } from "./respuestaDedupe.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
-import { registrarChatGrupo } from "./groupChatLogger.js";
+import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
 import { guardarReporte } from "./reportLogger.js";
 import { publicarNoticia } from "./noticiaPublisher.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
@@ -342,6 +342,34 @@ function esAdminEstado(ctx) {
 // "/decir responde los locales de moreno" → el bot publica en el grupo la
 // respuesta real sobre los locales de Moreno, como si alguien hubiera
 // preguntado ahí.
+// Lista los temas (topics) del grupo donde el bot ya respondió antes, para
+// no tener que ir a buscar el ID a mano cada vez que se usa /decir.
+bot.command("temas", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const temas = await listarTemasRecientes(30);
+  if (!temas.length) {
+    await ctx.reply(
+      "No tengo ningún tema registrado todavía (el bot nunca respondió con éxito dentro de un tema en los últimos 30 días). Probá el método manual con getUpdates, o esperá a que alguien lo mencione dentro de un tema."
+    );
+    return;
+  }
+
+  const lineas = temas
+    .slice(0, 15)
+    .map((t) => {
+      const fecha = new Intl.DateTimeFormat("es-AR", {
+        timeZone: "America/Argentina/Buenos_Aires",
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(new Date(t.ultimaFecha));
+      return `🧵 ID ${t.temaId} — ${t.cantidad} respuesta(s), última el ${fecha}\n   "${t.ultimaPregunta}"`;
+    })
+    .join("\n\n");
+
+  await ctx.reply(`Temas donde el bot respondió antes (últimos 30 días):\n\n${lineas}`);
+});
+
 bot.command("decir", async (ctx) => {
   if (!esAdminEstado(ctx)) return;
 
