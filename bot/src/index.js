@@ -345,10 +345,22 @@ function esAdminEstado(ctx) {
 bot.command("decir", async (ctx) => {
   if (!esAdminEstado(ctx)) return;
 
-  const instruccion = (ctx.message.text || "").split(" ").slice(1).join(" ").trim();
+  const partes = (ctx.message.text || "").split(" ").slice(1);
+  // Si el primer "parámetro" es un número, lo tomamos como el ID del tema
+  // (topic) donde publicar. Si no, publica en General (puede fallar si ese
+  // tema está cerrado — Telegram no deja elegir otro tema por default).
+  let temaId = null;
+  if (partes.length && /^\d+$/.test(partes[0])) {
+    temaId = partes.shift();
+  }
+  const instruccion = partes.join(" ").trim();
+
   if (!instruccion) {
     await ctx.reply(
-      'Uso: /decir <instrucción>\n\nEj: "/decir responde los locales de moreno" — publica en el grupo la respuesta real sobre eso, como si alguien hubiera preguntado.'
+      'Uso: /decir [id_tema] <instrucción>\n\n' +
+        'Ej: "/decir responde los locales de moreno" — publica en General.\n' +
+        'Ej: "/decir 33551 responde los locales de moreno" — publica en el tema 33551.\n\n' +
+        'Para conseguir el ID de un tema: mantené apretado el nombre del tema en el grupo → "Copiar enlace" → el número al final del link (.../c/xxxxx/AQUÍ) es el ID.'
     );
     return;
   }
@@ -368,11 +380,19 @@ bot.command("decir", async (ctx) => {
     // ya que lo pediste vos explícitamente.
     const respuesta = manejarSinRespuesta(respuestaCruda, true);
 
-    await bot.telegram.sendMessage(grupoId, respuesta);
-    await ctx.reply(`✅ Publicado en el grupo:\n\n${respuesta}`);
+    const opciones = temaId ? { message_thread_id: Number(temaId) } : undefined;
+    await bot.telegram.sendMessage(grupoId, respuesta, opciones);
+    await ctx.reply(`✅ Publicado en el grupo${temaId ? ` (tema ${temaId})` : ""}:\n\n${respuesta}`);
   } catch (err) {
     console.error("Error en /decir:", err.message);
-    await ctx.reply("No pude generar/publicar la respuesta: " + err.message).catch(() => {});
+    const motivo = err.response?.description || err.message;
+    if (/TOPIC_CLOSED/i.test(motivo)) {
+      await ctx.reply(
+        "El tema donde intenté publicar está cerrado. Pasame el ID de un tema abierto: /decir <id_tema> <instrucción>. Para sacarlo: mantené apretado el nombre del tema → \"Copiar enlace\" → el número al final es el ID."
+      ).catch(() => {});
+    } else {
+      await ctx.reply("No pude generar/publicar la respuesta: " + motivo).catch(() => {});
+    }
   }
 });
 
