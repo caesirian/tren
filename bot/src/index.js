@@ -31,6 +31,7 @@ import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, r
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, consultarProxy } from "./appTrenes.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
+import { esOcupacionEnVivo, RESPUESTA_SIN_CAMARAS } from "./ocupacion.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
@@ -1323,6 +1324,22 @@ bot.on("text", async (ctx) => {
     }
 
     const fueEtiquetado = mencionaAlBot(ctx);
+
+    // Cuánta gente hay ahora en una estación/tren: quien pregunta espera que
+    // le conteste alguien que esté ahí. El bot no tiene cámaras, así que al
+    // aire NO responde; si le preguntan directo, lo dice con honestidad.
+    if (esOcupacionEnVivo(textoOriginal)) {
+      if (esGrupo && !fueEtiquetado) {
+        console.log(`Al aire omitida (ocupación en vivo, sin cámaras) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`);
+        return;
+      }
+      const pregunta = limpiarMencion(textoOriginal) || textoOriginal;
+      await ctx.reply(RESPUESTA_SIN_CAMARAS, opcionesRespuesta(ctx));
+      if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: RESPUESTA_SIN_CAMARAS });
+      if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: RESPUESTA_SIN_CAMARAS });
+      return;
+    }
+
     // Al aire (sin mención): intenta responder siempre que el tema suene
     // relevante — si no tiene una respuesta concreta, se queda callado
     // (ver manejarSinRespuesta). Si lo mencionan, SIEMPRE responde, y si no
