@@ -38,16 +38,14 @@ function listaEstaciones(data) {
     .filter((e) => e.id != null && !vistos.has(String(e.id)) && vistos.add(String(e.id)));
 }
 
-// Devuelve { texto } con el reporte de una estación (solo servicios de Sarmiento).
-export async function reporteEstacion(nombre) {
+// Trae los servicios de Sarmiento de una estación (por nombre).
+// Devuelve { servicios: [{ est, r }], revisadas: [...], crudoEstaciones }.
+async function serviciosSarmiento(nombre) {
   const encontradas = await consultarProxy(`/infraestructura/estaciones?nombre=${encodeURIComponent(nombre)}`);
   let candidatas = listaEstaciones(encontradas);
   // Si hay una estación con el nombre exacto, se usa solo esa (evita "Moreno" + "Moreno Norte", etc.).
   const exactas = candidatas.filter((e) => String(e.nombre).trim().toLowerCase() === nombre.trim().toLowerCase());
   if (exactas.length) candidatas = exactas;
-  if (!candidatas.length) {
-    return `No pude identificar estaciones para "${nombre}". Respuesta cruda del proxy:\n${corto(JSON.stringify(encontradas)).slice(0, 1200)}\n\nProbá /apptrenes get /infraestructura/estaciones?nombre=${nombre}`;
-  }
 
   const servicios = [];
   const revisadas = [];
@@ -58,32 +56,74 @@ export async function reporteEstacion(nombre) {
       if (String(r?.servicio?.gerencia?.nombre || "").toLowerCase().includes("sarmiento")) servicios.push({ est, r });
     }
   }
+  return { servicios, revisadas, candidatas, crudoEstaciones: encontradas };
+}
 
+function datosServicio({ est, r }) {
+  const a = r.arribo || {};
+  const s = r.servicio || {};
+  const prog = a.llegada?.programada || a.salida?.programada;
+  const estim = a.llegada?.estimada || a.salida?.estimada || a.llegada?.real || a.salida?.real;
+  const demora = prog && estim ? Math.round((new Date(estim) - new Date(prog)) / 60000) : null;
+  return { est, s, prog, estim, demora, destino: s.hasta?.estacion?.nombre || s.ramal?.cabeceraFinal?.nombre || s.ramal?.nombre || "?", estado: s.desde?.estado?.nombre || "s/d" };
+}
+
+function lineaServicio(item) {
+  const { est, s, prog, estim, demora, destino, estado } = datosServicio(item);
+  let l = `• #${s.numero ?? "?"} → ${destino} | ${est.nombre}: prog ${hora(prog)}${estim ? ` / est ${hora(estim)}${demora != null ? ` (${demora >= 0 ? "+" : ""}${demora} min)` : ""}` : ""} | ${estado}`;
+  if (s.tipo?.nombre && s.tipo.nombre !== "Normal") l += ` | tipo: ${s.tipo.nombre}`;
+  if (s.cancelacion) l += `\n   ❌ Cancelación: ${corto(s.cancelacion)}`;
+  if (s.leyenda) l += `\n   📢 Leyenda: ${corto(s.leyenda)}`;
+  return l;
+}
+
+// Reporte de una estación (solo servicios de Sarmiento).
+export async function reporteEstacion(nombre) {
+  const { servicios, revisadas, candidatas, crudoEstaciones } = await serviciosSarmiento(nombre);
+  if (!candidatas.length) {
+    return `No pude identificar estaciones para "${nombre}". Respuesta cruda del proxy:\n${corto(JSON.stringify(crudoEstaciones)).slice(0, 1200)}\n\nProbá /apptrenes get /infraestructura/estaciones?nombre=${nombre}`;
+  }
   if (!servicios.length) {
     return `No aparecen servicios de Sarmiento en: ${revisadas.join(", ")}.\n(Puede ser que el nombre corresponda a otra línea o que no haya trenes próximos.)`;
   }
-
-  const lineas = servicios.slice(0, 10).map(({ est, r }) => {
-    const a = r.arribo || {};
-    const s = r.servicio || {};
-    const prog = a.llegada?.programada || a.salida?.programada;
-    const estim = a.llegada?.estimada || a.salida?.estimada || a.llegada?.real || a.salida?.real;
-    const demora = prog && estim ? Math.round((new Date(estim) - new Date(prog)) / 60000) : null;
-    const destino = s.hasta?.estacion?.nombre || s.ramal?.cabeceraFinal?.nombre || s.ramal?.nombre || "?";
-    const estado = s.desde?.estado?.nombre || "s/d";
-    let l = `• #${s.numero ?? "?"} → ${destino} | ${est.nombre}: prog ${hora(prog)}${estim ? ` / est ${hora(estim)}${demora != null ? ` (${demora >= 0 ? "+" : ""}${demora} min)` : ""}` : ""} | ${estado}`;
-    if (s.tipo?.nombre && s.tipo.nombre !== "Normal") l += ` | tipo: ${s.tipo.nombre}`;
-    if (s.cancelacion) l += `\n   ❌ Cancelación: ${corto(s.cancelacion)}`;
-    if (s.leyenda) l += `\n   📢 Leyenda: ${corto(s.leyenda)}`;
-    return l;
-  });
-
   const conCancel = servicios.filter(({ r }) => r?.servicio?.cancelacion).length;
   const conLeyenda = servicios.filter(({ r }) => r?.servicio?.leyenda).length;
   return (
     `🚆 Sarmiento en «${nombre}» — datos de la app de Trenes Argentinos (proxy no oficial)\n` +
     `Servicios: ${servicios.length} · con cancelación: ${conCancel} · con leyenda: ${conLeyenda}\n\n` +
-    lineas.join("\n") +
+    servicios.slice(0, 10).map(lineaServicio).join("\n") +
     (servicios.length > 10 ? `\n… y ${servicios.length - 10} más` : "")
   );
+}
+
+// Barrido de las estaciones principales de Sarmiento: muestra SOLO lo
+// anormal (cancelación, leyenda, demora >= 10 min o tipo distinto de Normal).
+// Sirve para probar cuándo el proxy trae cancelacion/leyenda con texto real.
+const ESTACIONES_BARRIDO = ["Once", "Liniers", "Ramos Mejía", "Morón", "Castelar", "Merlo", "Moreno"];
+
+export async function barridoSarmiento() {
+  const resultados = await Promise.allSettled(ESTACIONES_BARRIDO.map((n) => serviciosSarmiento(n)));
+  let revisados = 0;
+  const vistos = new Set();
+  const anormales = [];
+  const errores = [];
+  resultados.forEach((res, i) => {
+    if (res.status === "rejected") {
+      errores.push(`${ESTACIONES_BARRIDO[i]}: ${res.reason?.message || res.reason}`);
+      return;
+    }
+    if (!res.value.servicios.length) errores.push(`${ESTACIONES_BARRIDO[i]}: sin servicios de Sarmiento (estaciones: ${res.value.revisadas.join(", ") || "ninguna"})`);
+    for (const item of res.value.servicios) {
+      revisados++;
+      const { s, demora } = datosServicio(item);
+      const clave = `${s.numero}-${item.est.id}`;
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      if (s.cancelacion || s.leyenda || (demora != null && demora >= 10) || (s.tipo?.nombre && s.tipo.nombre !== "Normal")) anormales.push(item);
+    }
+  });
+  let texto = `🔎 Barrido Sarmiento (${ESTACIONES_BARRIDO.join(", ")})\nServicios revisados: ${revisados} · anormales: ${anormales.length}\n`;
+  texto += anormales.length ? `\n${anormales.slice(0, 15).map(lineaServicio).join("\n")}` : "\nNingún servicio con cancelación, leyenda, demora de 10+ min o tipo especial en este momento.";
+  if (errores.length) texto += `\n\nAvisos:\n- ${errores.join("\n- ")}`;
+  return texto;
 }

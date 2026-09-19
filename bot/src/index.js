@@ -29,7 +29,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, consultarProxy } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, consultarProxy } from "./appTrenes.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
@@ -528,6 +528,7 @@ bot.command("hablar", async (ctx) => {
 // EXPERIMENTAL (solo admin): consulta los datos de la app de Trenes Argentinos
 // vía el proxy comunitario de ariedro y responde SIEMPRE por privado.
 //   /apptrenes Moreno            -> estado/demoras/cancelaciones de Sarmiento en esa estación
+//   /apptrenes scan              -> barrido de estaciones principales, solo lo anormal
 //   /apptrenes get /ruta?x=y     -> GET crudo al proxy (para probar rutas, ej. alertas)
 bot.command("apptrenes", async (ctx) => {
   if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
@@ -542,7 +543,9 @@ bot.command("apptrenes", async (ctx) => {
     return;
   }
   try {
-    if (/^get\s+/i.test(args)) {
+    if (/^scan$/i.test(args)) {
+      await enviar(await barridoSarmiento());
+    } else if (/^get\s+/i.test(args)) {
       const ruta = args.replace(/^get\s+/i, "").trim();
       const data = await consultarProxy(ruta);
       const texto = typeof data === "string" ? data : JSON.stringify(data);
