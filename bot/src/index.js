@@ -28,6 +28,7 @@ import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarM
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
+import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
@@ -49,6 +50,7 @@ if (!BOT_TOKEN) {
 }
 
 const bot = new Telegraf(BOT_TOKEN);
+instalarSilencio(bot); // /silencio: desvía al admin lo que iría al grupo
 const app = express();
 app.use(express.json());
 
@@ -493,6 +495,32 @@ bot.command("estado", async (ctx) => {
     console.error("Error actualizando estado:", err.message);
     await ctx.reply("No pude actualizar el estado: " + err.message);
   }
+});
+
+// Modo silencio: el bot deja de publicar en el grupo, pero sigue procesando
+// todo y le manda al admin por privado lo que habría respondido/escrito.
+// /hablar lo saca del silencio. Los comandos del admin (ej. /decir) siguen
+// publicando en el grupo. Solo admin; la confirmación va siempre por privado.
+async function confirmarAlAdmin(texto) {
+  await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, texto).catch((err) => console.error("Error confirmando al admin:", err.message));
+}
+
+bot.command("silencio", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  const yaEstaba = estaSilenciado();
+  await setSilencio(true, `admin ${ctx.from.id}`);
+  await confirmarAlAdmin(
+    yaEstaba
+      ? "🔇 Ya estaba en silencio. /hablar para volver a responder en el grupo."
+      : "🔇 Silencio activado. El bot deja de publicar en el grupo y te manda a vos por privado lo que habría respondido o escrito (con quién preguntó y qué). Tus comandos como /decir siguen publicando. /hablar para volver."
+  );
+});
+
+bot.command("hablar", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  const estaba = estaSilenciado();
+  await setSilencio(false, `admin ${ctx.from.id}`);
+  await confirmarAlAdmin(estaba ? "🔊 Silencio desactivado. El bot vuelve a responder en el grupo." : "🔊 El bot ya estaba hablando (no estaba en silencio).");
 });
 
 // Ver / limpiar los avisos vigentes de la fuente de verdad (por si el
@@ -1206,6 +1234,7 @@ app.get("/internal/check", async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
+  await cargarSilencio(); // restaura el modo silencio si estaba activo antes de un reinicio
   const publicUrl = process.env.PUBLIC_URL;
   if (publicUrl) {
     await bot.telegram.setWebhook(`${publicUrl}${WEBHOOK_PATH}`);
