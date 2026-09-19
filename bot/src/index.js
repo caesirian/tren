@@ -30,7 +30,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, consultarProxy } from "./appTrenes.js";
-import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte } from "./capturasApp.js";
+import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
@@ -927,10 +927,11 @@ function procesarCapturaAppEnCola(ctx) {
 
 async function procesarCapturaApp(ctx) {
   const admin = process.env.ADMIN_TELEGRAM_ID;
-  const avisar = async (texto) => {
+  const avisar = async (texto, extra) => {
     if (!admin) return;
     for (let i = 0; i < texto.length; i += 3900) {
-      await bot.telegram.sendMessage(admin, texto.slice(i, i + 3900)).catch((err) => console.error("Error avisando al admin sobre captura:", err.message));
+      const ultimo = i + 3900 >= texto.length;
+      await bot.telegram.sendMessage(admin, texto.slice(i, i + 3900), ultimo ? extra : undefined).catch((err) => console.error("Error avisando al admin sobre captura:", err.message));
     }
   };
   const from = ctx.from || {};
@@ -982,15 +983,71 @@ async function procesarCapturaApp(ctx) {
       console.error("Error cotejando captura con el proxy:", err.message);
     }
 
+    // Propuesta de revisión: solo si la captura trae una alerta operativa con
+    // un estado claro y quedó guardada (el botón necesita el id del documento).
+    let bloque = "";
+    let botones;
+    const propuesta = id ? proponerEstado(datos) : null;
+    if (propuesta) {
+      const actual = await getEstadoServicio().catch(() => null);
+      const fmtHora = (d) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+      bloque += `\n\n👉 Propuesta: semáforo → ${ETIQUETAS_CONFIRMACION[propuesta.estado]}${propuesta.mensaje ? ` — "${propuesta.mensaje}"` : ""}`;
+      if (actual) bloque += `\n📊 Ahora en el sitio: ${actual.etiqueta} — "${actual.mensaje}"`;
+      const edadMin = Math.round((Date.now() - eventoEn.getTime()) / 60000);
+      if (edadMin > 60) bloque += `\n⚠️ La captura tiene ${edadMin} min: el dato puede estar vencido.`;
+      if (actual?.actualizado && new Date(actual.actualizado) > eventoEn) bloque += `\n⚠️ El sitio se actualizó (${fmtHora(new Date(actual.actualizado))}) después de esta captura.`;
+      if (propuesta.truncado) bloque += "\n⚠️ El texto de la alerta se ve cortado en la captura.";
+      botones = Markup.inlineKeyboard([
+        [Markup.button.callback(`✅ Tomar dato → ${ETIQUETAS_CONFIRMACION[propuesta.estado]}`, `cap:tomar:${id}`)],
+        [Markup.button.callback("🚫 Ignorar", `cap:ignorar:${id}`)],
+      ]);
+    } else if (!id && (datos.alertas || []).some((a) => a.tipo === "operativa")) {
+      bloque += "\n\n(Hay una alerta pero no se pudo guardar la captura, así que no hay botones.)";
+    }
+
     await avisar(
       armarReporte({ datos, quien, chatTitle: ctx.chat?.title, threadId: ctx.message?.message_thread_id, eventoEn, eventoOrigen: origen, subidoEn, cotejo, guardadoId: id }) +
-        (errorCotejo ? `\n⚠️ No pude cotejar con el proxy: ${errorCotejo}` : "")
+        (errorCotejo ? `\n⚠️ No pude cotejar con el proxy: ${errorCotejo}` : "") +
+        bloque,
+      botones
     );
   } catch (err) {
     console.error("Error procesando captura de la app:", err.message);
     await avisar(`⚠️ No pude procesar una imagen de ${quien} (¿captura de la app?): ${err.message}`);
   }
 }
+
+// Botones del reporte de captura: "Tomar dato" actualiza el semáforo del
+// sitio con lo que dice la app; "Ignorar" solo cierra la revisión. Cada
+// captura se revisa una sola vez.
+bot.action(/^cap:(tomar|ignorar):(.+)$/, async (ctx) => {
+  if (!esAdminEstado(ctx)) return ctx.answerCbQuery();
+  const [, accion, id] = ctx.match;
+  const quien = ctx.from?.username ? `@${ctx.from.username}` : String(ctx.from?.id);
+  try {
+    const r = await revisarCaptura({ id, accion, quien }, { aplicarEstado: actualizarEstadoServicio });
+    const quitarBotones = () => ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => {});
+    if (r.resultado === "no_encontrada") return void (await ctx.answerCbQuery("No encontré esa captura en Firestore.", { show_alert: true }));
+    if (r.resultado === "ya_revisada") {
+      await ctx.answerCbQuery(`Ya estaba revisada (${r.revision?.accion || "?"}).`);
+      return void (await quitarBotones());
+    }
+    if (r.resultado === "sin_propuesta") return void (await ctx.answerCbQuery("Esta captura no tiene un estado claro para aplicar.", { show_alert: true }));
+    await quitarBotones();
+    if (r.resultado === "ignorada") {
+      await ctx.answerCbQuery("Ignorada.");
+      await ctx.reply("🚫 Captura ignorada. El semáforo no se tocó.");
+    } else {
+      const p = r.propuesta;
+      await ctx.answerCbQuery("Semáforo actualizado.");
+      await ctx.reply(`✅ Dato tomado. Semáforo: ${ETIQUETAS_CONFIRMACION[p.estado]}${p.mensaje ? ` — "${p.mensaje}"` : ""}`);
+    }
+  } catch (err) {
+    console.error("Error revisando captura:", err.message);
+    await ctx.answerCbQuery("No pude aplicarlo, ver mensaje.").catch(() => {});
+    await ctx.reply("No pude aplicar la revisión: " + err.message).catch(() => {});
+  }
+});
 
 // Las imágenes de comunicados que suben colaboradores EN EL GRUPO se procesan
 // en silencio: el bot no publica nada en el grupo (ni confirmaciones ni

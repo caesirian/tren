@@ -217,6 +217,60 @@ export async function guardarCotejo(id, cotejo) {
 }
 
 // ---------------------------------------------------------------------------
+// Revisión por Telegram: "tomar el dato" (actualiza el semáforo) o "ignorar"
+// ---------------------------------------------------------------------------
+// Estado de la alerta -> estado del semáforo del sitio (normal | modificado | paro)
+const A_SEMAFORO = { interrumpido: "paro", cancelado: "modificado", demorado: "modificado", normal: "normal", normalizado: "normal" };
+const SEVERIDAD = { interrumpido: 3, cancelado: 2, demorado: 2, normal: 1, normalizado: 1 };
+
+// Qué le propondría el bot al admin a partir de las alertas operativas de la
+// captura. Si hay varias, gana la más grave. Solo se propone cuando hay un
+// estado claro; las capturas sin alerta (o con un estado que no se pudo leer)
+// no generan propuesta.
+export function proponerEstado(datos) {
+  const d = normalizarLectura(datos || {});
+  const ops = d.alertas.filter((a) => a.tipo === "operativa" && SEVERIDAD[a.estado]);
+  if (!ops.length) return null;
+  const max = Math.max(...ops.map((a) => SEVERIDAD[a.estado]));
+  const elegidas = ops.filter((a) => SEVERIDAD[a.estado] === max);
+  const estado = A_SEMAFORO[elegidas[0].estado];
+  const mensaje = estado === "normal" ? undefined : elegidas.map((a) => a.texto).join(" ").slice(0, 300);
+  return { estado, mensaje, truncado: elegidas.some((a) => a.truncado), lugar: elegidas[0].lugar || null };
+}
+
+export async function obtenerCaptura(id) {
+  const firestore = ensureInit();
+  if (!firestore || !id) return null;
+  const snap = await firestore.collection(COLECCION).doc(id).get();
+  return snap.exists ? snap.data() : null;
+}
+
+export async function marcarRevisionCaptura(id, revision) {
+  const firestore = ensureInit();
+  if (!firestore || !id) throw new Error("Firestore no está configurado.");
+  await firestore.collection(COLECCION).doc(id).update({ revision });
+}
+
+// Resuelve el botón que tocó el admin. `aplicarEstado` es la función que
+// escribe el semáforo (actualizarEstadoServicio). Una captura ya revisada no
+// se vuelve a aplicar (doble toque o botón viejo).
+export async function revisarCaptura({ id, accion, quien }, { aplicarEstado, obtener = obtenerCaptura, marcar = marcarRevisionCaptura }) {
+  const cap = await obtener(id);
+  if (!cap) return { resultado: "no_encontrada" };
+  if (cap.revision) return { resultado: "ya_revisada", revision: cap.revision };
+  const en = new Date().toISOString();
+  if (accion === "ignorar") {
+    await marcar(id, { accion: "ignorado", por: quien, en });
+    return { resultado: "ignorada" };
+  }
+  const propuesta = proponerEstado(cap);
+  if (!propuesta) return { resultado: "sin_propuesta" };
+  await aplicarEstado({ estado: propuesta.estado, mensaje: propuesta.mensaje, editor: "Telegram (HG) · captura app" });
+  await marcar(id, { accion: "tomado", estado: propuesta.estado, mensaje: propuesta.mensaje ?? null, por: quien, en });
+  return { resultado: "tomada", propuesta };
+}
+
+// ---------------------------------------------------------------------------
 // Cotejo contra el proxy
 // ---------------------------------------------------------------------------
 const minutosDelDia = (hhmm) => {
