@@ -31,7 +31,11 @@ const corto = (v) => (typeof v === "string" ? v : JSON.stringify(v)).slice(0, 16
 
 function listaEstaciones(data) {
   const arr = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : Array.isArray(data?.estaciones) ? data.estaciones : [];
-  return arr.map((e) => ({ id: e.id ?? e.idElemento ?? e.idEstacion, nombre: e.nombre ?? e.name ?? "?", crudo: e })).filter((e) => e.id != null);
+  // Forma real del proxy: { nombre, id_estacion: "278", id_tramo, incluida_en_ramales: [..], ... }
+  const vistos = new Set();
+  return arr
+    .map((e) => ({ id: e.id_estacion ?? e.id ?? e.idElemento ?? e.idEstacion, nombre: e.nombre ?? e.name ?? "?", crudo: e }))
+    .filter((e) => e.id != null && !vistos.has(String(e.id)) && vistos.add(String(e.id)));
 }
 
 // Devuelve { texto } con el reporte de una estación (solo servicios de Sarmiento).
