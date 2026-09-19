@@ -57,3 +57,11 @@ export function registrarRespuestaAlAire(tema) {
   if (!tema) return;
   historial.push({ tema, ts: Date.now(), seq: contadorMensajes });
 }
+
+// Cuando entra información nueva y más fiable (ej. un aviso de la fuente de
+// verdad), lo que el bot contestó antes sobre ese tema quedó viejo: se borra
+// para que la próxima pregunta al aire se conteste con el dato actualizado.
+export function olvidarTema(tema) {
+  if (!tema) return;
+  historial = historial.filter((h) => h.tema !== tema);
+}

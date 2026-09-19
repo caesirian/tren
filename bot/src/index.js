@@ -27,7 +27,8 @@ import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
-import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire } from "./respuestaDedupe.js";
+import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
+import { esFuenteVerdad, procesarMensajeFuente, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
 import { guardarReporte } from "./reportLogger.js";
@@ -176,6 +177,11 @@ function manejarSinRespuesta(respuestaCruda, fueEtiquetado) {
 
 async function armarContexto(pregunta) {
   const partes = [TREN_SARMIENTO_INFO];
+
+  // Avisos de la fuente de verdad (texto de Vivi): van primero y mandan sobre
+  // el semáforo, las alertas y la señal informal. Siempre con vencimiento.
+  const avisos = await avisosVigentes();
+  if (avisos.length) partes.push(textoAvisosParaContexto(avisos));
 
   const estado = await getEstadoServicio();
   if (estado) {
@@ -486,6 +492,35 @@ bot.command("estado", async (ctx) => {
   } catch (err) {
     console.error("Error actualizando estado:", err.message);
     await ctx.reply("No pude actualizar el estado: " + err.message);
+  }
+});
+
+// Ver / limpiar los avisos vigentes de la fuente de verdad (por si el
+// clasificador entendió mal algo). Uso: /avisos  |  /avisos limpiar
+bot.command("avisos", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  const sub = ((ctx.message.text || "").split(" ")[1] || "").toLowerCase();
+  try {
+    if (sub === "limpiar") {
+      await cerrarTodosLosAvisos();
+      olvidarTema("estado");
+      await ctx.reply("✅ Avisos vigentes cerrados. El bot vuelve al estado oficial.");
+      return;
+    }
+    const avisos = await avisosVigentes();
+    if (!avisos.length) {
+      await ctx.reply("No hay avisos vigentes de la fuente de verdad.");
+      return;
+    }
+    const hora = (iso) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+    await ctx.reply(
+      "Avisos vigentes:\n\n" +
+        avisos.map((a) => `• [${a.tipo}] ${a.resumen}\n  desde ${hora(a.timestamp)} hasta ${hora(a.venceEn)}${a.vigenciaEstimada ? " (estimado)" : ""}`).join("\n\n") +
+        "\n\n/avisos limpiar para cerrarlos."
+    );
+  } catch (err) {
+    console.error("Error en /avisos:", err.message);
+    await ctx.reply("No pude gestionar los avisos: " + err.message);
   }
 });
 
@@ -893,6 +928,27 @@ bot.on("text", async (ctx) => {
     if (esGrupo) {
       registrarMensajeGrupo(textoOriginal, ctx.from?.id);
       incrementarContadorMensajes();
+
+      // Fuente de verdad (Vivi): lo que escribe sobre el estado del servicio
+      // se guarda como aviso con vencimiento y pasa a mandar en el contexto.
+      // Se espera acá para que, si en el mismo mensaje también le habla al
+      // bot, el aviso ya esté cargado al armar la respuesta.
+      if (esFuenteVerdad(ctx)) {
+        try {
+          const quien = ctx.from?.username ? `@${ctx.from.username}` : ctx.from?.first_name || `ID ${ctx.from?.id}`;
+          const resultado = await procesarMensajeFuente({ texto: textoOriginal, quien, userId: ctx.from?.id });
+          if (resultado) {
+            olvidarTema("estado"); // lo que se contestó antes sobre el estado quedó viejo
+            console.log(
+              resultado === "normalizado"
+                ? `Aviso de fuente: normalización, avisos abiertos cerrados (${quien})`
+                : `Aviso de fuente guardado: ${resultado.tipo}, vence ${resultado.venceEn}${resultado.vigenciaEstimada ? " (estimado)" : ""} (${quien})`
+            );
+          }
+        } catch (err) {
+          console.error("Error procesando mensaje de fuente de verdad:", err.message);
+        }
+      }
     }
 
     // Aviso al admin ante insultos o groserías, en grupo O privado.
