@@ -21,12 +21,11 @@ Once, Caballito, Flores, Floresta, Villa Luro, Liniers, Ciudadela, Ramos Mejía,
 Haedo, Morón, Castelar, Ituzaingó, San Antonio de Padua, Merlo, Paso del Rey, Moreno.
 
 TIEMPO DE VIAJE:
-- Once a Moreno (servicio directo, sin demoras): aproximadamente 65-70 minutos.
+- Según el cronograma oficial (sin demoras): 78 minutos de Once a Moreno y 80 minutos de Moreno a Once.
 
 FRECUENCIAS (ramal Once-Moreno):
-- Hora pico (mañana y tarde, días hábiles): un tren cada 9 minutos aproximadamente.
-- Fuera de hora pico en días hábiles, y fines de semana/feriados: entre 15 y 27 minutos según franja.
-- El rango general oficial es de 9 a 27 minutos según día y horario.
+- Lunes a viernes y sábados: un tren cada 10-13 minutos aproximadamente durante casi todo el día (en la noche, después de las 20 hs, y en la madrugada los intervalos se alargan, hasta unos 30 minutos entre los últimos trenes).
+- Domingos y feriados: un tren cada 18-19 minutos durante el día; más espaciados de noche y de madrugada (hasta unos 30 minutos).
 - Estas frecuencias son el cronograma oficial vigente; pueden variar por demoras puntuales u obras — para eso confiar en el semáforo de estado en vivo si está disponible en el contexto.
 
 TARIFAS SUBE VIGENTES (servicio común, septiembre 2026 — Resolución 27/2026):

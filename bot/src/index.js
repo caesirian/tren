@@ -283,12 +283,10 @@ Próximos trenes hacia Once desde ${estacion.name}: ${proximos.haciaOnce.map((t)
 Estos horarios están calculados en el momento con el cronograma base oficial vigente y son la fuente más precisa disponible — no derives a la app si esta sección ya responde la pregunta.`);
 
       const locales = proximosLocales(estacion.name, ahora);
-      const todosLosHorarios = horariosLocalesEstacion(estacion.name);
+      const todosLosHorarios = horariosLocalesEstacion(estacion.name, ahora);
       let bloqueLocales;
       if (!todosLosHorarios.length) {
-        bloqueLocales = `Esta estación NO tiene servicios "locales" designados en ningún horario del día (los locales solo existen en Flores, Liniers, Merlo y Castelar). Puede tomar cualquier tren regular con los horarios de arriba.`;
-      } else if (getDayType(ahora) !== "lv") {
-        bloqueLocales = `Hoy no circula ningún local porque los locales solo son de lunes a viernes. En días hábiles, los horarios habituales en esta estación son: ${todosLosHorarios.map((l) => `${l.hora} ${l.direccion}`).join(", ")}.`;
+        bloqueLocales = `Esta estación NO tiene servicios "locales" designados hoy (en días hábiles hay locales en Flores, Liniers, Merlo y Castelar; sábados y domingos solo en Castelar, de madrugada). Puede tomar cualquier tren regular con los horarios de arriba.`;
       } else if (!locales.length) {
         bloqueLocales = `Ya pasaron todos los locales programados de HOY en esta estación (eran a las ${todosLosHorarios.map((l) => `${l.hora} ${l.direccion}`).join(", ")}) — no es que el servicio dejó de funcionar, simplemente ya no quedan más locales por salir hoy. Puede tomar cualquier tren regular con los horarios de arriba, o volver a preguntar mañana por los mismos horarios.`;
       } else {
@@ -306,11 +304,11 @@ ${bloqueLocales}`);
     const estaciones = Object.keys(todos);
     partes.push(`
 == TODOS LOS "LOCALES" DE HOY (calculado ahora, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==
-IMPORTANTE: un "local" es una formación que arranca VACÍA en esa estación puntual (no cualquier tren de paso). Solo hay locales designados en Flores, Liniers, Merlo y Castelar, y solo en días hábiles.
+IMPORTANTE: un "local" es una formación que arranca VACÍA en esa estación puntual (no cualquier tren de paso). En días hábiles hay locales en Flores, Liniers, Merlo y Castelar; sábados y domingos solo en Castelar, de madrugada.
 ${
   estaciones.length
     ? estaciones.map((est) => `${est}: ${todos[est].map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ")}`).join("\n")
-    : "No quedan más locales programados por hoy (o no es día hábil)."
+    : "No quedan más locales programados por hoy."
 }
 Esta es la lista completa y precisa — no derives a la app, esto ya responde la pregunta.`);
   } else if (/último|ultimo|primer(o)?\s+tren|primeros?\s+servicios?/i.test(pregunta)) {
