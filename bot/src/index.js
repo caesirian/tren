@@ -30,6 +30,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, consultarProxy } from "./appTrenes.js";
+import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte } from "./capturasApp.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
@@ -901,12 +902,97 @@ bot.command("noticia", async (ctx) => {
 });
 
 bot.on("photo", async (ctx) => {
-  if (esColaboradorImagenes(ctx)) {
-    await procesarComunicadoDeImagen(ctx);
+  const esColab = esColaboradorImagenes(ctx);
+  let resultadoComunicado;
+  if (esColab) {
+    resultadoComunicado = await procesarComunicadoDeImagen(ctx);
   } else {
     await reenviarMediaAlAdmin(ctx, "imagen");
   }
+  // Capturas de la app de Trenes Argentinos: las puede subir cualquier
+  // usuario del grupo. (Un colaborador cuya imagen SÍ era comunicado no pasa
+  // por acá.) Todo en silencio: solo se le informa al admin.
+  if (ctx.chat?.type !== "private" && esChatAutorizado(ctx) && (!esColab || resultadoComunicado === "no_relevante")) {
+    procesarCapturaAppEnCola(ctx).catch((err) => console.error("Error en captura de la app:", err.message));
+  }
 });
+
+// Captura de la app: Gemini la lee -> se guarda en Firestore con fecha y hora
+// del EVENTO -> se hace el barrido de Sarmiento y se coteja contra la captura.
+// Se procesan de a una (evita duplicados en paralelo y no satura el proxy).
+let colaCapturas = Promise.resolve();
+function procesarCapturaAppEnCola(ctx) {
+  const tarea = colaCapturas.then(() => procesarCapturaApp(ctx));
+  colaCapturas = tarea.catch(() => {});
+  return tarea;
+}
+
+async function procesarCapturaApp(ctx) {
+  const admin = process.env.ADMIN_TELEGRAM_ID;
+  const avisar = async (texto) => {
+    if (!admin) return;
+    for (let i = 0; i < texto.length; i += 3900) {
+      await bot.telegram.sendMessage(admin, texto.slice(i, i + 3900)).catch((err) => console.error("Error avisando al admin sobre captura:", err.message));
+    }
+  };
+  const from = ctx.from || {};
+  const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
+  try {
+    const foto = ctx.message.photo[ctx.message.photo.length - 1];
+    const fileUrl = await bot.telegram.getFileLink(foto.file_id);
+    const res = await fetch(fileUrl.href);
+    if (!res.ok) throw new Error(`No pude descargar la imagen de Telegram (${res.status})`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const imagenHash = hashImagen(buffer);
+    const fileUniqueId = foto.file_unique_id;
+
+    if (await capturaYaProcesada({ imagenHash, fileUniqueId })) {
+      console.log(`Captura repetida ignorada — ${quien}`);
+      return;
+    }
+
+    const datos = await analizarCapturaApp(buffer.toString("base64"));
+    recordarCaptura({ imagenHash, fileUniqueId }); // recién ahora: si Gemini falló, se puede reintentar
+    if (!datos.esCapturaAppTrenes) {
+      console.log(`Imagen de ${quien}: no es captura de la app de Trenes Argentinos, se ignora`);
+      return;
+    }
+
+    const subidoEn = new Date((ctx.message.date || Math.floor(Date.now() / 1000)) * 1000);
+    const { eventoEn, origen } = calcularEventoEn(datos.horaCaptura, datos.fechaCaptura, subidoEn);
+    const { id } = await guardarCaptura(datos, {
+      quien,
+      userId: from.id,
+      chatId: ctx.chat?.id,
+      threadId: ctx.message?.message_thread_id,
+      imagenHash,
+      fileUniqueId,
+      fileId: foto.file_id,
+      eventoEn,
+      eventoOrigen: origen,
+      subidoEn,
+    });
+
+    let cotejo = null;
+    let errorCotejo = null;
+    try {
+      cotejo = await cotejarCaptura(datos, eventoEn);
+      const { textoBarrido, ...cotejoGuardable } = cotejo;
+      await guardarCotejo(id, cotejoGuardable);
+    } catch (err) {
+      errorCotejo = err.message;
+      console.error("Error cotejando captura con el proxy:", err.message);
+    }
+
+    await avisar(
+      armarReporte({ datos, quien, chatTitle: ctx.chat?.title, threadId: ctx.message?.message_thread_id, eventoEn, eventoOrigen: origen, subidoEn, cotejo, guardadoId: id }) +
+        (errorCotejo ? `\n⚠️ No pude cotejar con el proxy: ${errorCotejo}` : "")
+    );
+  } catch (err) {
+    console.error("Error procesando captura de la app:", err.message);
+    await avisar(`⚠️ No pude procesar una imagen de ${quien} (¿captura de la app?): ${err.message}`);
+  }
+}
 
 // Las imágenes de comunicados que suben colaboradores EN EL GRUPO se procesan
 // en silencio: el bot no publica nada en el grupo (ni confirmaciones ni
@@ -961,7 +1047,7 @@ async function procesarComunicadoDeImagenSerial(ctx) {
         "No me pareció un comunicado oficial de transporte, así que no lo guardé como fuente de la verdad. Si me equivoco, contame qué decía y lo cargo a mano.";
       if (enGrupo) await avisarAdmin(`🖼️ Imagen de ${quien} en el grupo (${ctx.chat?.title || "sin nombre"}): ${textoNoRelevante}`);
       else await ctx.reply(textoNoRelevante);
-      return;
+      return "no_relevante"; // el llamador puede probar si es una captura de la app
     }
 
     // Repetido (mismo comunicado en otra imagen/captura): no se guarda, no se

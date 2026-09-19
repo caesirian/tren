@@ -24,7 +24,7 @@ export async function consultarProxy(ruta) {
   }
 }
 
-const hora = (iso) =>
+export const hora = (iso) =>
   iso ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)) : "--:--";
 
 const corto = (v) => (typeof v === "string" ? v : JSON.stringify(v)).slice(0, 160);
@@ -40,7 +40,7 @@ function listaEstaciones(data) {
 
 // Trae los servicios de Sarmiento de una estación (por nombre).
 // Devuelve { servicios: [{ est, r }], revisadas: [...], crudoEstaciones }.
-async function serviciosSarmiento(nombre) {
+export async function serviciosSarmiento(nombre) {
   const encontradas = await consultarProxy(`/infraestructura/estaciones?nombre=${encodeURIComponent(nombre)}`);
   let candidatas = listaEstaciones(encontradas);
   // Si hay una estación con el nombre exacto, se usa solo esa (evita "Moreno" + "Moreno Norte", etc.).
@@ -59,7 +59,7 @@ async function serviciosSarmiento(nombre) {
   return { servicios, revisadas, candidatas, crudoEstaciones: encontradas };
 }
 
-function datosServicio({ est, r }) {
+export function datosServicio({ est, r }) {
   const a = r.arribo || {};
   const s = r.servicio || {};
   const prog = a.llegada?.programada || a.salida?.programada;
@@ -68,7 +68,7 @@ function datosServicio({ est, r }) {
   return { est, s, prog, estim, demora, destino: s.hasta?.estacion?.nombre || s.ramal?.cabeceraFinal?.nombre || s.ramal?.nombre || "?", estado: s.desde?.estado?.nombre || "s/d" };
 }
 
-function lineaServicio(item) {
+export function lineaServicio(item) {
   const { est, s, prog, estim, demora, destino, estado } = datosServicio(item);
   let l = `• #${s.numero ?? "?"} → ${destino} | ${est.nombre}: prog ${hora(prog)}${estim ? ` / est ${hora(estim)}${demora != null ? ` (${demora >= 0 ? "+" : ""}${demora} min)` : ""}` : ""} | ${estado}`;
   if (s.tipo?.nombre && s.tipo.nombre !== "Normal") l += ` | tipo: ${s.tipo.nombre}`;
@@ -101,11 +101,21 @@ export async function reporteEstacion(nombre) {
 // Sirve para probar cuándo el proxy trae cancelacion/leyenda con texto real.
 const ESTACIONES_BARRIDO = ["Once", "Liniers", "Ramos Mejía", "Morón", "Castelar", "Merlo", "Moreno"];
 
-export async function barridoSarmiento() {
+const esAnormal = (item) => {
+  const { s, demora } = datosServicio(item);
+  return !!(s.cancelacion || s.leyenda || (demora != null && demora >= 10) || (s.tipo?.nombre && s.tipo.nombre !== "Normal"));
+};
+
+// Barrido estructurado (con caché corta para no golpear el proxy de un
+// tercero cuando llegan varias capturas seguidas).
+let cacheBarrido = null;
+const EDAD_MAX_CACHE_MS = 2 * 60 * 1000;
+
+export async function barridoEstructurado({ forzar = false } = {}) {
+  if (!forzar && cacheBarrido && Date.now() - cacheBarrido.momento < EDAD_MAX_CACHE_MS) return cacheBarrido;
   const resultados = await Promise.allSettled(ESTACIONES_BARRIDO.map((n) => serviciosSarmiento(n)));
-  let revisados = 0;
+  const todos = [];
   const vistos = new Set();
-  const anormales = [];
   const errores = [];
   resultados.forEach((res, i) => {
     if (res.status === "rejected") {
@@ -114,16 +124,23 @@ export async function barridoSarmiento() {
     }
     if (!res.value.servicios.length) errores.push(`${ESTACIONES_BARRIDO[i]}: sin servicios de Sarmiento (estaciones: ${res.value.revisadas.join(", ") || "ninguna"})`);
     for (const item of res.value.servicios) {
-      revisados++;
-      const { s, demora } = datosServicio(item);
-      const clave = `${s.numero}-${item.est.id}`;
+      const clave = `${item.r?.servicio?.numero}-${item.est.id}`;
       if (vistos.has(clave)) continue;
       vistos.add(clave);
-      if (s.cancelacion || s.leyenda || (demora != null && demora >= 10) || (s.tipo?.nombre && s.tipo.nombre !== "Normal")) anormales.push(item);
+      todos.push(item);
     }
   });
-  let texto = `🔎 Barrido Sarmiento (${ESTACIONES_BARRIDO.join(", ")})\nServicios revisados: ${revisados} · anormales: ${anormales.length}\n`;
-  texto += anormales.length ? `\n${anormales.slice(0, 15).map(lineaServicio).join("\n")}` : "\nNingún servicio con cancelación, leyenda, demora de 10+ min o tipo especial en este momento.";
-  if (errores.length) texto += `\n\nAvisos:\n- ${errores.join("\n- ")}`;
+  cacheBarrido = { todos, anormales: todos.filter(esAnormal), errores, momento: Date.now() };
+  return cacheBarrido;
+}
+
+export function textoBarrido(b) {
+  let texto = `🔎 Barrido Sarmiento (${ESTACIONES_BARRIDO.join(", ")})\nServicios revisados: ${b.todos.length} · anormales: ${b.anormales.length}\n`;
+  texto += b.anormales.length ? `\n${b.anormales.slice(0, 15).map(lineaServicio).join("\n")}` : "\nNingún servicio con cancelación, leyenda, demora de 10+ min o tipo especial en este momento.";
+  if (b.errores.length) texto += `\n\nAvisos:\n- ${b.errores.join("\n- ")}`;
   return texto;
+}
+
+export async function barridoSarmiento() {
+  return textoBarrido(await barridoEstructurado({ forzar: true }));
 }
