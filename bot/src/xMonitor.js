@@ -139,7 +139,15 @@ const UMBRAL_AVISO = 6; // ~1-1.5hs de pings sin que ninguna instancia responda
 // procesado (guardado en botInternal/xMonitor) para no reescribir Firestore
 // de nuevo con el mismo tweet, y solo actualiza el semáforo cuando hay uno
 // NUEVO y categorizable.
+// Interruptor: con X_MONITOR_ACTIVO=false en las variables de entorno el
+// monitoreo queda apagado (no consulta Nitter/X, no toca el semáforo ni avisa
+// de fallos). Para reactivarlo, poner "true" o borrar la variable.
+export function monitorXActivo() {
+  return String(process.env.X_MONITOR_ACTIVO ?? "true").trim().toLowerCase() !== "false";
+}
+
 export async function chequearYActualizarDesdeX() {
+  if (!monitorXActivo()) return { actualizado: false, motivo: "monitoreo de X desactivado (X_MONITOR_ACTIVO=false)" };
   const firestore = ensureInit();
   if (!firestore) return { actualizado: false, motivo: "sin Firestore" };
 
