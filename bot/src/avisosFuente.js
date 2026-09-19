@@ -16,6 +16,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { similitud } from "./imageIntel.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const MODEL = "gemini-3.5-flash-lite";
@@ -154,7 +155,7 @@ async function cerrarAvisosAbiertos(ahora) {
 
 // Procesa un mensaje de la fuente. Devuelve el aviso guardado, "normalizado"
 // si cerró los abiertos, o null si no era un aviso.
-export async function procesarMensajeFuente({ texto, quien, userId }) {
+export async function procesarMensajeFuente({ texto, quien, userId, origen = "texto" }) {
   const limpio = (texto || "").trim();
   if (limpio.length < 8 || limpio.startsWith("/")) return null;
 
@@ -174,9 +175,31 @@ export async function procesarMensajeFuente({ texto, quien, userId }) {
   }
 
   const { venceEn, estimado } = calcularVencimiento(clasif, ahora);
+
+  // Si ya hay un aviso vigente del mismo tipo que dice lo mismo (la fuente
+  // repite o reconfirma), no se duplica: se renueva su vigencia.
+  const resumenNuevo = String(clasif.resumen || limpio).slice(0, 300);
+  const vigentes = await avisosVigentes();
+  const igual = vigentes.find((a) => a.tipo === clasif.tipo && similitud(a.resumen, resumenNuevo) >= 0.5);
+  if (igual) {
+    const nuevoVence = new Date(Math.max(new Date(igual.venceEn).getTime(), venceEn.getTime())).toISOString();
+    const cambios = { venceEn: nuevoVence, vigenciaEstimada: estimado && igual.vigenciaEstimada !== false, ultimaConfirmacion: ahora.toISOString() };
+    if (igual.id && ensureInit()) {
+      try {
+        await ensureInit().collection(COLECCION).doc(igual.id).update(cambios);
+      } catch (err) {
+        console.error("Error renovando aviso de fuente:", err.message);
+      }
+    } else {
+      enMemoria = enMemoria.map((a) => (a.id === igual.id ? { ...a, ...cambios } : a));
+    }
+    return { ...igual, ...cambios, renovado: true };
+  }
+
   const aviso = {
     tipo: clasif.tipo,
-    resumen: String(clasif.resumen || limpio).slice(0, 300),
+    resumen: resumenNuevo,
+    origen,
     textoOriginal: limpio.slice(0, 500),
     creadoPor: quien,
     userId: userId ?? null,
@@ -208,7 +231,7 @@ export async function avisosVigentes() {
   if (firestore) {
     try {
       const snap = await firestore.collection(COLECCION).where("venceEn", ">", iso).get();
-      lista = lista.concat(snap.docs.map((d) => d.data()).filter((a) => !a.cerrado));
+      lista = lista.concat(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => !a.cerrado));
     } catch (err) {
       console.error("Error trayendo avisos vigentes:", err.message);
     }
@@ -232,4 +255,18 @@ export function textoAvisosParaContexto(avisos, ahora = new Date()) {
     return `- [${a.tipo.replace("_", " ")}] Informado hace ${hace} min (${horaAR(new Date(a.timestamp))}): ${a.resumen}\n  Texto original: "${a.textoOriginal}"\n  ${vigencia}`;
   });
   return `\n== AVISOS VIGENTES DE LA FUENTE DE VERDAD (información más confiable y actual; manda sobre todo lo demás) ==\n${lineas.join("\n")}\nEstos avisos son TEMPORALES, nunca indefinidos: pasada la hora de vigencia dejan de aplicar y vuelve a regir el estado oficial.`;
+}
+
+// Transcribe una nota de voz / audio con Gemini. Devuelve el texto, o null si
+// no hay voz o no se entiende.
+export async function transcribirAudio(base64Data, mimeType = "audio/ogg") {
+  const prompt =
+    "Transcribí literalmente este audio en español rioplatense (es de una persona informando sobre el servicio del Tren Sarmiento). " +
+    "Devolvé SOLO la transcripción, sin comillas ni comentarios. Si no hay voz o no se entiende nada, devolvé exactamente: SIN_VOZ";
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType, data: base64Data } }] }],
+  });
+  const texto = response.text.trim();
+  return !texto || texto === "SIN_VOZ" ? null : texto;
 }

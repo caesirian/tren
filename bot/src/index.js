@@ -29,7 +29,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
-import { esFuenteVerdad, procesarMensajeFuente, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
+import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
 import { guardarReporte } from "./reportLogger.js";
@@ -981,8 +981,57 @@ async function procesarComunicadoDeImagenSerial(ctx) {
   }
 }
 
-bot.on("voice", (ctx) => reenviarMediaAlAdmin(ctx, "audio/nota de voz"));
-bot.on("audio", (ctx) => reenviarMediaAlAdmin(ctx, "audio"));
+// Audios: se siguen reenviando al admin como siempre. Además, si el audio lo
+// manda una fuente de verdad (Vivi) EN EL GRUPO, el bot lo escucha (lo
+// transcribe con Gemini) y lo trata igual que un mensaje de texto suyo: si
+// informa accidente/servicio limitado/etc. queda como aviso con vencimiento.
+// Todo en silencio: al grupo no se publica nada, solo se le informa al admin.
+async function manejarAudio(ctx, tipo) {
+  await reenviarMediaAlAdmin(ctx, tipo);
+  if (ctx.chat?.type === "private" || !esChatAutorizado(ctx) || !esFuenteVerdad(ctx)) return;
+  await procesarAudioDeFuente(ctx);
+}
+
+async function procesarAudioDeFuente(ctx) {
+  const admin = process.env.ADMIN_TELEGRAM_ID;
+  const avisar = (texto) => (admin ? bot.telegram.sendMessage(admin, texto.slice(0, 4000)).catch((err) => console.error("Error avisando al admin sobre audio:", err.message)) : Promise.resolve());
+  const from = ctx.from || {};
+  const quien = from.username ? `@${from.username}` : from.first_name || `ID ${from.id}`;
+  try {
+    const media = ctx.message?.voice || ctx.message?.audio;
+    if (!media) return;
+    if ((media.duration || 0) > 300 || (media.file_size || 0) > 10 * 1024 * 1024) {
+      await avisar(`🎙️ Audio de ${quien} muy largo o pesado (más de 5 min o 10 MB): no lo transcribí.`);
+      return;
+    }
+    const fileUrl = await bot.telegram.getFileLink(media.file_id);
+    const res = await fetch(fileUrl.href);
+    if (!res.ok) throw new Error(`No pude descargar el audio de Telegram (${res.status})`);
+    const base64 = Buffer.from(await res.arrayBuffer()).toString("base64");
+
+    const texto = await transcribirAudio(base64, media.mime_type || "audio/ogg");
+    if (!texto) {
+      await avisar(`🎙️ Audio de ${quien}: no pude entender nada (sin voz o muy ruidoso). No cargué ningún aviso.`);
+      return;
+    }
+
+    const resultado = await procesarMensajeFuente({ texto, quien, userId: from.id, origen: "audio" });
+    if (resultado) olvidarTema("estado");
+    const hora = (iso) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+    const conclusion = !resultado
+      ? "→ No lo tomé como aviso del servicio (charla u otro tema). No cargué nada."
+      : resultado === "normalizado"
+        ? "→ Lo tomé como normalización: cerré los avisos abiertos."
+        : `→ Aviso ${resultado.renovado ? "renovado (ya lo tenía)" : "guardado"}: [${resultado.tipo}] ${resultado.resumen}\n   Vigente hasta las ${hora(resultado.venceEn)}${resultado.vigenciaEstimada ? " (estimado)" : ""}.`;
+    await avisar(`🎙️ Audio de ${quien} en el grupo, transcripto:\n"${texto.slice(0, 1500)}"\n\n${conclusion}\n\n(/avisos para ver o limpiar)`);
+  } catch (err) {
+    console.error("Error procesando audio de fuente de verdad:", err.message);
+    await avisar(`⚠️ No pude procesar un audio de ${quien}: ${err.message}`);
+  }
+}
+
+bot.on("voice", (ctx) => manejarAudio(ctx, "audio/nota de voz"));
+bot.on("audio", (ctx) => manejarAudio(ctx, "audio"));
 bot.on("video", (ctx) => reenviarMediaAlAdmin(ctx, "video"));
 bot.on("video_note", (ctx) => reenviarMediaAlAdmin(ctx, "video nota"));
 
@@ -1014,7 +1063,7 @@ bot.on("text", async (ctx) => {
             console.log(
               resultado === "normalizado"
                 ? `Aviso de fuente: normalización, avisos abiertos cerrados (${quien})`
-                : `Aviso de fuente guardado: ${resultado.tipo}, vence ${resultado.venceEn}${resultado.vigenciaEstimada ? " (estimado)" : ""} (${quien})`
+                : `Aviso de fuente ${resultado.renovado ? "renovado (repetido)" : "guardado"}: ${resultado.tipo}, vence ${resultado.venceEn}${resultado.vigenciaEstimada ? " (estimado)" : ""} (${quien})`
             );
           }
         } catch (err) {
