@@ -40,7 +40,7 @@ import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "
 import { chequearYActualizarDesdeX } from "./xMonitor.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
-import { analizarComunicadoImagen, guardarComunicado, comunicadosRecientes, listarComunicados } from "./imageIntel.js";
+import { analizarComunicadoImagen, guardarComunicado, comunicadosRecientes, listarComunicados, hashImagen, esImagenYaProcesada, buscarComunicadoDuplicado, registrarImagenDescartada } from "./imageIntel.js";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -848,7 +848,17 @@ bot.on("photo", async (ctx) => {
 // en silencio: el bot no publica nada en el grupo (ni confirmaciones ni
 // errores), solo le informa al admin por privado. Si la imagen llega por
 // privado, sí responde ahí.
-async function procesarComunicadoDeImagen(ctx) {
+// Las imágenes se procesan de a una: si llegan dos iguales juntas (o un
+// álbum), la segunda ya encuentra guardada a la primera y se detecta como
+// repetida en vez de procesarse en paralelo.
+let colaImagenes = Promise.resolve();
+function procesarComunicadoDeImagen(ctx) {
+  const tarea = colaImagenes.then(() => procesarComunicadoDeImagenSerial(ctx));
+  colaImagenes = tarea.catch(() => {});
+  return tarea;
+}
+
+async function procesarComunicadoDeImagenSerial(ctx) {
   const enGrupo = ctx.chat?.type !== "private";
   const avisarAdmin = (texto) =>
     process.env.ADMIN_TELEGRAM_ID
@@ -858,19 +868,31 @@ async function procesarComunicadoDeImagen(ctx) {
       : Promise.resolve();
   try {
     if (!enGrupo) await ctx.sendChatAction("typing");
-    const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+    const foto = ctx.message.photo[ctx.message.photo.length - 1];
+    const fileId = foto.file_id;
+    const fileUniqueId = foto.file_unique_id;
     const fileUrl = await bot.telegram.getFileLink(fileId);
     const res = await fetch(fileUrl.href);
     if (!res.ok) throw new Error(`No pude descargar la imagen de Telegram (${res.status})`);
     const buffer = Buffer.from(await res.arrayBuffer());
     const base64 = buffer.toString("base64");
+    const imagenHash = hashImagen(buffer);
 
-    const datos = await analizarComunicadoImagen(base64);
     const from = ctx.from || {};
     const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
     const esElAdminPrincipal = String(from.id) === String(process.env.ADMIN_TELEGRAM_ID);
 
+    // Repetido (misma imagen): se corta acá, sin gastar Gemini ni avisar de nuevo.
+    if (await esImagenYaProcesada({ imagenHash, fileUniqueId })) {
+      console.log(`Comunicado repetido ignorado (misma imagen) — ${quien}`);
+      if (!enGrupo) await ctx.reply("Esa imagen ya la había procesado antes, no la cargo de nuevo.");
+      return;
+    }
+
+    const datos = await analizarComunicadoImagen(base64);
+
     if (!datos.esComunicadoRelevante) {
+      registrarImagenDescartada({ imagenHash, fileUniqueId });
       const textoNoRelevante =
         "No me pareció un comunicado oficial de transporte, así que no lo guardé como fuente de la verdad. Si me equivoco, contame qué decía y lo cargo a mano.";
       if (enGrupo) await avisarAdmin(`🖼️ Imagen de ${quien} en el grupo (${ctx.chat?.title || "sin nombre"}): ${textoNoRelevante}`);
@@ -878,7 +900,18 @@ async function procesarComunicadoDeImagen(ctx) {
       return;
     }
 
-    await guardarComunicado(datos, { quien, userId: from.id });
+    // Repetido (mismo comunicado en otra imagen/captura): no se guarda, no se
+    // suma otra alerta al sitio ni se avisa de nuevo. Igual se registra el
+    // hash de esta imagen para cortarla antes en la próxima.
+    const duplicado = await buscarComunicadoDuplicado(datos);
+    if (duplicado) {
+      console.log(`Comunicado repetido ignorado (mismo contenido que uno ya cargado: "${(duplicado.resumen || "").slice(0, 60)}") — ${quien}`);
+      await guardarComunicado({ ...datos, esComunicadoRelevante: false, duplicadoDe: duplicado.timestamp }, { quien, userId: from.id, imagenHash, fileUniqueId });
+      if (!enGrupo) await ctx.reply("Ese comunicado ya lo tenía cargado, no lo repito.");
+      return;
+    }
+
+    await guardarComunicado(datos, { quien, userId: from.id, imagenHash, fileUniqueId });
 
     // Se suma como alerta COMPLEMENTARIA del semáforo (campo alertas[] que
     // ya lee el sitio, independiente del color/mensaje principal) — no
