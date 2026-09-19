@@ -28,6 +28,7 @@ import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarM
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
+import { evaluarSpam } from "./spamDetector.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
@@ -1035,6 +1036,58 @@ bot.on("audio", (ctx) => manejarAudio(ctx, "audio"));
 bot.on("video", (ctx) => reenviarMediaAlAdmin(ctx, "video"));
 bot.on("video_note", (ctx) => reenviarMediaAlAdmin(ctx, "video nota"));
 
+// Moderación de spam/promociones en el grupo: el bot NO responde, intenta
+// borrar el mensaje (si es admin del grupo con permiso de borrar) y le avisa
+// al admin por privado. No aplica a: el admin, las fuentes de verdad, los
+// colaboradores ni los administradores del grupo.
+const avisosSpamPorUsuario = new Map(); // userId -> { ultimo: ms, ocultos: n }
+async function moderarSpam(ctx, texto) {
+  if (esFuenteVerdad(ctx) || esColaboradorImagenes(ctx)) return false;
+  const veredicto = await evaluarSpam(texto);
+  if (!veredicto.spam) return false;
+
+  // No tocar a los administradores del grupo.
+  try {
+    const miembro = await bot.telegram.getChatMember(ctx.chat.id, ctx.from.id);
+    if (["creator", "administrator"].includes(miembro.status)) return false;
+  } catch (err) {
+    console.error("Moderación: no pude verificar si es admin del grupo:", err.message);
+  }
+
+  let resultadoBorrado;
+  try {
+    await ctx.deleteMessage();
+    resultadoBorrado = "🗑️ Lo borré del grupo.";
+  } catch (err) {
+    resultadoBorrado = `⚠️ No pude borrarlo (¿el bot es admin del grupo con permiso para borrar mensajes?): ${err.message}`;
+  }
+
+  const from = ctx.from || {};
+  const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || "sin nombre";
+  console.log(`Spam detectado (${veredicto.capa}) de ${quien} [${from.id}]: ${veredicto.motivo}`);
+
+  // Anti-inundación de avisos: un usuario que spamea seguido genera un solo
+  // aviso cada 5 minutos, con el conteo de los que se ocultaron.
+  const reg = avisosSpamPorUsuario.get(from.id) || { ultimo: 0, ocultos: 0 };
+  if (Date.now() - reg.ultimo < 5 * 60 * 1000) {
+    avisosSpamPorUsuario.set(from.id, { ...reg, ocultos: reg.ocultos + 1 });
+    return true;
+  }
+  avisosSpamPorUsuario.set(from.id, { ultimo: Date.now(), ocultos: 0 });
+
+  if (process.env.ADMIN_TELEGRAM_ID) {
+    const tema = ctx.message?.message_thread_id ? ` (tema ${ctx.message.message_thread_id})` : "";
+    await bot.telegram
+      .sendMessage(
+        process.env.ADMIN_TELEGRAM_ID,
+        `🚫 Spam en «${ctx.chat?.title || "grupo"}»${tema}\n👤 ${quien} (ID ${from.id})\n📝 "${texto.slice(0, 400)}"\n🔎 Motivo: ${veredicto.motivo}\n${resultadoBorrado}` +
+          (reg.ocultos ? `\n(+${reg.ocultos} mensaje(s) más de este usuario desde el último aviso)` : "")
+      )
+      .catch((err) => console.error("Error avisando al admin sobre spam:", err.message));
+  }
+  return true;
+}
+
 bot.on("text", async (ctx) => {
   let preguntaParaReintento = null;
   try {
@@ -1043,6 +1096,9 @@ bot.on("text", async (ctx) => {
     const textoOriginal = ctx.message.text;
     const esGrupo = ctx.chat?.type !== "private";
     const esChatPrivado = !esGrupo;
+
+    // Spam/promociones en el grupo: no se responde, se borra y se avisa al admin.
+    if (esGrupo && (await moderarSpam(ctx, textoOriginal))) return;
 
     // Alimenta la señal informal de "nadie se queja" — se registra SIEMPRE
     // que sea un mensaje de grupo, aunque no le hablen al bot directamente.

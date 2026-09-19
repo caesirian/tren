@@ -10,7 +10,8 @@
 // un grupo (chat_id negativo) se redirige al admin con contexto (quién
 // preguntó y qué). Los chats privados no se tocan. Excepción: los comandos
 // del propio admin (ej. /decir) siguen publicando en el grupo, porque son
-// una orden explícita suya.
+// una orden explícita suya. El borrado de spam (deleteMessage) tampoco se
+// bloquea: es moderación, no una respuesta.
 //
 // El estado se guarda en Firestore (configBot/silencio) para sobrevivir a
 // reinicios de Render; sin Firestore queda solo en memoria.
@@ -77,7 +78,7 @@ const ENVIOS_A_DESVIAR = new Set([
   "sendPhoto", "sendDocument", "sendVideo", "sendAudio", "sendVoice", "sendAnimation", "sendSticker",
   "sendPoll", "sendVideoNote", "sendMediaGroup", "sendLocation", "sendVenue", "sendContact", "forwardMessage", "copyMessage",
 ]);
-const ACCIONES_A_TRAGAR = new Set(["sendChatAction", "setMessageReaction", "editMessageText", "editMessageReplyMarkup", "deleteMessage", "pinChatMessage"]);
+const ACCIONES_A_TRAGAR = new Set(["sendChatAction", "setMessageReaction", "editMessageText", "editMessageReplyMarkup", "pinChatMessage"]);
 
 const esGrupo = (chatId) => String(chatId ?? "").startsWith("-");
 
