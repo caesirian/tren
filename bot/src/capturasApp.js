@@ -43,6 +43,7 @@ function ensureInit() {
 }
 
 let recientes = []; // { imagenHash, fileUniqueId, timestamp } — respaldo sin Firestore y para carreras
+const sinAcentos = (t) => (t || "").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 const limpiarJSON = (t) => t.replace(/```json|```/g, "").trim();
 
 export async function capturaYaProcesada({ imagenHash, fileUniqueId }) {
@@ -67,25 +68,76 @@ export function recordarCaptura({ imagenHash, fileUniqueId }) {
 }
 
 const PROMPT = `
-Esta imagen puede ser una CAPTURA DE PANTALLA de la app (o del sitio) de Trenes Argentinos / SOFSE que muestra estado del servicio, arribos/horarios de una estación, o alertas.
+Esta imagen puede ser una CAPTURA DE PANTALLA de la app (o del sitio) de Trenes Argentinos / SOFSE: pantalla de arribos de una estación, buscador de recorrido (origen → destino con fecha y hora), estado del servicio o alertas.
 Devolvé SOLO un JSON (sin markdown) con esta forma exacta:
 {
   "esCapturaAppTrenes": true o false,
-  "tipo": "arribos" | "alerta" | "estado_servicio" | "otro",
-  "estacion": "nombre de la estación que se está viendo" o null,
+  "tipo": "arribos" | "recorrido" | "alerta" | "estado_servicio" | "otro",
+  "estacion": "estación que se está viendo (pantalla de arribos)" o null,
   "ramal": "ramal o línea" o null,
-  "horaCaptura": "HH:MM" (24hs) leída del reloj del celular (barra superior) o de la hora de actualización de la app, o null,
+  "origen": "origen del buscador de recorrido" o null,
+  "destino": "destino del buscador de recorrido" o null,
+  "horaCaptura": "HH:MM" (24hs) o null,
+  "horaOrigen": "reloj" (barra de estado del celular) | "app" (hora de actualización de la app) | "buscador" (campo de hora del buscador) | null,
   "fechaCaptura": "DD/MM" si la captura muestra la fecha, o null,
-  "alertaTexto": "texto completo de cualquier banner/alerta/aviso visible en la app" o null,
+  "alertas": [
+    { "seccion": "título del bloque tal como se ve (ej. \"Once-Moreno\", \"Sarmiento\")" o null,
+      "texto": "texto del aviso, tal como se lee",
+      "tipo": "operativa" | "informativa",
+      "estado": "normal" | "demorado" | "interrumpido" | "cancelado" | "normalizado" | null,
+      "causa": "causa breve (ej. colisión con persona)" o null,
+      "lugar": "estación o zona mencionada" o null,
+      "truncado": true si el texto está cortado o tapado }
+  ],
   "servicios": [
     { "horaProgramada": "HH:MM" o null, "horaEstimada": "HH:MM" o null, "destino": "..." o null,
-      "estado": "texto de estado tal como se ve (En andén, Partió, Cancelado, Demorado, etc.)" o null,
+      "estado": "texto de estado tal como se ve (En andén, Partió, Cancelado, Demorado, Normal, etc.)" o null,
       "demoraMin": número o null, "cancelado": true o false, "leyenda": "texto extra del servicio" o null }
   ],
   "textoDetectado": "todo el texto relevante que se lee, resumido"
 }
-Reglas: esCapturaAppTrenes=false si es una foto común, meme, publicidad, comunicado gráfico, captura de otra app o cualquier cosa que no sea la app/sitio de Trenes Argentinos. No inventes datos: si algo no se ve, null.
+Reglas:
+- esCapturaAppTrenes=false si es una foto común, meme, publicidad, comunicado gráfico, captura de otra app o cualquier cosa que no sea la app/sitio de Trenes Argentinos. No inventes datos: si algo no se ve, null.
+- Alertas: "operativa" = afecta la circulación (demoras, cancelaciones, interrupciones, colisiones, obras, paros, servicio normalizado tras un evento). "informativa" = beneficios, tarifas, campañas, recomendaciones (ej. CUD gratuito con SUBE). Listá cada bloque por separado.
+- estado "normalizado" = el aviso dice que el servicio se normalizó/restableció (evento ya cerrado). "demorado" = circula con demoras. No confundas uno con otro.
+- Ignorá marcas hechas a mano sobre la imagen (círculos, flechas, subrayados, tachones). Si un texto queda cortado o tapado, transcribí solo lo legible, marcá truncado=true y no lo completes.
+- horaCaptura: usá el reloj de la barra de estado si se ve (horaOrigen="reloj"). Si no hay barra de estado, usá la hora de actualización de la app ("app") o, en último caso, la hora del campo del buscador ("buscador"): ese campo lo puede cambiar el usuario, por eso hay que indicar de dónde salió.
+- Si la tarjeta de un tren aparece cortada, cargá en servicios solo lo que se lee completo.
 `.trim();
+
+const ESTADOS_ALERTA = ["normal", "demorado", "interrumpido", "cancelado", "normalizado"];
+const HORA_ORIGENES = ["reloj", "app", "buscador"];
+const RE_OPERATIVA = /demora|cancel|interrump|colisi|normaliz|restablec|suspend|obra|paro|sin servicio|servicio limitado|falla|incidente/i;
+const slug = (t) => sinAcentos(t).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+// Ordena la lectura de Gemini: separa alertas operativas de informativas
+// (el cartel del CUD, por ejemplo, no es una alerta del servicio) y arma una
+// clave de incidente (ramal + lugar + causa) para poder agrupar reportes del
+// mismo evento y cerrar uno abierto cuando llega un "normalizado".
+export function normalizarLectura(datos) {
+  let alertas = Array.isArray(datos.alertas) ? datos.alertas : [];
+  if (!alertas.length && datos.alertaTexto) alertas = [{ texto: datos.alertaTexto }]; // formato viejo
+  alertas = alertas
+    .filter((a) => a && typeof a.texto === "string" && a.texto.trim())
+    .map((a) => {
+      const texto = a.texto.trim();
+      const tipo = a.tipo === "operativa" || a.tipo === "informativa" ? a.tipo : RE_OPERATIVA.test(texto) ? "operativa" : "informativa";
+      const estado = tipo === "operativa" && ESTADOS_ALERTA.includes(a.estado) ? a.estado : null;
+      const out = { seccion: a.seccion || null, texto, tipo, estado, causa: a.causa || null, lugar: a.lugar || null, truncado: !!a.truncado };
+      if (tipo === "operativa") {
+        const clave = slug([datos.ramal || a.seccion, a.lugar, a.causa].filter(Boolean).join(" "));
+        out.incidenteClave = clave || null;
+      }
+      return out;
+    });
+  const operativas = alertas.filter((a) => a.tipo === "operativa");
+  return {
+    ...datos,
+    alertas,
+    alertaTexto: operativas.length ? operativas.map((a) => (a.seccion ? `${a.seccion}: ` : "") + a.texto).join(" | ") : null,
+    horaOrigen: HORA_ORIGENES.includes(datos.horaOrigen) ? datos.horaOrigen : null,
+  };
+}
 
 export async function analizarCapturaApp(base64Data, mimeType = "image/jpeg") {
   const response = await ai.models.generateContent({
@@ -94,7 +146,7 @@ export async function analizarCapturaApp(base64Data, mimeType = "image/jpeg") {
   });
   const texto = limpiarJSON(response.text.trim());
   try {
-    return JSON.parse(texto);
+    return normalizarLectura(JSON.parse(texto));
   } catch {
     throw new Error("No pude interpretar la lectura de la captura como JSON: " + texto.slice(0, 200));
   }
@@ -103,7 +155,7 @@ export async function analizarCapturaApp(base64Data, mimeType = "image/jpeg") {
 // Fecha/hora del evento: la de la captura (reloj del celular) y no la de
 // subida. Sin fecha en la captura se asume el día de la subida, o el día
 // anterior si esa hora queda en el futuro.
-export function calcularEventoEn(horaCaptura, fechaCaptura, subidoEn) {
+export function calcularEventoEn(horaCaptura, fechaCaptura, subidoEn, horaOrigen = null) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(horaCaptura || "");
   if (!m) return { eventoEn: subidoEn, origen: "subida" };
   const hh = Number(m[1]);
@@ -121,7 +173,8 @@ export function calcularEventoEn(horaCaptura, fechaCaptura, subidoEn) {
   let ms = Date.UTC(anio, mes, dia, hh, mm) + AR_OFFSET_MS;
   if (!f && ms > subidoEn.getTime() + 10 * 60 * 1000) ms -= 24 * 60 * 60 * 1000;
   if (f && ms > subidoEn.getTime() + 24 * 60 * 60 * 1000) ms = Date.UTC(anio - 1, mes, dia, hh, mm) + AR_OFFSET_MS;
-  return { eventoEn: new Date(ms), origen: f ? "captura (fecha y hora)" : "captura (hora)" };
+  const base = f ? "captura (fecha y hora)" : "captura (hora)";
+  return { eventoEn: new Date(ms), origen: horaOrigen === "buscador" ? `${base}, del buscador: puede no ser la hora real` : base };
 }
 
 export async function guardarCaptura(datos, meta) {
@@ -166,7 +219,6 @@ export async function guardarCotejo(id, cotejo) {
 // ---------------------------------------------------------------------------
 // Cotejo contra el proxy
 // ---------------------------------------------------------------------------
-const sinAcentos = (t) => (t || "").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 const minutosDelDia = (hhmm) => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || "");
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
@@ -272,7 +324,12 @@ export function armarReporte({ datos, quien, chatTitle, threadId, eventoEn, even
   let t = `📱 Captura de la app de Trenes Argentinos\n👤 ${quien} en «${chatTitle || "grupo"}»${threadId ? ` (tema ${threadId})` : ""}\n`;
   t += `🕒 Evento: ${fmt(eventoEn)} (${eventoOrigen}) · subida ${fmt(subidoEn)}\n`;
   t += `📍 ${datos.estacion || "estación s/d"}${datos.ramal ? ` · ${datos.ramal}` : ""} · tipo: ${datos.tipo || "s/d"}\n`;
-  if (datos.alertaTexto) t += `📢 Alerta en la app: "${String(datos.alertaTexto).slice(0, 400)}"\n`;
+  if (datos.origen || datos.destino) t += `🧭 Recorrido buscado: ${datos.origen || "?"} → ${datos.destino || "?"}\n`;
+  const ops = (datos.alertas || []).filter((a) => a.tipo === "operativa");
+  const infos = (datos.alertas || []).length - ops.length;
+  for (const a of ops) t += `📢 ${a.seccion ? a.seccion + " · " : ""}${a.estado || "s/estado"}${a.lugar ? ` · ${a.lugar}` : ""}${a.causa ? ` · ${a.causa}` : ""}${a.truncado ? " (texto cortado)" : ""}\n   "${String(a.texto).slice(0, 300)}"\n`;
+  if (!ops.length && datos.alertaTexto) t += `📢 Alerta en la app: "${String(datos.alertaTexto).slice(0, 400)}"\n`;
+  if (infos > 0) t += `ℹ️ ${infos} aviso(s) informativo(s) ignorado(s) (no afectan el servicio).\n`;
   t += `Servicios leídos: ${(datos.servicios || []).length}${serv.length ? "\n" + serv.join("\n") : ""}\n`;
   t += guardadoId ? `💾 Guardada en Firestore (capturasApp/${guardadoId}).\n` : "💾 No pude guardarla en Firestore (revisar logs).\n";
   if (cotejo) {

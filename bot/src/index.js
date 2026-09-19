@@ -957,7 +957,7 @@ async function procesarCapturaApp(ctx) {
     }
 
     const subidoEn = new Date((ctx.message.date || Math.floor(Date.now() / 1000)) * 1000);
-    const { eventoEn, origen } = calcularEventoEn(datos.horaCaptura, datos.fechaCaptura, subidoEn);
+    const { eventoEn, origen } = calcularEventoEn(datos.horaCaptura, datos.fechaCaptura, subidoEn, datos.horaOrigen);
     const { id } = await guardarCaptura(datos, {
       quien,
       userId: from.id,
