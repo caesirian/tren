@@ -844,9 +844,20 @@ bot.on("photo", async (ctx) => {
   }
 });
 
+// Las imágenes de comunicados que suben colaboradores EN EL GRUPO se procesan
+// en silencio: el bot no publica nada en el grupo (ni confirmaciones ni
+// errores), solo le informa al admin por privado. Si la imagen llega por
+// privado, sí responde ahí.
 async function procesarComunicadoDeImagen(ctx) {
+  const enGrupo = ctx.chat?.type !== "private";
+  const avisarAdmin = (texto) =>
+    process.env.ADMIN_TELEGRAM_ID
+      ? bot.telegram
+          .sendMessage(process.env.ADMIN_TELEGRAM_ID, texto)
+          .catch((err) => console.error("Error avisando al admin sobre comunicado:", err.message))
+      : Promise.resolve();
   try {
-    await ctx.sendChatAction("typing");
+    if (!enGrupo) await ctx.sendChatAction("typing");
     const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
     const fileUrl = await bot.telegram.getFileLink(fileId);
     const res = await fetch(fileUrl.href);
@@ -860,10 +871,10 @@ async function procesarComunicadoDeImagen(ctx) {
     const esElAdminPrincipal = String(from.id) === String(process.env.ADMIN_TELEGRAM_ID);
 
     if (!datos.esComunicadoRelevante) {
-      await ctx.reply(
-        "No me pareció un comunicado oficial de transporte, así que no lo guardé como fuente de la verdad. Si me equivoco, contame qué decía y lo cargo a mano.",
-        ctx.chat?.type !== "private" ? opcionesRespuesta(ctx) : undefined
-      );
+      const textoNoRelevante =
+        "No me pareció un comunicado oficial de transporte, así que no lo guardé como fuente de la verdad. Si me equivoco, contame qué decía y lo cargo a mano.";
+      if (enGrupo) await avisarAdmin(`🖼️ Imagen de ${quien} en el grupo (${ctx.chat?.title || "sin nombre"}): ${textoNoRelevante}`);
+      else await ctx.reply(textoNoRelevante);
       return;
     }
 
@@ -894,18 +905,18 @@ async function procesarComunicadoDeImagen(ctx) {
         ? ` También se sumó como alerta complementaria del semáforo en el sitio (no cambia el color, es un aviso aparte).`
         : ` ⚠️ No se pudo sumar la alerta al sitio, revisá los logs.`);
 
-    await ctx.reply(resumenTexto, ctx.chat?.type !== "private" ? opcionesRespuesta(ctx) : undefined);
-
-    // Si quien subió la imagen NO sos vos, te avisa siempre por separado —
-    // así te enterás aunque no hayas estado mirando el grupo en ese momento.
-    if (!esElAdminPrincipal && process.env.ADMIN_TELEGRAM_ID) {
-      await bot.telegram
-        .sendMessage(process.env.ADMIN_TELEGRAM_ID, resumenTexto)
-        .catch((err) => console.error("Error avisando al admin sobre comunicado de colaborador:", err.message));
+    if (enGrupo) {
+      // Grupo: nada público. Solo el admin recibe el resumen, por privado.
+      await avisarAdmin(resumenTexto);
+    } else {
+      await ctx.reply(resumenTexto);
+      // Por privado con un colaborador: además se le avisa al admin.
+      if (!esElAdminPrincipal) await avisarAdmin(resumenTexto);
     }
   } catch (err) {
     console.error("Error procesando imagen de comunicado:", err.message);
-    await ctx.reply("No pude leer la imagen: " + err.message).catch(() => {});
+    if (enGrupo) await avisarAdmin(`⚠️ No pude leer una imagen de comunicado subida en el grupo: ${err.message}`);
+    else await ctx.reply("No pude leer la imagen: " + err.message).catch(() => {});
   }
 }
 
