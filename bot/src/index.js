@@ -29,6 +29,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
+import { reporteEstacion, consultarProxy } from "./appTrenes.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
@@ -522,6 +523,37 @@ bot.command("hablar", async (ctx) => {
   const estaba = estaSilenciado();
   await setSilencio(false, `admin ${ctx.from.id}`);
   await confirmarAlAdmin(estaba ? "🔊 Silencio desactivado. El bot vuelve a responder en el grupo." : "🔊 El bot ya estaba hablando (no estaba en silencio).");
+});
+
+// EXPERIMENTAL (solo admin): consulta los datos de la app de Trenes Argentinos
+// vía el proxy comunitario de ariedro y responde SIEMPRE por privado.
+//   /apptrenes Moreno            -> estado/demoras/cancelaciones de Sarmiento en esa estación
+//   /apptrenes get /ruta?x=y     -> GET crudo al proxy (para probar rutas, ej. alertas)
+bot.command("apptrenes", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  const enviar = async (texto) => {
+    for (let i = 0; i < texto.length; i += 3900) {
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, texto.slice(i, i + 3900)).catch((err) => console.error("Error en /apptrenes:", err.message));
+    }
+  };
+  const args = (ctx.message.text || "").replace(/^\/apptrenes(@\w+)?\s*/i, "").trim();
+  if (!args) {
+    await enviar("Uso:\n/apptrenes Moreno → Sarmiento en esa estación (estado, demoras, cancelaciones, leyendas)\n/apptrenes get /infraestructura/estaciones?nombre=Once → consulta cruda al proxy (para probar rutas, por ej. alertas)");
+    return;
+  }
+  try {
+    if (/^get\s+/i.test(args)) {
+      const ruta = args.replace(/^get\s+/i, "").trim();
+      const data = await consultarProxy(ruta);
+      const texto = typeof data === "string" ? data : JSON.stringify(data);
+      await enviar(`GET ${ruta}\n(${texto.length} caracteres${texto.length > 3500 ? ", recortado" : ""})\n\n${texto.slice(0, 3500)}`);
+    } else {
+      await enviar(await reporteEstacion(args));
+    }
+  } catch (err) {
+    console.error("Error en /apptrenes:", err.message);
+    await enviar(`⚠️ No pude consultar el proxy de la app: ${err.message}`);
+  }
 });
 
 // Ver / limpiar los avisos vigentes de la fuente de verdad (por si el
