@@ -170,6 +170,10 @@ Reglas:
   hay ahora en una estación o en un tren (lleno, vacío, cola, hora pico).
   Ni siquiera "en hora pico suele haber mucha gente". Si la pregunta es
   exactamente eso, respondé solo SIN_RESPUESTA_CONCRETA.
+- Si hay luz / energía / tensión en una estación o tramo: solo lo sabés si
+  una sección del contexto (avisos, estado en vivo, alertas o comunicados) lo
+  dice explícitamente. Si no, respondé solo SIN_RESPUESTA_CONCRETA. Nunca lo
+  deduzcas de que el servicio figure como normal.
 - Si el contexto incluye una sección "NOTICIAS", seguí EXACTAMENTE la
   instrucción que trae esa sección (si sugerir el link #noticias o el sitio
   general) — es un dato en vivo, no lo reemplaces por tu propio criterio ni

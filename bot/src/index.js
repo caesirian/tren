@@ -32,6 +32,7 @@ import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, consultarProxy } from "./appTrenes.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
 import { esOcupacionEnVivo, RESPUESTA_SIN_CAMARAS } from "./ocupacion.js";
+import { esConsultaDeLuz, mencionaEnergia, RESPUESTA_SIN_DATO_LUZ } from "./luz.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
@@ -179,6 +180,17 @@ function manejarSinRespuesta(respuestaCruda, fueEtiquetado) {
   const esSinRespuesta = respuestaCruda.trim() === SIN_RESPUESTA_SENTINEL;
   if (!esSinRespuesta) return respuestaCruda;
   return fueEtiquetado ? RESPUESTA_SIN_DATO : null;
+}
+
+// ¿Alguna fuente viva (avisos, semáforo, alertas API, comunicados) habla de
+// luz/energía? Sin eso, el bot no sabe si hay luz y no debe contestarlo.
+async function hayDatoDeEnergia() {
+  const textos = [];
+  try { for (const a of await avisosVigentes()) textos.push(a.resumen, a.textoOriginal); } catch {}
+  try { const e = await getEstadoServicio(); if (e) textos.push(e.mensaje, ...e.alertas); } catch {}
+  try { const al = await getAlertasTrenes(); if (al) textos.push(JSON.stringify(al)); } catch {}
+  try { for (const c of await comunicadosRecientes(48)) textos.push(c.resumen); } catch {}
+  return mencionaEnergia(...textos);
 }
 
 async function armarContexto(pregunta) {
@@ -1337,6 +1349,21 @@ bot.on("text", async (ctx) => {
       await ctx.reply(RESPUESTA_SIN_CAMARAS, opcionesRespuesta(ctx));
       if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: RESPUESTA_SIN_CAMARAS });
       if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: RESPUESTA_SIN_CAMARAS });
+      return;
+    }
+
+    // Si hay luz / energía: solo se contesta si alguna fuente viva lo menciona.
+    // Sin dato, al aire no responde y, si le preguntan directo, lo dice con
+    // honestidad (nunca lo deduce de que el servicio figure como normal).
+    if (esConsultaDeLuz(textoOriginal) && !(await hayDatoDeEnergia())) {
+      if (esGrupo && !fueEtiquetado) {
+        console.log(`Al aire omitida (luz/energía sin dato en las fuentes) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`);
+        return;
+      }
+      const pregunta = limpiarMencion(textoOriginal) || textoOriginal;
+      await ctx.reply(RESPUESTA_SIN_DATO_LUZ, opcionesRespuesta(ctx));
+      if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: RESPUESTA_SIN_DATO_LUZ });
+      if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: RESPUESTA_SIN_DATO_LUZ });
       return;
     }
 
