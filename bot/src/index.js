@@ -32,6 +32,7 @@ import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, consultarProxy } from "./appTrenes.js";
 import { chequearCancelacionesProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
+import { describirVideo } from "./videoIntel.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
 import { esOcupacionEnVivo, RESPUESTA_SIN_CAMARAS } from "./ocupacion.js";
 import { esConsultaDeLuz, mencionaEnergia, RESPUESTA_SIN_DATO_LUZ } from "./luz.js";
@@ -683,7 +684,12 @@ bot.command("reintentar", async (ctx) => {
 
 // Reenvía al admin cualquier foto, audio, nota de voz o video que le
 // manden al bot por chat PRIVADO (no en el grupo, ahí es tráfico normal).
-async function reenviarMediaAlAdmin(ctx, tipo) {
+// Avisa al admin que llegó una foto/audio/video, SIN reenviar el archivo:
+// manda el link (temporal, de Telegram) y, para audio y video, una
+// transcripción/descripción hecha con Gemini. transcribir=false se usa
+// cuando el audio ya lo va a transcribir otro flujo después (fuente de
+// verdad), para no duplicar el trabajo ni el mensaje.
+async function reenviarMediaAlAdmin(ctx, tipo, { transcribir = true } = {}) {
   if (!esChatAutorizado(ctx)) return;
   if (!process.env.ADMIN_TELEGRAM_ID) return;
   try {
@@ -691,15 +697,14 @@ async function reenviarMediaAlAdmin(ctx, tipo) {
     const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
     const origen = ctx.chat?.type === "private" ? "por privado" : `en el grupo (${ctx.chat?.title || "sin nombre"})`;
 
-    // file_id según el tipo de media — para las fotos, Telegram manda un
-    // array de tamaños, nos quedamos con el más grande (el último).
-    const fileId =
-      ctx.message?.photo?.[ctx.message.photo.length - 1]?.file_id ??
-      ctx.message?.voice?.file_id ??
-      ctx.message?.audio?.file_id ??
-      ctx.message?.video?.file_id ??
-      ctx.message?.video_note?.file_id ??
+    const media =
+      ctx.message?.photo?.[ctx.message.photo.length - 1] ??
+      ctx.message?.voice ??
+      ctx.message?.audio ??
+      ctx.message?.video ??
+      ctx.message?.video_note ??
       null;
+    const fileId = media?.file_id ?? null;
 
     let lineaLink = "";
     if (fileId) {
@@ -713,32 +718,37 @@ async function reenviarMediaAlAdmin(ctx, tipo) {
       }
     }
 
-    await bot.telegram.sendMessage(
-      process.env.ADMIN_TELEGRAM_ID,
-      `📎 Recibí un(a) ${tipo} de ${quien} ${origen}:${lineaLink}`
-    );
-
-    // Mandamos el archivo de vuelta usando el file_id (Telegram lo resuelve
-    // del lado de ellos, no hace falta bajarlo/subirlo nosotros). Esto
-    // funciona SIEMPRE, incluso en grupos con "contenido protegido"
-    // activado — a diferencia de forwardMessage, que ahí falla porque es
-    // técnicamente un reenvío, y esto es un mensaje nuevo.
-    if (ctx.message?.photo) {
-      await bot.telegram.sendPhoto(process.env.ADMIN_TELEGRAM_ID, fileId);
-    } else if (ctx.message?.voice) {
-      await bot.telegram.sendVoice(process.env.ADMIN_TELEGRAM_ID, fileId);
-    } else if (ctx.message?.audio) {
-      await bot.telegram.sendAudio(process.env.ADMIN_TELEGRAM_ID, fileId);
-    } else if (ctx.message?.video) {
-      await bot.telegram.sendVideo(process.env.ADMIN_TELEGRAM_ID, fileId);
-    } else if (ctx.message?.video_note) {
-      await bot.telegram.sendVideoNote(process.env.ADMIN_TELEGRAM_ID, fileId);
-    } else {
-      // Tipo no contemplado arriba (raro) — al menos queda el link de más arriba.
-      await ctx.forwardMessage(process.env.ADMIN_TELEGRAM_ID).catch(() => {});
+    let extra = "";
+    if (fileId && transcribir && (ctx.message?.voice || ctx.message?.audio)) {
+      extra = await procesarExtraMedia(fileId, media, "audio", (buf, mime) => transcribirAudio(buf.toString("base64"), mime), "🗣️ Transcripción");
+    } else if (fileId && (ctx.message?.video || ctx.message?.video_note)) {
+      extra = await procesarExtraMedia(fileId, media, "video", (buf, mime) => describirVideo(buf.toString("base64"), mime || "video/mp4"), "🎬 Descripción");
     }
+
+    await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, `📎 Recibí un(a) ${tipo} de ${quien} ${origen}:${lineaLink}${extra}`);
   } catch (err) {
-    console.error(`Error reenviando ${tipo} al admin:`, err.message);
+    console.error(`Error avisando ${tipo} al admin:`, err.message);
+  }
+}
+
+// Descarga el archivo y le pide a Gemini que lo transcriba/describa. Con
+// topes de tamaño/duración para no colgarse con archivos grandes.
+async function procesarExtraMedia(fileId, media, tipo, fn, etiqueta) {
+  const TOPE_SEG = tipo === "audio" ? 300 : 180;
+  const TOPE_MB = tipo === "audio" ? 10 : 20;
+  if ((media.duration || 0) > TOPE_SEG || (media.file_size || 0) > TOPE_MB * 1024 * 1024) {
+    return `\n\n⚠️ ${tipo === "audio" ? "Audio" : "Video"} muy largo o pesado (más de ${TOPE_SEG / 60} min o ${TOPE_MB} MB): no lo proceso automáticamente, abrí el link.`;
+  }
+  try {
+    const url = await bot.telegram.getFileLink(fileId);
+    const res = await fetch(url.href);
+    if (!res.ok) throw new Error(`No pude descargar (${res.status})`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const texto = await fn(buffer, media.mime_type);
+    return texto ? `\n\n${etiqueta}:\n"${texto.slice(0, 1500)}"` : `\n\n(no pude ${tipo === "audio" ? "entender nada en el audio" : "interpretar el video"})`;
+  } catch (err) {
+    console.error(`Error procesando ${tipo} para el admin:`, err.message);
+    return `\n\n⚠️ No pude procesar el ${tipo}: ${err.message}`;
   }
 }
 
@@ -1265,9 +1275,11 @@ async function procesarComunicadoDeImagenSerial(ctx) {
 // informa accidente/servicio limitado/etc. queda como aviso con vencimiento.
 // Todo en silencio: al grupo no se publica nada, solo se le informa al admin.
 async function manejarAudio(ctx, tipo) {
-  await reenviarMediaAlAdmin(ctx, tipo);
-  if (ctx.chat?.type === "private" || !esChatAutorizado(ctx) || !esFuenteVerdad(ctx)) return;
-  await procesarAudioDeFuente(ctx);
+  // Si lo va a procesar el flujo de fuente de verdad, ese ya transcribe y
+  // muestra el texto — reenviarMediaAlAdmin no repite la transcripción.
+  const loToma = ctx.chat?.type !== "private" && esChatAutorizado(ctx) && esFuenteVerdad(ctx);
+  await reenviarMediaAlAdmin(ctx, tipo, { transcribir: !loToma });
+  if (loToma) await procesarAudioDeFuente(ctx);
 }
 
 async function procesarAudioDeFuente(ctx) {
