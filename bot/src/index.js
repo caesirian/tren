@@ -30,6 +30,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, consultarProxy } from "./appTrenes.js";
+import { chequearCancelacionesProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
 import { esOcupacionEnVivo, RESPUESTA_SIN_CAMARAS } from "./ocupacion.js";
 import { esConsultaDeLuz, mencionaEnergia, RESPUESTA_SIN_DATO_LUZ } from "./luz.js";
@@ -200,6 +201,16 @@ async function armarContexto(pregunta) {
   // el semáforo, las alertas y la señal informal. Siempre con vencimiento.
   const avisos = await avisosVigentes();
   if (avisos.length) partes.push(textoAvisosParaContexto(avisos));
+
+  // App de Trenes Argentinos (proxy), declarada fuente de verdad: cancelaciones
+  // y leyendas que el proxy devuelve AHORA. Si el proxy está caído o tarda,
+  // no debe voltear la respuesta al usuario.
+  try {
+    const ctxProxy = await contextoProxyParaBot();
+    if (ctxProxy) partes.push(ctxProxy);
+  } catch (err) {
+    console.error("Error armando contexto del proxy de la app:", err.message);
+  }
 
   const estado = await getEstadoServicio();
   if (estado) {
@@ -1579,6 +1590,14 @@ app.get("/internal/check", async (req, res) => {
   }
   try {
     const desdeX = await chequearYActualizarDesdeX();
+    try {
+      const cancelProxy = await chequearCancelacionesProxy();
+      if (cancelProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
+        await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, cancelProxy.texto).catch((err) => console.error("Error avisando cancelaciones del proxy:", err.message));
+      }
+    } catch (err) {
+      console.error("Error chequeando cancelaciones del proxy:", err.message);
+    }
     if (desdeX.avisarFalloPersistente && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram
         .sendMessage(
