@@ -29,6 +29,18 @@ export const hora = (iso) =>
 
 const corto = (v) => (typeof v === "string" ? v : JSON.stringify(v)).slice(0, 160);
 
+// El campo "cancelacion" del proxy a veces es un objeto con datos internos de
+// SOFSE (incluye el mail del empleado que la cargó, id de usuario, etc.). Acá
+// se saca solo el motivo/descripción legible, sin volcar el objeto crudo ni
+// datos de esa persona.
+const CAMPOS_MOTIVO = ["motivo", "descripcion", "detalle", "mensaje", "texto", "causa", "leyenda", "observacion"];
+export function textoCancelacion(c) {
+  if (!c) return null;
+  if (typeof c === "string") return c.slice(0, 200);
+  for (const campo of CAMPOS_MOTIVO) if (typeof c[campo] === "string" && c[campo].trim()) return c[campo].trim().slice(0, 200);
+  return "cancelado (SOFSE no informa un motivo en texto)";
+}
+
 function listaEstaciones(data) {
   const arr = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : Array.isArray(data?.estaciones) ? data.estaciones : [];
   // Forma real del proxy: { nombre, id_estacion: "278", id_tramo, incluida_en_ramales: [..], ... }
@@ -72,7 +84,7 @@ export function lineaServicio(item) {
   const { est, s, prog, estim, demora, destino, estado } = datosServicio(item);
   let l = `• #${s.numero ?? "?"} → ${destino} | ${est.nombre}: prog ${hora(prog)}${estim ? ` / est ${hora(estim)}${demora != null ? ` (${demora >= 0 ? "+" : ""}${demora} min)` : ""}` : ""} | ${estado}`;
   if (s.tipo?.nombre && s.tipo.nombre !== "Normal") l += ` | tipo: ${s.tipo.nombre}`;
-  if (s.cancelacion) l += `\n   ❌ Cancelación: ${corto(s.cancelacion)}`;
+  if (s.cancelacion) l += `\n   ❌ Cancelación: ${textoCancelacion(s.cancelacion)}`;
   if (s.leyenda) l += `\n   📢 Leyenda: ${corto(s.leyenda)}`;
   return l;
 }
