@@ -700,7 +700,26 @@ async function reenviarMediaAlAdmin(ctx, tipo) {
       process.env.ADMIN_TELEGRAM_ID,
       `📎 Recibí un(a) ${tipo} de ${quien} ${origen}:${lineaLink}`
     );
-    await ctx.forwardMessage(process.env.ADMIN_TELEGRAM_ID);
+
+    // Mandamos el archivo de vuelta usando el file_id (Telegram lo resuelve
+    // del lado de ellos, no hace falta bajarlo/subirlo nosotros). Esto
+    // funciona SIEMPRE, incluso en grupos con "contenido protegido"
+    // activado — a diferencia de forwardMessage, que ahí falla porque es
+    // técnicamente un reenvío, y esto es un mensaje nuevo.
+    if (ctx.message?.photo) {
+      await bot.telegram.sendPhoto(process.env.ADMIN_TELEGRAM_ID, fileId);
+    } else if (ctx.message?.voice) {
+      await bot.telegram.sendVoice(process.env.ADMIN_TELEGRAM_ID, fileId);
+    } else if (ctx.message?.audio) {
+      await bot.telegram.sendAudio(process.env.ADMIN_TELEGRAM_ID, fileId);
+    } else if (ctx.message?.video) {
+      await bot.telegram.sendVideo(process.env.ADMIN_TELEGRAM_ID, fileId);
+    } else if (ctx.message?.video_note) {
+      await bot.telegram.sendVideoNote(process.env.ADMIN_TELEGRAM_ID, fileId);
+    } else {
+      // Tipo no contemplado arriba (raro) — al menos queda el link de más arriba.
+      await ctx.forwardMessage(process.env.ADMIN_TELEGRAM_ID).catch(() => {});
+    }
   } catch (err) {
     console.error(`Error reenviando ${tipo} al admin:`, err.message);
   }
