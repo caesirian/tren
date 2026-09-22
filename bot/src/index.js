@@ -1585,6 +1585,7 @@ app.get("/internal/check", async (req, res) => {
   const secretValido =
     (process.env.CHECK_SECRET && req.query.secret === process.env.CHECK_SECRET) ||
     (process.env.CRON_SECRET && req.query.secret === process.env.CRON_SECRET);
+  console.log(`/internal/check llamado (secret ${secretValido ? "OK" : "INVÁLIDO o ausente"})`); // visibilidad: para confirmar que el ping externo llega
   if (!secretValido) {
     return res.status(403).send("forbidden");
   }
@@ -1592,6 +1593,13 @@ app.get("/internal/check", async (req, res) => {
     const desdeX = await chequearYActualizarDesdeX();
     try {
       const cancelProxy = await chequearCancelacionesProxy();
+      console.log(
+        cancelProxy.desactivado
+          ? "Chequeo proxy (cron): monitoreo desactivado (APP_TRENES_MONITOR_ACTIVO=false)"
+          : cancelProxy.error
+            ? `Chequeo proxy (cron): error consultando el proxy — ${cancelProxy.error}`
+            : `Chequeo proxy (cron): ${cancelProxy.nuevas.length} cancelación(es) nueva(s)`
+      );
       if (cancelProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
         await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, cancelProxy.texto).catch((err) => console.error("Error avisando cancelaciones del proxy:", err.message));
       }
@@ -1631,6 +1639,13 @@ app.listen(PORT, async () => {
     chequeoProxyEnCurso = true;
     try {
       const r = await chequearCancelacionesProxy();
+      console.log(
+        r.desactivado
+          ? "Chequeo proxy (timer interno): monitoreo desactivado (APP_TRENES_MONITOR_ACTIVO=false)"
+          : r.error
+            ? `Chequeo proxy (timer interno): error consultando el proxy — ${r.error}`
+            : `Chequeo proxy (timer interno): ${r.nuevas.length} cancelación(es) nueva(s)`
+      );
       if (r.texto && process.env.ADMIN_TELEGRAM_ID) {
         await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, r.texto).catch((err) => console.error("Error avisando cancelaciones del proxy (timer interno):", err.message));
       }
