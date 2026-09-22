@@ -111,7 +111,12 @@ export async function reporteEstacion(nombre) {
 // Barrido de las estaciones principales de Sarmiento: muestra SOLO lo
 // anormal (cancelación, leyenda, demora >= 10 min o tipo distinto de Normal).
 // Sirve para probar cuándo el proxy trae cancelacion/leyenda con texto real.
-const ESTACIONES_BARRIDO = ["Once", "Liniers", "Ramos Mejía", "Morón", "Castelar", "Merlo", "Moreno"];
+// Las 16 estaciones del ramal Once-Moreno completo (antes solo se barrían 7,
+// lo que dejaba afuera tramos enteros — ej. Flores, entre Once y Floresta).
+const ESTACIONES_BARRIDO = [
+  "Once", "Caballito", "Flores", "Floresta", "Villa Luro", "Liniers", "Ciudadela", "Ramos Mejía",
+  "Haedo", "Morón", "Castelar", "Ituzaingó", "San Antonio de Padua", "Merlo", "Paso del Rey", "Moreno",
+];
 
 const esAnormal = (item) => {
   const { s, demora } = datosServicio(item);
@@ -146,13 +151,24 @@ export async function barridoEstructurado({ forzar = false } = {}) {
   return cacheBarrido;
 }
 
-export function textoBarrido(b) {
-  let texto = `🔎 Barrido Sarmiento (${ESTACIONES_BARRIDO.join(", ")})\nServicios revisados: ${b.todos.length} · anormales: ${b.anormales.length}\n`;
-  texto += b.anormales.length ? `\n${b.anormales.slice(0, 15).map(lineaServicio).join("\n")}` : "\nNingún servicio con cancelación, leyenda, demora de 10+ min o tipo especial en este momento.";
+// completo=false (default): solo lo anormal, para uso diario.
+// completo=true: TODOS los servicios de todas las estaciones, ordenados por
+// hora programada — para tener precisión total (ej. durante un incidente
+// como un choque, para ver cómo viene llegando cada formación a cada
+// estación, no solo dónde hay demora marcada). Es un listado largo: se corta
+// en varios mensajes de Telegram (lo hace enviar() en index.js).
+export function textoBarrido(b, { completo = false } = {}) {
+  let texto = `🔎 Barrido Sarmiento (${ESTACIONES_BARRIDO.length} estaciones: ${ESTACIONES_BARRIDO.join(", ")})\nServicios revisados: ${b.todos.length} · anormales: ${b.anormales.length}\n`;
+  if (completo) {
+    const ordenados = [...b.todos].sort((a, b2) => (datosServicio(a).prog || "").localeCompare(datosServicio(b2).prog || ""));
+    texto += ordenados.length ? `\n${ordenados.map(lineaServicio).join("\n")}` : "\n(sin servicios de Sarmiento en este momento)";
+  } else {
+    texto += b.anormales.length ? `\n${b.anormales.slice(0, 15).map(lineaServicio).join("\n")}` : "\nNingún servicio con cancelación, leyenda, demora de 10+ min o tipo especial en este momento.";
+  }
   if (b.errores.length) texto += `\n\nAvisos:\n- ${b.errores.join("\n- ")}`;
   return texto;
 }
 
-export async function barridoSarmiento() {
-  return textoBarrido(await barridoEstructurado({ forzar: true }));
+export async function barridoSarmiento({ completo = false } = {}) {
+  return textoBarrido(await barridoEstructurado({ forzar: true }), { completo });
 }

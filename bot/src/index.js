@@ -31,6 +31,7 @@ import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, r
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, consultarProxy } from "./appTrenes.js";
 import { chequearCancelacionesProxy, contextoProxyParaBot } from "./proxyMonitor.js";
+import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
 import { esOcupacionEnVivo, RESPUESTA_SIN_CAMARAS } from "./ocupacion.js";
 import { esConsultaDeLuz, mencionaEnergia, RESPUESTA_SIN_DATO_LUZ } from "./luz.js";
@@ -551,7 +552,8 @@ bot.command("hablar", async (ctx) => {
 // EXPERIMENTAL (solo admin): consulta los datos de la app de Trenes Argentinos
 // vía el proxy comunitario de ariedro y responde SIEMPRE por privado.
 //   /apptrenes Moreno            -> estado/demoras/cancelaciones de Sarmiento en esa estación
-//   /apptrenes scan              -> barrido de estaciones principales, solo lo anormal
+//   /apptrenes scan [completo]   -> barrido de las 16 estaciones; "completo" lista todo, no solo lo anormal
+//   /apptrenes auto on|off       -> chequeo automatico de 5 min manda el barrido completo (incidentes)
 //   /apptrenes get /ruta?x=y     -> GET crudo al proxy (para probar rutas, ej. alertas)
 bot.command("apptrenes", async (ctx) => {
   if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
@@ -562,12 +564,27 @@ bot.command("apptrenes", async (ctx) => {
   };
   const args = (ctx.message.text || "").replace(/^\/apptrenes(@\w+)?\s*/i, "").trim();
   if (!args) {
-    await enviar("Uso:\n/apptrenes Moreno → Sarmiento en esa estación (estado, demoras, cancelaciones, leyendas)\n/apptrenes get /infraestructura/estaciones?nombre=Once → consulta cruda al proxy (para probar rutas, por ej. alertas)");
+    await enviar(
+      "Uso:\n" +
+        "/apptrenes Moreno → Sarmiento en esa estación (estado, demoras, cancelaciones, leyendas)\n" +
+        "/apptrenes scan → barrido de las 16 estaciones del ramal, muestra solo lo anormal\n" +
+        "/apptrenes scan completo → lo mismo pero lista TODOS los servicios de TODAS las estaciones\n" +
+        "/apptrenes auto on|off → activa/desactiva que el chequeo automático de cada 5 min te mande el barrido completo por privado (usalo durante un incidente puntual)\n" +
+        "/apptrenes get /infraestructura/estaciones?nombre=Once → consulta cruda al proxy (para probar rutas, por ej. alertas)"
+    );
     return;
   }
   try {
-    if (/^scan$/i.test(args)) {
-      await enviar(await barridoSarmiento());
+    if (/^scan(\s+completo)?$/i.test(args)) {
+      await enviar(await barridoSarmiento({ completo: /completo/i.test(args) }));
+    } else if (/^auto\s+(on|off)$/i.test(args)) {
+      const on = /on$/i.test(args);
+      await setEscaneoCompleto(on, `admin ${ctx.from.id}`);
+      await enviar(
+        on
+          ? "🟢 Escaneo automático completo ACTIVADO: cada ~5 min (junto con el chequeo de cancelaciones) te mando el barrido completo de las 16 estaciones por privado. Recordá apagarlo con /apptrenes auto off cuando termine el incidente, para no saturarte de mensajes."
+          : "🔴 Escaneo automático completo DESACTIVADO. El chequeo cada 5 min sigue avisando solo cancelaciones nuevas, como antes."
+      );
     } else if (/^get\s+/i.test(args)) {
       const ruta = args.replace(/^get\s+/i, "").trim();
       const data = await consultarProxy(ruta);
@@ -1610,21 +1627,7 @@ app.get("/internal/check", async (req, res) => {
   }
   try {
     const desdeX = await chequearYActualizarDesdeX();
-    try {
-      const cancelProxy = await chequearCancelacionesProxy();
-      console.log(
-        cancelProxy.desactivado
-          ? "Chequeo proxy (cron): monitoreo desactivado (APP_TRENES_MONITOR_ACTIVO=false)"
-          : cancelProxy.error
-            ? `Chequeo proxy (cron): error consultando el proxy — ${cancelProxy.error}`
-            : `Chequeo proxy (cron): ${cancelProxy.nuevas.length} cancelación(es) nueva(s)`
-      );
-      if (cancelProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
-        await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, cancelProxy.texto).catch((err) => console.error("Error avisando cancelaciones del proxy:", err.message));
-      }
-    } catch (err) {
-      console.error("Error chequeando cancelaciones del proxy:", err.message);
-    }
+    await chequeoPeriodicoProxy("cron");
     if (desdeX.avisarFalloPersistente && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram
         .sendMessage(
@@ -1644,9 +1647,42 @@ app.get("/internal/check", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+// Chequeo periódico compartido por el cron externo y el timer interno: avisa
+// cancelaciones nuevas siempre; si /apptrenes auto está activo (incidente en
+// curso), además manda el barrido COMPLETO de las 16 estaciones.
+async function chequeoPeriodicoProxy(origen) {
+  try {
+    const cancelProxy = await chequearCancelacionesProxy();
+    console.log(
+      cancelProxy.desactivado
+        ? `Chequeo proxy (${origen}): monitoreo desactivado (APP_TRENES_MONITOR_ACTIVO=false)`
+        : cancelProxy.error
+          ? `Chequeo proxy (${origen}): error consultando el proxy — ${cancelProxy.error}`
+          : `Chequeo proxy (${origen}): ${cancelProxy.nuevas.length} cancelación(es) nueva(s)${escaneoCompletoActivo() ? " · escaneo completo activo" : ""}`
+    );
+    if (cancelProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, cancelProxy.texto).catch((err) => console.error("Error avisando cancelaciones del proxy:", err.message));
+    }
+  } catch (err) {
+    console.error(`Error chequeando cancelaciones del proxy (${origen}):`, err.message);
+  }
+
+  if (escaneoCompletoActivo() && process.env.ADMIN_TELEGRAM_ID) {
+    try {
+      const texto = `⏱️ Escaneo automático completo (${origen})\n\n` + (await barridoSarmiento({ completo: true }));
+      for (let i = 0; i < texto.length; i += 3900) {
+        await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, texto.slice(i, i + 3900)).catch((err) => console.error("Error mandando escaneo completo automático:", err.message));
+      }
+    } catch (err) {
+      console.error("Error en escaneo automático completo:", err.message);
+    }
+  }
+}
+
 app.listen(PORT, async () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
   await cargarSilencio(); // restaura el modo silencio si estaba activo antes de un reinicio
+  await cargarEscaneoCompleto(); // restaura /apptrenes auto si estaba activo antes de un reinicio
 
   // Respaldo interno: mientras el servicio esté despierto (Render free se
   // duerme sin tráfico), chequea cancelaciones del proxy cada 5 min sin
@@ -1657,19 +1693,7 @@ app.listen(PORT, async () => {
     if (chequeoProxyEnCurso) return;
     chequeoProxyEnCurso = true;
     try {
-      const r = await chequearCancelacionesProxy();
-      console.log(
-        r.desactivado
-          ? "Chequeo proxy (timer interno): monitoreo desactivado (APP_TRENES_MONITOR_ACTIVO=false)"
-          : r.error
-            ? `Chequeo proxy (timer interno): error consultando el proxy — ${r.error}`
-            : `Chequeo proxy (timer interno): ${r.nuevas.length} cancelación(es) nueva(s)`
-      );
-      if (r.texto && process.env.ADMIN_TELEGRAM_ID) {
-        await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, r.texto).catch((err) => console.error("Error avisando cancelaciones del proxy (timer interno):", err.message));
-      }
-    } catch (err) {
-      console.error("Error en chequeo interno de cancelaciones del proxy:", err.message);
+      await chequeoPeriodicoProxy("timer interno");
     } finally {
       chequeoProxyEnCurso = false;
     }
