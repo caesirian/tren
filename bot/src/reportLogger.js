@@ -49,6 +49,7 @@ export async function guardarReporte({ ctx, mensaje }) {
     quien,
     origen,
     mensaje,
+    revisado: false, // queda "sujeto a revisión" hasta que el admin lo marque
     timestamp: new Date().toISOString(),
   };
 
@@ -59,10 +60,36 @@ export async function guardarReporte({ ctx, mensaje }) {
   }
 
   try {
-    await firestore.collection("reportes").add({ ...registro, creadoEn: FieldValue.serverTimestamp() });
+    const ref = await firestore.collection("reportes").add({ ...registro, creadoEn: FieldValue.serverTimestamp() });
+    return { ...registro, id: ref.id };
   } catch (err) {
     console.error("Error guardando reporte:", err.message);
     console.log("[reportes fallback]", JSON.stringify(registro));
   }
   return registro;
+}
+
+// Lista los reportes que todavía no fueron marcados como revisados.
+export async function listarReportesPendientes(limite = 10) {
+  const firestore = ensureInit();
+  if (!firestore) return [];
+  try {
+    const snap = await firestore.collection("reportes").where("revisado", "==", false).limit(50).get();
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    docs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    return docs.slice(0, limite);
+  } catch (err) {
+    console.error("Error listando reportes pendientes:", err.message);
+    return [];
+  }
+}
+
+export async function marcarReporteRevisado(id) {
+  const firestore = ensureInit();
+  if (!firestore) return;
+  try {
+    await firestore.collection("reportes").doc(id).update({ revisado: true });
+  } catch (err) {
+    console.error("Error marcando reporte como revisado:", err.message);
+  }
 }

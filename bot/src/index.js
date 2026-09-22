@@ -37,7 +37,7 @@ import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from ".
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
-import { guardarReporte } from "./reportLogger.js";
+import { guardarReporte, listarReportesPendientes, marcarReporteRevisado } from "./reportLogger.js";
 import { publicarNoticia } from "./noticiaPublisher.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { chequearYNotificar } from "./monitor.js";
@@ -765,6 +765,47 @@ bot.action(/^retomar:(.+)$/, async (ctx) => {
 // Cualquier usuario puede reportar algo (mal estado de un coche, un
 // guarda, lo que sea) sin que quede publicado en el grupo. Uso:
 // /reporte <mensaje>. Se guarda en Firestore y te llega copia por privado.
+// Lista los reportes de /reporte que todavía no marcaste como revisados,
+// con un botón para hacerlo desde acá mismo.
+bot.command("reportes", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const pendientes = await listarReportesPendientes(10);
+  if (!pendientes.length) {
+    await ctx.reply("No hay reportes pendientes de revisión 🎉");
+    return;
+  }
+
+  await ctx.reply(`Hay ${pendientes.length} reporte(s) sin revisar:`);
+  for (const r of pendientes) {
+    const fecha = new Intl.DateTimeFormat("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(new Date(r.timestamp));
+    await ctx.reply(`👤 ${r.quien} (${r.origen})\n🕐 ${fecha}\n📋 "${r.mensaje}"`, {
+      reply_markup: {
+        inline_keyboard: [[{ text: "✅ Marcar como revisado", callback_data: `reprev:${r.id}` }]],
+      },
+    });
+  }
+});
+
+bot.action(/^reprev:(.+)$/, async (ctx) => {
+  if (!esAdminEstado(ctx)) {
+    await ctx.answerCbQuery();
+    return;
+  }
+  try {
+    await marcarReporteRevisado(ctx.match[1]);
+    await ctx.editMessageReplyMarkup();
+    await ctx.answerCbQuery("Marcado como revisado ✅");
+  } catch (err) {
+    console.error("Error marcando reporte revisado:", err.message);
+    await ctx.answerCbQuery("Error, mirá los logs");
+  }
+});
+
 bot.command("reporte", async (ctx) => {
   if (!esChatAutorizado(ctx)) return;
 
