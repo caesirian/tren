@@ -57,6 +57,13 @@ CONEXIONES CON OTROS TRANSPORTES (AMBA):
   · Línea Belgrano Sur: Buenos Aires (Puente Alsina/Barracas) hacia González Catán/Marinos del Crucero Gral. Belgrano (zona oeste/sur).
   · Todas también se pagan con SUBE, con tarifas por sección similares en lógica a las del Sarmiento.
 
+CÓMO REPORTAR UN EVENTO O INCIDENTE EN ESTE GRUPO (comando del propio bot):
+- Cualquier persona del grupo puede escribir /reporte seguido de lo que quiere avisar, por ejemplo: "/reporte El coche 3 del tren de las 8 estaba muy sucio" o "/reporte Hay un guardia haciendo control de boletos en Ramos Mejía".
+- Si se manda en el grupo, se puede usar tanto respondiendo/mencionando al bot como directamente con el comando; el bot borra el mensaje del grupo (si tiene permiso) para que el reporte no quede expuesto ahí, y confirma por privado.
+- No hace falta escribirle antes por privado al bot para que /reporte funcione en el grupo; el bot va a intentar confirmar por privado y, si Telegram no lo deja (la persona nunca le escribió antes), confirma con un mensaje genérico en el grupo.
+- Esto es lo único parecido a un "comando de reporte" que tiene el bot: no hay otro comando de reporte, ni uno separado para demoras/accidentes/etc. — todo pasa por /reporte.
+- Aparte de /reporte, cualquiera puede simplemente escribir la novedad como mensaje normal en el grupo (sin comando): el bot también lee esos mensajes.
+
 CANALES OFICIALES PARA CONFIRMAR CASOS PUNTUALES (demoras del momento, horario exacto de un tren específico, cambios de último momento):
 - Twitter/X: @TrenSarmiento (cuenta oficial) y @InfoTSarmiento
 - trensarmientoenlinea.com.ar (semáforo de estado del servicio en vivo)
