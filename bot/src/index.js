@@ -1620,6 +1620,26 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
   await cargarSilencio(); // restaura el modo silencio si estaba activo antes de un reinicio
+
+  // Respaldo interno: mientras el servicio esté despierto (Render free se
+  // duerme sin tráfico), chequea cancelaciones del proxy cada 5 min sin
+  // depender solo del ping externo de cron-job.org — así, si hay actividad
+  // en el chat que lo mantiene despierto, el chequeo no espera al ping.
+  let chequeoProxyEnCurso = false;
+  setInterval(async () => {
+    if (chequeoProxyEnCurso) return;
+    chequeoProxyEnCurso = true;
+    try {
+      const r = await chequearCancelacionesProxy();
+      if (r.texto && process.env.ADMIN_TELEGRAM_ID) {
+        await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, r.texto).catch((err) => console.error("Error avisando cancelaciones del proxy (timer interno):", err.message));
+      }
+    } catch (err) {
+      console.error("Error en chequeo interno de cancelaciones del proxy:", err.message);
+    } finally {
+      chequeoProxyEnCurso = false;
+    }
+  }, 5 * 60 * 1000);
   const publicUrl = process.env.PUBLIC_URL;
   if (publicUrl) {
     await bot.telegram.setWebhook(`${publicUrl}${WEBHOOK_PATH}`);

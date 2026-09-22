@@ -118,7 +118,9 @@ algo externo lo despierte cada tanto. La forma gratuita de hacerlo:
    ```
    https://tu-url-de-render.onrender.com/internal/check?secret=TU_CHECK_SECRET
    ```
-4. Configurá que se ejecute cada 10-15 minutos.
+4. Configurá que se ejecute cada 5 minutos (antes eran 10-15; se bajó a 5
+   porque el chequeo de cancelaciones de la app de Trenes Argentinos —
+   declarada fuente de verdad — necesita estar bien actualizado).
 
 Con esto, además de recibir los avisos, el ping mantiene el servicio
 despierto la mayor parte del tiempo (efecto secundario útil: menos demora
