@@ -20,11 +20,18 @@ const RE_GENTE = /\b(mucha|poca|bastante|cuanta|tanta|demasiada)\s+gente\b(?!\s+
 const RE_LLENO = /\b(lleno|llena|llenos|llenas|repleto|repleta|explotado|explotada|explotando|colmado|colmada|atestado|atestada|apretad[oa]s?|rebalsa\w*|sardinas)\b/;
 // Colas/multitudes: también necesitan un lugar.
 const RE_COLA = /\b(cola|colas|fila|filas|tumulto|aglomeracion\w*|multitud|hacinad[oa]s?)\b/;
+// La frase inversa: "hay espacio/lugar", "va vacío", "viene despejado" —
+// es la misma pregunta de ocupación, solo que en positivo.
+const RE_ESPACIO = /\b(hay|queda|quedan|tiene|con)\s+(espacio|lugar|lugares|asientos?)\b|\b(sin\s+gente|va\s+vaci[oa]|viene\s+vaci[oa]|va\s+desped?jad[oa]|viene\s+desped?jad[oa])\b/;
+// "Vacío/despejado": solo cuentan si hablan de un tren o estación (si no,
+// "tengo la heladera vacía" también matchearía).
+const RE_VACIO_LUGAR = /\b(vaci[oa]s?|desped?jad[oa]s?)\b/;
 
 export function esOcupacionEnVivo(texto) {
   const t = sinAcentos(texto);
   if (RE_GENTE.test(t)) return true;
-  if ((RE_LLENO.test(t) || RE_COLA.test(t)) && LUGAR.test(t)) return true;
+  if (RE_ESPACIO.test(t)) return true;
+  if ((RE_LLENO.test(t) || RE_COLA.test(t) || RE_VACIO_LUGAR.test(t)) && LUGAR.test(t)) return true;
   return false;
 }
 
