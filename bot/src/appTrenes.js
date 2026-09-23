@@ -104,12 +104,17 @@ export function datosServicio({ est, r }) {
   const estim = a.llegada?.estimada || a.salida?.estimada || a.llegada?.real || a.salida?.real;
   const demora = prog && estim ? Math.round((new Date(estim) - new Date(prog)) / 60000) : null;
   const anden = buscarAnden(s, a, a.salida, a.llegada, s.desde);
-  return { est, s, prog, estim, demora, anden, destino: s.hasta?.estacion?.nombre || s.ramal?.cabeceraFinal?.nombre || s.ramal?.nombre || "?", estado: s.desde?.estado?.nombre || "s/d" };
+  // Por simetría con s.hasta.estacion (destino), s.desde.estacion debería ser
+  // la estación de ORIGEN real del servicio (sin confirmar contra el proxy
+  // real todavía — mismo caso que el andén).
+  const origenReal = s.desde?.estacion?.nombre || null;
+  return { est, s, prog, estim, demora, anden, origenReal, destino: s.hasta?.estacion?.nombre || s.ramal?.cabeceraFinal?.nombre || s.ramal?.nombre || "?", estado: s.desde?.estado?.nombre || "s/d" };
 }
 
 export function lineaServicio(item) {
   const { est, s, prog, estim, demora, anden, destino, estado } = datosServicio(item);
-  let l = `• #${s.numero ?? "?"} → ${destino} | ${est.nombre}: prog ${hora(prog)}${estim ? ` / est ${hora(estim)}${demora != null ? ` (${demora >= 0 ? "+" : ""}${demora} min)` : ""}` : ""} | ${estado}${anden ? ` | andén ${anden}` : ""}`;
+  const { origenReal } = datosServicio(item);
+  let l = `• #${s.numero ?? "?"} → ${destino} | ${est.nombre}: prog ${hora(prog)}${estim ? ` / est ${hora(estim)}${demora != null ? ` (${demora >= 0 ? "+" : ""}${demora} min)` : ""}` : ""} | ${estado}${anden ? ` | andén ${anden}` : ""}${origenReal ? ` | origen: ${origenReal}` : ""}`;
   if (s.tipo?.nombre && s.tipo.nombre !== "Normal") l += ` | tipo: ${s.tipo.nombre}`;
   if (s.cancelacion) l += `\n   ❌ Cancelación: ${textoCancelacion(s.cancelacion)}`;
   if (s.leyenda) l += `\n   📢 Leyenda: ${corto(s.leyenda)}`;
@@ -281,4 +286,24 @@ export async function filasParaTabla(nombreEstacion, cantidad = 8) {
     };
   });
   return { filas, revisadas, error: null };
+}
+
+// ESTACIONES_ORIGEN_NORMAL: de dónde parte un servicio habitualmente. Trenes
+// que declaran salir de otra estación (ej. Liniers en vez de Flores para los
+// "locales") son un cambio operativo que conviene ver apenas aparece en los
+// datos — suele publicarse antes de que el tren realmente salga.
+const ESTACIONES_ORIGEN_NORMAL = new Set(["Once", "Moreno", "Flores", "Merlo"]);
+
+export function trenesConOrigenInusual(items) {
+  const vistos = new Set();
+  const resultado = [];
+  for (const item of items) {
+    const d = datosServicio(item);
+    if (!d.origenReal || ESTACIONES_ORIGEN_NORMAL.has(d.origenReal)) continue;
+    const clave = `${d.s.numero}-${d.origenReal}`;
+    if (vistos.has(clave)) continue;
+    vistos.add(clave);
+    resultado.push(item);
+  }
+  return resultado;
 }

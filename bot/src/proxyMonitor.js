@@ -20,9 +20,10 @@
 
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { barridoEstructurado, datosServicio, textoCancelacion, hora } from "./appTrenes.js";
+import { barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora } from "./appTrenes.js";
 
 const COLECCION = "cancelacionesProxyVistas";
+const COLECCION_ORIGEN = "origenesInusualesVistos";
 const RETENCION_DIAS = 3;
 
 let db = null;
@@ -107,6 +108,53 @@ function lineaCancelacion(item) {
 
 // Para el cron: detecta cancelaciones nuevas y arma el texto para avisar al
 // admin. Devuelve { nuevas: [...], texto: string|null, erroresProxy: [...] }.
+// Trenes que declaran salir de una estación distinta a la habitual (ej. los
+// "locales" que oficialmente arrancan en Flores, saliendo de Liniers). Sirve
+// para anticiparse: el dato suele aparecer con el tren en "Programado", antes
+// de que realmente salga, así que avisar apenas se detecta da margen.
+export async function chequearOrigenesInusuales() {
+  if (!monitorProxyActivo()) return { nuevos: [], texto: null, desactivado: true };
+  let barrido;
+  try {
+    barrido = await barridoEstructurado(); // comparte caché con el resto de los chequeos
+  } catch (err) {
+    console.error("Error consultando el proxy para orígenes inusuales:", err.message);
+    return { nuevos: [], texto: null, error: err.message };
+  }
+
+  const candidatos = trenesConOrigenInusual(barrido.todos);
+  const nuevos = [];
+  for (const item of candidatos) {
+    const d = datosServicio(item);
+    const dia = d.prog ? new Date(d.prog).toISOString().slice(0, 10) : "s-fecha";
+    const clave = `${d.s.numero ?? "s-num"}-${d.origenReal}-${dia}`;
+    const firestore = ensureInit();
+    let visto = vistosEnMemoria.has(clave);
+    if (!visto && firestore) {
+      try {
+        visto = (await firestore.collection(COLECCION_ORIGEN).doc(clave).get()).exists;
+      } catch (err) {
+        console.error("Error chequeando origen inusual visto:", err.message);
+      }
+    }
+    if (visto) continue;
+    vistosEnMemoria.add(clave);
+    if (firestore) firestore.collection(COLECCION_ORIGEN).doc(clave).set({ timestamp: FieldValue.serverTimestamp() }).catch((err) => console.error("Error guardando origen inusual:", err.message));
+    nuevos.push(item);
+  }
+  if (!nuevos.length) return { nuevos: [], texto: null };
+
+  const lineas = nuevos.map((item) => {
+    const d = datosServicio(item);
+    return `• #${d.s.numero ?? "?"} → ${d.destino} | sale de ${d.origenReal} (se lo vio en ${d.est.nombre}) · prog ${hora(d.prog)}${d.anden ? ` · andén ${d.anden}` : ""}`;
+  });
+  const texto =
+    `🔀 ${nuevos.length} tren(es) con estación de origen distinta a la habitual (Once/Flores/Merlo/Moreno):\n\n` +
+    lineas.join("\n") +
+    `\n\n(Esto es lo que declara el proxy como estación de salida — se detecta antes de que el tren realmente salga, en cuanto figura "Programado". Sin confirmar todavía si "origen" es 100% ese campo — revisar con /apptrenes get si algo no cierra.)`;
+  return { nuevos, texto };
+}
+
 export async function chequearCancelacionesProxy() {
   if (!monitorProxyActivo()) return { nuevas: [], texto: null, desactivado: true };
   let barrido;

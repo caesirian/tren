@@ -30,7 +30,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, consultarProxy, filasParaTabla } from "./appTrenes.js";
-import { chequearCancelacionesProxy, contextoProxyParaBot } from "./proxyMonitor.js";
+import { chequearCancelacionesProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
@@ -647,6 +647,7 @@ bot.command("apptrenes", async (ctx) => {
         "/apptrenes Moreno → Sarmiento en esa estación (estado, demoras, cancelaciones, leyendas)\n" +
         "/apptrenes scan → barrido de las 16 estaciones del ramal, muestra solo lo anormal\n" +
         "/apptrenes salidas Once (o Moreno) → próximas salidas de esa cabecera, con andén si el proxy lo trae\n" +
+        "/apptrenes origenes → trenes que declaran salir de una estación distinta a la habitual (ej. locales saliendo de Liniers en vez de Flores)\n" +
         "/apptrenes scan completo → lo mismo pero lista TODOS los servicios de TODAS las estaciones\n" +
         "/apptrenes auto on|off → activa/desactiva que el chequeo automático de cada 5 min te mande el barrido completo por privado (usalo durante un incidente puntual)\n" +
         "/apptrenes get /infraestructura/estaciones?nombre=Once → consulta cruda al proxy (para probar rutas, por ej. alertas)"
@@ -654,7 +655,19 @@ bot.command("apptrenes", async (ctx) => {
     return;
   }
   try {
-    if (/^salidas\s+/i.test(args)) {
+    if (/^origenes$/i.test(args)) {
+      const barrido = await barridoEstructurado({ forzar: true });
+      const inusuales = trenesConOrigenInusual(barrido.todos);
+      if (!inusuales.length) {
+        await enviar("Ningún tren declara salir de una estación distinta a Once/Flores/Merlo/Moreno en este momento.");
+      } else {
+        const lineas = inusuales.map((item) => {
+          const d = datosServicio(item);
+          return `• #${d.s.numero ?? "?"} → ${d.destino} | sale de ${d.origenReal} (visto en ${d.est.nombre}) · prog ${hora(d.prog)}${d.anden ? ` · andén ${d.anden}` : ""}`;
+        });
+        await enviar(`🔀 Trenes con origen distinto al habitual:\n\n${lineas.join("\n")}`);
+      }
+    } else if (/^salidas\s+/i.test(args)) {
       const { texto } = await proximasSalidas(args.replace(/^salidas\s+/i, "").trim());
       await enviar(texto);
     } else if (/^scan(\s+completo)?$/i.test(args)) {
@@ -1758,6 +1771,16 @@ async function chequeoPeriodicoProxy(origen) {
     }
   } catch (err) {
     console.error(`Error chequeando cancelaciones del proxy (${origen}):`, err.message);
+  }
+
+  try {
+    const origenesProxy = await chequearOrigenesInusuales();
+    if (!origenesProxy.desactivado) console.log(`Chequeo proxy (${origen}): ${origenesProxy.nuevos?.length ?? 0} tren(es) con origen inusual nuevo(s)`);
+    if (origenesProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, origenesProxy.texto).catch((err) => console.error("Error avisando origen inusual:", err.message));
+    }
+  } catch (err) {
+    console.error(`Error chequeando orígenes inusuales (${origen}):`, err.message);
   }
 
   if (escaneoCompletoActivo() && process.env.ADMIN_TELEGRAM_ID) {
