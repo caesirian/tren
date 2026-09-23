@@ -29,7 +29,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, barridoSarmiento, proximasSalidas, consultarProxy, filasParaTabla } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, datosServicio, hora, consultarProxy, filasParaTabla } from "./appTrenes.js";
 import { chequearCancelacionesProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
