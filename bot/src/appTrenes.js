@@ -115,7 +115,7 @@ export async function reporteEstacion(nombre) {
 // lo que dejaba afuera tramos enteros — ej. Flores, entre Once y Floresta).
 const ESTACIONES_BARRIDO = [
   "Once", "Caballito", "Flores", "Floresta", "Villa Luro", "Liniers", "Ciudadela", "Ramos Mejía",
-  "Haedo", "Morón", "Castelar", "Ituzaingó", "San Antonio de Padua", "Merlo", "Paso del Rey", "Moreno",
+  "Haedo", "Morón", "Castelar", "Ituzaingó", "Padua", "Merlo", "Paso del Rey", "Moreno",
 ];
 
 const esAnormal = (item) => {
@@ -157,13 +157,57 @@ export async function barridoEstructurado({ forzar = false } = {}) {
 // como un choque, para ver cómo viene llegando cada formación a cada
 // estación, no solo dónde hay demora marcada). Es un listado largo: se corta
 // en varios mensajes de Telegram (lo hace enviar() en index.js).
+// Un mismo tren aparece una vez por cada estación que todavía tiene por
+// delante (es la misma demora arrastrada, no un problema nuevo por
+// estación). Para el resumen de "solo lo anormal" conviene agruparlo en una
+// sola línea por tren, con la estación más próxima (prog más chico, la
+// próxima parada) como referencia y la cantidad de estaciones donde se lo ve.
+function agruparPorTren(items) {
+  const grupos = new Map();
+  for (const item of items) {
+    const { s } = datosServicio(item);
+    const clave = `${s.numero ?? "s-num"}`;
+    if (!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(item);
+  }
+  return [...grupos.values()].map((grupo) => {
+    grupo.sort((a, b2) => (datosServicio(a).prog || "").localeCompare(datosServicio(b2).prog || ""));
+    return grupo[0]; // el de prog más chico: la próxima estación a la que llega
+  });
+}
+
+function lineaServicioAgrupado(item, cantidadEstaciones) {
+  let l = lineaServicio(item);
+  if (cantidadEstaciones > 1) l += ` (mismo patrón visto en ${cantidadEstaciones} estaciones del tramo que le queda)`;
+  return l;
+}
+
 export function textoBarrido(b, { completo = false } = {}) {
-  let texto = `🔎 Barrido Sarmiento (${ESTACIONES_BARRIDO.length} estaciones: ${ESTACIONES_BARRIDO.join(", ")})\nServicios revisados: ${b.todos.length} · anormales: ${b.anormales.length}\n`;
+  const ahora = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+  const cancelados = b.anormales.filter((i) => datosServicio(i).s.cancelacion);
+  const demorados = b.anormales.filter((i) => !datosServicio(i).s.cancelacion && (datosServicio(i).demora ?? 0) >= 10);
+  const trenesCancelados = new Set(cancelados.map((i) => datosServicio(i).s.numero)).size;
+  const trenesDemorados = new Set(demorados.map((i) => datosServicio(i).s.numero)).size;
+
+  let texto = `🔎 Barrido Sarmiento — consultado a las ${ahora}\n(${ESTACIONES_BARRIDO.length} estaciones: ${ESTACIONES_BARRIDO.join(", ")})\n`;
+  texto += `Servicios revisados: ${b.todos.length} · trenes cancelados: ${trenesCancelados} · trenes con demora 10+ min: ${trenesDemorados}\n`;
+
   if (completo) {
     const ordenados = [...b.todos].sort((a, b2) => (datosServicio(a).prog || "").localeCompare(datosServicio(b2).prog || ""));
     texto += ordenados.length ? `\n${ordenados.map(lineaServicio).join("\n")}` : "\n(sin servicios de Sarmiento en este momento)";
+  } else if (b.anormales.length) {
+    const agrupados = agruparPorTren(b.anormales);
+    const cantidadPorTren = new Map();
+    for (const item of b.anormales) {
+      const num = datosServicio(item).s.numero ?? "s-num";
+      cantidadPorTren.set(num, (cantidadPorTren.get(num) || 0) + 1);
+    }
+    texto += `\n${agrupados
+      .slice(0, 15)
+      .map((item) => lineaServicioAgrupado(item, cantidadPorTren.get(datosServicio(item).s.numero ?? "s-num") || 1))
+      .join("\n")}`;
   } else {
-    texto += b.anormales.length ? `\n${b.anormales.slice(0, 15).map(lineaServicio).join("\n")}` : "\nNingún servicio con cancelación, leyenda, demora de 10+ min o tipo especial en este momento.";
+    texto += "\nNingún servicio con cancelación, leyenda, demora de 10+ min o tipo especial en este momento.";
   }
   if (b.errores.length) texto += `\n\nAvisos:\n- ${b.errores.join("\n- ")}`;
   return texto;
