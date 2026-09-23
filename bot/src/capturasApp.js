@@ -68,11 +68,11 @@ export function recordarCaptura({ imagenHash, fileUniqueId }) {
 }
 
 const PROMPT = `
-Esta imagen puede ser una CAPTURA DE PANTALLA de la app (o del sitio) de Trenes Argentinos / SOFSE: pantalla de arribos de una estación, buscador de recorrido (origen → destino con fecha y hora), estado del servicio o alertas.
+Esta imagen puede ser: (a) una CAPTURA DE PANTALLA de la app (o del sitio) de Trenes Argentinos / SOFSE (arribos de una estación, buscador de recorrido, estado del servicio, alertas), o (b) una FOTO de la CARTELERA FÍSICA/LED de una estación (el panel que cuelga arriba del andén, tipo el de la estación Once, con filas ANDÉN / destino / hora / estado PROGRAMADO o CONFIRMADO, y a veces un cartel o cinta con un aviso al pie).
 Devolvé SOLO un JSON (sin markdown) con esta forma exacta:
 {
   "esCapturaAppTrenes": true o false,
-  "tipo": "arribos" | "recorrido" | "alerta" | "estado_servicio" | "otro",
+  "tipo": "arribos" | "recorrido" | "alerta" | "estado_servicio" | "cartelera_fisica" | "otro",
   "estacion": "estación que se está viendo (pantalla de arribos)" o null,
   "ramal": "ramal o línea" o null,
   "origen": "origen del buscador de recorrido" o null,
@@ -91,8 +91,9 @@ Devolvé SOLO un JSON (sin markdown) con esta forma exacta:
   ],
   "servicios": [
     { "horaProgramada": "HH:MM" o null, "horaEstimada": "HH:MM" o null, "destino": "..." o null,
-      "estado": "texto de estado tal como se ve (En andén, Partió, Cancelado, Demorado, Normal, etc.)" o null,
-      "demoraMin": número o null, "cancelado": true o false, "leyenda": "texto extra del servicio" o null }
+      "estado": "texto de estado tal como se ve (En andén, Partió, Cancelado, Demorado, Normal, Programado, Confirmado, etc.)" o null,
+      "demoraMin": número o null, "cancelado": true o false, "leyenda": "texto extra del servicio" o null,
+      "anden": "número o letra del andén, tal como se lee en esa fila/tarjeta" o null (si dice "-" o está vacío, poné null: todavía no se lo asignaron) }
   ],
   "textoDetectado": "todo el texto relevante que se lee, resumido"
 }
@@ -103,6 +104,7 @@ Reglas:
 - Ignorá marcas hechas a mano sobre la imagen (círculos, flechas, subrayados, tachones). Si un texto queda cortado o tapado, transcribí solo lo legible, marcá truncado=true y no lo completes.
 - horaCaptura: usá el reloj de la barra de estado si se ve (horaOrigen="reloj"). Si no hay barra de estado, usá la hora de actualización de la app ("app") o, en último caso, la hora del campo del buscador ("buscador"): ese campo lo puede cambiar el usuario, por eso hay que indicar de dónde salió.
 - Si la tarjeta de un tren aparece cortada, cargá en servicios solo lo que se lee completo.
+- CARTELERA FÍSICA (tipo="cartelera_fisica"): "estacion" es la estación de la que es el panel (dice arriba a la izquierda, ej. "ONCE"). Cada fila/tarjeta del panel es un item de "servicios": el destino grande (ej. "MORENO") va en "destino", la hora en "horaProgramada", "PROGRAMADO"/"CONFIRMADO"/etc. en "estado", y el número del andén de esa fila en "anden" (si la columna ANDÉN dice "-", andén queda null). Un texto que se desplaza al pie del panel (cinta/ticker) va como alerta, tipo="informativa" salvo que hable de demoras/servicio reducido/cancelaciones (ahí es "operativa"); si está cortado por el borde de la foto, marcá truncado=true.
 `.trim();
 
 const ESTADOS_ALERTA = ["normal", "demorado", "interrumpido", "cancelado", "normalizado"];
@@ -319,6 +321,9 @@ export async function cotejarCaptura(datos, eventoEn, ahora = new Date()) {
   let coinciden = 0;
   let discrepancias = 0;
   let noEncontrados = 0;
+  let andenesCoinciden = 0;
+  let andenesDistintos = 0;
+  let andenesSinDatoProxy = 0;
 
   for (const sv of datos.servicios || []) {
     const etiqueta = `${sv.horaProgramada || sv.horaEstimada || "--:--"} → ${sv.destino || "?"}`;
@@ -334,13 +339,24 @@ export async function cotejarCaptura(datos, eventoEn, ahora = new Date()) {
     if (!!sv.cancelado !== proxyCancel) problemas.push(sv.cancelado ? "la captura dice CANCELADO y el proxy no informa cancelación" : "el proxy informa cancelación y la captura no");
     if (sv.demoraMin != null && d.demora != null && Math.abs(sv.demoraMin - d.demora) > 3) problemas.push(`demora: captura ${sv.demoraMin} min vs proxy ${d.demora} min`);
     if (sv.leyenda && !d.s.leyenda) problemas.push(`la captura tiene leyenda ("${String(sv.leyenda).slice(0, 60)}") y el proxy no`);
+    if (sv.anden) {
+      if (d.anden && String(d.anden).trim() === String(sv.anden).trim()) andenesCoinciden++;
+      else if (d.anden) { andenesDistintos++; problemas.push(`andén: cartel dice ${sv.anden}, proxy dice ${d.anden}`); }
+      else andenesSinDatoProxy++; // el cartel SÍ tiene andén y el proxy no trajo ninguno para este tren — dato clave para calibrar el campo
+    }
     if (problemas.length) {
       discrepancias++;
       lineas.push(`⚠️ ${etiqueta}: ${problemas.join("; ")}`);
     } else {
       coinciden++;
-      lineas.push(`✅ ${etiqueta}: coincide${d.demora != null ? ` (proxy ${d.demora >= 0 ? "+" : ""}${d.demora} min)` : ""}`);
+      lineas.push(`✅ ${etiqueta}: coincide${d.demora != null ? ` (proxy ${d.demora >= 0 ? "+" : ""}${d.demora} min)` : ""}${sv.anden ? ` · andén ${sv.anden} = proxy` : ""}`);
     }
+  }
+  if (andenesCoinciden || andenesDistintos || andenesSinDatoProxy) {
+    lineas.push(
+      `🚉 Andén: ${andenesCoinciden} coincide(n) con el proxy, ${andenesDistintos} distinto(s), ${andenesSinDatoProxy} sin dato de andén en el proxy` +
+        (andenesCoinciden + andenesDistintos > 0 ? " — el campo de andén que usa el bot parece funcionar." : " — el proxy no está devolviendo andén para lo que muestra el cartel; revisar el nombre del campo con /apptrenes get.")
+    );
   }
 
   // ¿La alerta/leyenda que se ve en la app llega por el proxy?
@@ -374,8 +390,9 @@ export async function cotejarCaptura(datos, eventoEn, ahora = new Date()) {
 
 export function armarReporte({ datos, quien, chatTitle, threadId, eventoEn, eventoOrigen, subidoEn, cotejo, guardadoId }) {
   const fmt = (d) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
-  const serv = (datos.servicios || []).slice(0, 10).map((s) => `  • ${s.horaProgramada || "--:--"}${s.horaEstimada ? ` (est ${s.horaEstimada})` : ""} → ${s.destino || "?"} | ${s.estado || "s/d"}${s.demoraMin != null ? ` | ${s.demoraMin} min` : ""}${s.cancelado ? " | CANCELADO" : ""}${s.leyenda ? ` | "${String(s.leyenda).slice(0, 60)}"` : ""}`);
-  let t = `📱 Captura de la app de Trenes Argentinos\n👤 ${quien} en «${chatTitle || "grupo"}»${threadId ? ` (tema ${threadId})` : ""}\n`;
+  const serv = (datos.servicios || []).slice(0, 10).map((s) => `  • ${s.horaProgramada || "--:--"}${s.horaEstimada ? ` (est ${s.horaEstimada})` : ""} → ${s.destino || "?"} | ${s.estado || "s/d"}${s.anden ? ` | andén ${s.anden}` : ""}${s.demoraMin != null ? ` | ${s.demoraMin} min` : ""}${s.cancelado ? " | CANCELADO" : ""}${s.leyenda ? ` | "${String(s.leyenda).slice(0, 60)}"` : ""}`);
+  const esCartel = datos.tipo === "cartelera_fisica";
+  let t = `${esCartel ? "🖥️ Foto de la cartelera física" : "📱 Captura de la app"} de Trenes Argentinos\n👤 ${quien} en «${chatTitle || "grupo"}»${threadId ? ` (tema ${threadId})` : ""}\n`;
   t += `🕒 Evento: ${fmt(eventoEn)} (${eventoOrigen}) · subida ${fmt(subidoEn)}\n`;
   t += `📍 ${datos.estacion || "estación s/d"}${datos.ramal ? ` · ${datos.ramal}` : ""} · tipo: ${datos.tipo || "s/d"}\n`;
   if (datos.origen || datos.destino) t += `🧭 Recorrido buscado: ${datos.origen || "?"} → ${datos.destino || "?"}\n`;
