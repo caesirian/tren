@@ -76,12 +76,22 @@ export async function serviciosSarmiento(nombre) {
 // tanto en "servicio" como en "arribo"/"salida", y el primero que aparezca
 // con datos se usa. Si ninguno aparece, queda null y se omite en el texto.
 const CAMPOS_ANDEN = ["anden", "andenSalida", "anden_salida", "plataforma", "via", "nroAnden", "numeroAnden"];
+const CAMPOS_ANDEN_SUB = ["nombre", "codigo", "numero", "valor", "value", "id", "label", "descripcion", "texto"];
 function buscarAnden(...objetos) {
   for (const obj of objetos) {
     if (!obj) continue;
     for (const campo of CAMPOS_ANDEN) {
       const v = obj[campo];
-      if (v !== undefined && v !== null && v !== "") return String(v);
+      if (v === undefined || v === null || v === "") continue;
+      if (typeof v === "object") {
+        for (const sub of CAMPOS_ANDEN_SUB) {
+          const sv = v[sub];
+          if (sv !== undefined && sv !== null && sv !== "") return String(sv);
+        }
+        console.warn(`buscarAnden: campo "${campo}" es un objeto sin subcampo reconocido: ${JSON.stringify(v).slice(0, 200)}`);
+        continue; // no devolver "[object Object]"
+      }
+      return String(v);
     }
   }
   return null;
