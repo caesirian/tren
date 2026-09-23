@@ -71,18 +71,35 @@ export async function serviciosSarmiento(nombre) {
   return { servicios, revisadas, candidatas, crudoEstaciones: encontradas };
 }
 
+// Nombre exacto del campo de andén sin confirmar todavía (la API no tiene
+// documentación oficial — ver README). Se prueban varios nombres posibles,
+// tanto en "servicio" como en "arribo"/"salida", y el primero que aparezca
+// con datos se usa. Si ninguno aparece, queda null y se omite en el texto.
+const CAMPOS_ANDEN = ["anden", "andenSalida", "anden_salida", "plataforma", "via", "nroAnden", "numeroAnden"];
+function buscarAnden(...objetos) {
+  for (const obj of objetos) {
+    if (!obj) continue;
+    for (const campo of CAMPOS_ANDEN) {
+      const v = obj[campo];
+      if (v !== undefined && v !== null && v !== "") return String(v);
+    }
+  }
+  return null;
+}
+
 export function datosServicio({ est, r }) {
   const a = r.arribo || {};
   const s = r.servicio || {};
   const prog = a.llegada?.programada || a.salida?.programada;
   const estim = a.llegada?.estimada || a.salida?.estimada || a.llegada?.real || a.salida?.real;
   const demora = prog && estim ? Math.round((new Date(estim) - new Date(prog)) / 60000) : null;
-  return { est, s, prog, estim, demora, destino: s.hasta?.estacion?.nombre || s.ramal?.cabeceraFinal?.nombre || s.ramal?.nombre || "?", estado: s.desde?.estado?.nombre || "s/d" };
+  const anden = buscarAnden(s, a, a.salida, a.llegada, s.desde);
+  return { est, s, prog, estim, demora, anden, destino: s.hasta?.estacion?.nombre || s.ramal?.cabeceraFinal?.nombre || s.ramal?.nombre || "?", estado: s.desde?.estado?.nombre || "s/d" };
 }
 
 export function lineaServicio(item) {
-  const { est, s, prog, estim, demora, destino, estado } = datosServicio(item);
-  let l = `• #${s.numero ?? "?"} → ${destino} | ${est.nombre}: prog ${hora(prog)}${estim ? ` / est ${hora(estim)}${demora != null ? ` (${demora >= 0 ? "+" : ""}${demora} min)` : ""}` : ""} | ${estado}`;
+  const { est, s, prog, estim, demora, anden, destino, estado } = datosServicio(item);
+  let l = `• #${s.numero ?? "?"} → ${destino} | ${est.nombre}: prog ${hora(prog)}${estim ? ` / est ${hora(estim)}${demora != null ? ` (${demora >= 0 ? "+" : ""}${demora} min)` : ""}` : ""} | ${estado}${anden ? ` | andén ${anden}` : ""}`;
   if (s.tipo?.nombre && s.tipo.nombre !== "Normal") l += ` | tipo: ${s.tipo.nombre}`;
   if (s.cancelacion) l += `\n   ❌ Cancelación: ${textoCancelacion(s.cancelacion)}`;
   if (s.leyenda) l += `\n   📢 Leyenda: ${corto(s.leyenda)}`;
@@ -149,6 +166,23 @@ export async function barridoEstructurado({ forzar = false } = {}) {
   });
   cacheBarrido = { todos, anormales: todos.filter(esAnormal), errores, momento: Date.now() };
   return cacheBarrido;
+}
+
+// Próximas salidas de una CABECERA (Once o Moreno): son los servicios que
+// arrancan ahí, ordenados por hora programada. Usa el mismo endpoint que el
+// resto (arribos de esa estación) — para una cabecera, el próximo arribo QUE
+// LISTA ahí es directamente la próxima salida, porque el servicio nace en
+// esa estación.
+export async function proximasSalidas(nombreEstacion, cantidad = 8) {
+  const { servicios, revisadas, candidatas } = await serviciosSarmiento(nombreEstacion);
+  if (!candidatas.length) return { texto: `No encontré la estación "${nombreEstacion}" en el proxy.`, items: [] };
+  const ordenados = [...servicios].sort((a, b) => (datosServicio(a).prog || "").localeCompare(datosServicio(b).prog || "")).slice(0, cantidad);
+  const ahora = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+  const hayAnden = ordenados.some((i) => datosServicio(i).anden);
+  let texto = `🚉 Próximas salidas — ${revisadas.join(", ") || nombreEstacion} (consultado a las ${ahora})\n`;
+  texto += ordenados.length ? ordenados.map(lineaServicio).join("\n") : "(sin servicios de Sarmiento saliendo de acá en este momento)";
+  if (ordenados.length && !hayAnden) texto += "\n\n(el proxy no trajo el andén para ninguno de estos — puede que este endpoint no lo incluya)";
+  return { texto, items: ordenados };
 }
 
 // completo=false (default): solo lo anormal, para uso diario.

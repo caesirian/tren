@@ -29,7 +29,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, barridoSarmiento, consultarProxy } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, proximasSalidas, consultarProxy } from "./appTrenes.js";
 import { chequearCancelacionesProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
@@ -569,6 +569,7 @@ bot.command("apptrenes", async (ctx) => {
       "Uso:\n" +
         "/apptrenes Moreno → Sarmiento en esa estación (estado, demoras, cancelaciones, leyendas)\n" +
         "/apptrenes scan → barrido de las 16 estaciones del ramal, muestra solo lo anormal\n" +
+        "/apptrenes salidas Once (o Moreno) → próximas salidas de esa cabecera, con andén si el proxy lo trae\n" +
         "/apptrenes scan completo → lo mismo pero lista TODOS los servicios de TODAS las estaciones\n" +
         "/apptrenes auto on|off → activa/desactiva que el chequeo automático de cada 5 min te mande el barrido completo por privado (usalo durante un incidente puntual)\n" +
         "/apptrenes get /infraestructura/estaciones?nombre=Once → consulta cruda al proxy (para probar rutas, por ej. alertas)"
@@ -576,7 +577,10 @@ bot.command("apptrenes", async (ctx) => {
     return;
   }
   try {
-    if (/^scan(\s+completo)?$/i.test(args)) {
+    if (/^salidas\s+/i.test(args)) {
+      const { texto } = await proximasSalidas(args.replace(/^salidas\s+/i, "").trim());
+      await enviar(texto);
+    } else if (/^scan(\s+completo)?$/i.test(args)) {
       await enviar(await barridoSarmiento({ completo: /completo/i.test(args) }));
     } else if (/^auto\s+(on|off)$/i.test(args)) {
       const on = /on$/i.test(args);
