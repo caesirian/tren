@@ -29,7 +29,8 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, datosServicio, hora, consultarProxy, filasParaTabla } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla } from "./appTrenes.js";
+import { tableroVivoHTML } from "./tableroVivo.js";
 import { chequearCancelacionesProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
@@ -1749,6 +1750,62 @@ app.get("/internal/check", async (req, res) => {
   } catch (err) {
     console.error("Error en /internal/check:", err.message);
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Tablero en tiempo real (HTML + API propia). Vive ACÁ, en el bot, y no como
+// artifact publicado: una página publicada no puede hacer fetch a dominios
+// externos (ni siquiera a este mismo Render), así que la única forma de que
+// se autoactualice de verdad con datos reales es que la sirva este servidor,
+// que ya es el que consulta el proxy. La API interna reusa barridoEstructurado
+// (con su caché de 2 min) para no golpear el proxy en cada refresco del navegador.
+function claveTableroValida(req) {
+  const clave = process.env.TABLERO_KEY || process.env.CHECK_SECRET;
+  return !clave || req.query.key === clave; // sin TABLERO_KEY/CHECK_SECRET configurada, queda abierta
+}
+
+app.get("/tablero-vivo", (req, res) => {
+  if (!claveTableroValida(req)) return res.status(403).send("forbidden");
+  res.set("Content-Type", "text/html; charset=utf-8").send(tableroVivoHTML());
+});
+
+app.get("/api/tablero-vivo", async (req, res) => {
+  if (!claveTableroValida(req)) return res.status(403).json({ error: "forbidden" });
+  try {
+    const barrido = await barridoEstructurado();
+    const inusuales = new Set(trenesConOrigenInusual(barrido.todos).map((i) => datosServicio(i).s.numero));
+
+    // Un mismo tren aparece una vez por cada estación que le queda por
+    // delante; para el tablero interesa una fila por tren, con la próxima
+    // estación (prog más chico) como referencia.
+    const porTren = new Map();
+    for (const item of barrido.todos) {
+      const d = datosServicio(item);
+      const num = d.s.numero ?? `s-${Math.random()}`;
+      const actual = porTren.get(num);
+      if (!actual || (d.prog || "") < (actual.d.prog || "")) porTren.set(num, { item, d });
+    }
+    const servicios = [...porTren.values()]
+      .sort((a, b) => (a.d.prog || "").localeCompare(b.d.prog || ""))
+      .map(({ d }) => ({
+        numero: d.s.numero ?? null,
+        proximaEstacion: d.est.nombre,
+        destino: d.destino,
+        origen: d.origenReal,
+        origenInusual: inusuales.has(d.s.numero),
+        prog: d.prog,
+        estim: d.estim,
+        demoraMin: d.demora,
+        estado: d.estado,
+        anden: d.anden,
+        cancelado: !!d.s.cancelacion,
+        motivoCancelacion: d.s.cancelacion ? textoCancelacion(d.s.cancelacion) : null,
+      }));
+
+    res.json({ consultadoEn: new Date().toISOString(), servicios, erroresProxy: barrido.errores });
+  } catch (err) {
+    console.error("Error en /api/tablero-vivo:", err.message);
+    res.status(502).json({ error: err.message });
   }
 });
 
