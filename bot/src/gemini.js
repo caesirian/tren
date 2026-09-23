@@ -253,3 +253,33 @@ Escribí un mensaje corto (2-3 líneas), natural, para retomar la charla: pregun
   });
   return response.text.trim();
 }
+
+// Arma una tabla en texto monoespaciado (para un bloque ``` de Telegram) a
+// partir de datos YA EXTRAÍDOS del proxy de Trenes Argentinos (appTrenes.js)
+// — Gemini solo maqueta, NUNCA inventa ni corrige un valor. Los datos que
+// recibe son la única fuente de verdad de los números.
+export async function formatearTablaSalidas(filas, tituloContexto) {
+  const prompt = `Tenés esta lista de formaciones del Tren Sarmiento, ya extraída de una fuente real (no la inventes ni la modifiques):
+
+${JSON.stringify(filas, null, 2)}
+
+Armá una tabla en TEXTO MONOESPACIADO (para un bloque de código de Telegram,
+ancho máximo ~40 caracteres por línea porque se ve en el celular), con estas
+columnas: ANDÉN | HORA | DESTINO | ESTADO. Si un campo viene null o vacío,
+poné "-". Si el estado es cancelado, escribilo en mayúsculas como
+"CANCELADO"; si no, "CONFIRMADO" (o el estado real que te pasé, tal cual).
+
+Reglas estrictas:
+- NO cambies ningún número, hora, andén ni nombre — copialos EXACTO como
+  están en el JSON.
+- NO agregues filas ni formaciones que no estén en el JSON.
+- NO agregues texto antes o después de la tabla, ni explicaciones — SOLO la
+  tabla en texto plano, lista para pegar en un bloque \`\`\`.
+- Contexto para el título de la tabla: "${tituloContexto}".`;
+
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: prompt,
+  });
+  return response.text.trim();
+}

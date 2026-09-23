@@ -260,3 +260,25 @@ export function textoBarrido(b, { completo = false } = {}) {
 export async function barridoSarmiento({ completo = false } = {}) {
   return textoBarrido(await barridoEstructurado({ forzar: true }), { completo });
 }
+
+// Filas "crudas" (número, andén, hora, destino, estado) para armar una
+// tabla — esto es la fuente de verdad real, no pasa por ningún modelo.
+export async function filasParaTabla(nombreEstacion, cantidad = 8) {
+  const { servicios, revisadas, candidatas } = await serviciosSarmiento(nombreEstacion);
+  if (!candidatas.length) return { filas: [], revisadas: [], error: `No encontré la estación "${nombreEstacion}" en el proxy.` };
+
+  const ordenados = [...servicios].sort((a, b) => (datosServicio(a).prog || "").localeCompare(datosServicio(b).prog || "")).slice(0, cantidad);
+  const filas = ordenados.map((item) => {
+    const { s, prog, estim, anden, destino, estado } = datosServicio(item);
+    return {
+      numero: s.numero ?? null,
+      anden: anden ?? null,
+      horaProgramada: hora(prog),
+      horaEstimada: estim ? hora(estim) : null,
+      destino,
+      estado: s.cancelacion ? "CANCELADO" : estado,
+      motivoCancelacion: s.cancelacion ? textoCancelacion(s.cancelacion) : null,
+    };
+  });
+  return { filas, revisadas, error: null };
+}

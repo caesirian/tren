@@ -24,12 +24,12 @@ import NodeCache from "node-cache";
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
 import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria } from "./firestoreStatus.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
-import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar } from "./gemini.js";
+import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, barridoSarmiento, proximasSalidas, consultarProxy } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, proximasSalidas, consultarProxy, filasParaTabla } from "./appTrenes.js";
 import { chequearCancelacionesProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
@@ -556,6 +556,35 @@ bot.command("hablar", async (ctx) => {
 //   /apptrenes scan [completo]   -> barrido de las 16 estaciones; "completo" lista todo, no solo lo anormal
 //   /apptrenes auto on|off       -> chequeo automatico de 5 min manda el barrido completo (incidentes)
 //   /apptrenes get /ruta?x=y     -> GET crudo al proxy (para probar rutas, ej. alertas)
+// Tabla tipo "tablero de estación" (andén | hora | destino | estado) para
+// una cabecera (Once o Moreno). Usa los datos reales de appTrenes.js — el
+// formateo de tabla lo hace Gemini, pero los números son 100% del proxy,
+// nunca los toca el modelo.
+bot.command("tablero", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const estacion = (ctx.message.text || "").replace(/^\/tablero(@\w+)?\s*/i, "").trim() || "Once";
+
+  try {
+    await ctx.sendChatAction("typing");
+    const { filas, revisadas, error } = await filasParaTabla(estacion, 8);
+    if (error) {
+      await ctx.reply(error);
+      return;
+    }
+    if (!filas.length) {
+      await ctx.reply(`Sin servicios de Sarmiento saliendo de ${estacion} en este momento.`);
+      return;
+    }
+
+    const tabla = await formatearTablaSalidas(filas, `Próximas salidas — ${revisadas.join(", ")}`);
+    await ctx.reply(`🚉 *Tablero — ${revisadas.join(", ")}*\n\`\`\`\n${tabla}\n\`\`\``, { parse_mode: "Markdown" });
+  } catch (err) {
+    console.error("Error en /tablero:", err.message);
+    await ctx.reply("No pude armar el tablero: " + err.message).catch(() => {});
+  }
+});
+
 bot.command("apptrenes", async (ctx) => {
   if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
   const enviar = async (texto) => {
