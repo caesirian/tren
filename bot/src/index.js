@@ -560,28 +560,76 @@ bot.command("hablar", async (ctx) => {
 // una cabecera (Once o Moreno). Usa los datos reales de appTrenes.js — el
 // formateo de tabla lo hace Gemini, pero los números son 100% del proxy,
 // nunca los toca el modelo.
+// Arma el texto del tablero (usado por /tablero y /tablerogrupo). Devuelve
+// { texto, error } — si hay error, mostrarlo tal cual, no hay tabla.
+async function armarTextoTablero(estacion) {
+  const { filas, revisadas, error } = await filasParaTabla(estacion, 8);
+  if (error) return { texto: null, error };
+  if (!filas.length) {
+    return { texto: null, error: `Sin servicios de Sarmiento saliendo de ${estacion} en este momento.` };
+  }
+  const tabla = await formatearTablaSalidas(filas, `Próximas salidas — ${revisadas.join(", ")}`);
+  return { texto: `🚉 *Tablero — ${revisadas.join(", ")}*\n\`\`\`\n${tabla}\n\`\`\``, error: null };
+}
+
 bot.command("tablero", async (ctx) => {
   if (!esAdminEstado(ctx)) return;
-
   const estacion = (ctx.message.text || "").replace(/^\/tablero(@\w+)?\s*/i, "").trim() || "Once";
 
   try {
     await ctx.sendChatAction("typing");
-    const { filas, revisadas, error } = await filasParaTabla(estacion, 8);
+    const { texto, error } = await armarTextoTablero(estacion);
     if (error) {
       await ctx.reply(error);
       return;
     }
-    if (!filas.length) {
-      await ctx.reply(`Sin servicios de Sarmiento saliendo de ${estacion} en este momento.`);
-      return;
-    }
-
-    const tabla = await formatearTablaSalidas(filas, `Próximas salidas — ${revisadas.join(", ")}`);
-    await ctx.reply(`🚉 *Tablero — ${revisadas.join(", ")}*\n\`\`\`\n${tabla}\n\`\`\``, { parse_mode: "Markdown" });
+    await ctx.reply(texto, { parse_mode: "Markdown" });
   } catch (err) {
     console.error("Error en /tablero:", err.message);
     await ctx.reply("No pude armar el tablero: " + err.message).catch(() => {});
+  }
+});
+
+// Igual que /tablero, pero PUBLICA el resultado en el grupo en vez de
+// contestarte a vos. Mismo patrón que /decir: si el primer parámetro es un
+// número, es el ID del tema (si no lo ponés, publica en General — puede
+// fallar si ese tema está cerrado, usá /temas para conseguir uno abierto).
+// Uso: /tablerogrupo [id_tema] [estación]
+bot.command("tablerogrupo", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const partes = (ctx.message.text || "").replace(/^\/tablerogrupo(@\w+)?\s*/i, "").split(" ").filter(Boolean);
+  let temaId = null;
+  if (partes.length && /^\d+$/.test(partes[0])) temaId = partes.shift();
+  const estacion = partes.join(" ").trim() || "Once";
+
+  const grupoId = process.env.ALLOWED_GROUP_ID;
+  if (!grupoId) {
+    await ctx.reply("Falta configurar ALLOWED_GROUP_ID en Render para saber en qué grupo publicar.");
+    return;
+  }
+
+  try {
+    await ctx.sendChatAction("typing");
+    const { texto, error } = await armarTextoTablero(estacion);
+    if (error) {
+      await ctx.reply(error);
+      return;
+    }
+
+    const opciones = { parse_mode: "Markdown", ...(temaId ? { message_thread_id: Number(temaId) } : {}) };
+    await bot.telegram.sendMessage(grupoId, texto, opciones);
+    await ctx.reply(`✅ Tablero publicado en el grupo${temaId ? ` (tema ${temaId})` : ""}.`);
+  } catch (err) {
+    console.error("Error en /tablerogrupo:", err.message);
+    const motivo = err.response?.description || err.message;
+    if (/TOPIC_CLOSED/i.test(motivo)) {
+      await ctx.reply(
+        'El tema donde intenté publicar está cerrado. Pasame el ID de un tema abierto: /tablerogrupo <id_tema> [estación]. Usá /temas para ver temas conocidos.'
+      ).catch(() => {});
+    } else {
+      await ctx.reply("No pude publicar el tablero: " + motivo).catch(() => {});
+    }
   }
 });
 
