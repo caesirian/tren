@@ -29,7 +29,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, ESTACIONES_BARRIDO } from "./appTrenes.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { chequearCancelacionesProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
@@ -1760,13 +1760,48 @@ app.get("/internal/check", async (req, res) => {
 // que ya es el que consulta el proxy. La API interna reusa barridoEstructurado
 // (con su caché de 2 min) para no golpear el proxy en cada refresco del navegador.
 function claveTableroValida(req) {
-  const clave = process.env.TABLERO_KEY || process.env.CHECK_SECRET;
-  return !clave || req.query.key === clave; // sin TABLERO_KEY/CHECK_SECRET configurada, queda abierta
+  // OJO: nunca cae en CHECK_SECRET -- esa es la clave del cron interno, no
+  // pensada para exponerla en una URL pública. Si TABLERO_KEY no está
+  // configurada, el tablero queda abierto (para embeberlo en el sitio).
+  const clave = process.env.TABLERO_KEY;
+  return !clave || req.query.key === clave;
 }
 
 app.get("/tablero-vivo", (req, res) => {
-  if (!claveTableroValida(req)) return res.status(403).send("forbidden");
+  if (!claveTableroValida(req)) {
+    console.log("/tablero-vivo: 403 (clave inválida o ausente)");
+    return res.status(403).send("forbidden");
+  }
   res.set("Content-Type", "text/html; charset=utf-8").send(tableroVivoHTML());
+});
+
+// Estilo cartelera física (como la de Once): columnas de próximas salidas de
+// una cabecera + el listado fijo de estaciones del ramal, para el "banner"
+// de abajo de cada columna. Se cachea 20s (varias visitas casi juntas no
+// deberían disparar 5 consultas nuevas al proxy cada vez).
+let cacheCabecera = new Map(); // estacion -> { momento, data }
+app.get("/api/tablero-cabecera", async (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+  if (!claveTableroValida(req)) {
+    console.log("/api/tablero-cabecera: 403 (clave inválida o ausente)");
+    return res.status(403).json({ error: "forbidden" });
+  }
+  const estacion = (req.query.estacion || "Once").toString();
+  try {
+    const cacheado = cacheCabecera.get(estacion);
+    let data;
+    if (cacheado && Date.now() - cacheado.momento < 20000) {
+      data = cacheado.data;
+    } else {
+      data = await columnasCabecera(estacion);
+      cacheCabecera.set(estacion, { momento: Date.now(), data });
+    }
+    res.json({ ...data, horaActual: hora(new Date().toISOString()), estaciones: ESTACIONES_BARRIDO, consultadoEn: new Date().toISOString() });
+  } catch (err) {
+    console.error("Error en /api/tablero-cabecera:", err.message);
+    res.status(502).json({ error: err.message });
+  }
 });
 
 // CORS: el sitio (trensarmientoenlinea.com.ar) llama a esta API desde el
@@ -1776,7 +1811,10 @@ const ORIGENES_TABLERO_PERMITIDOS = new Set(["https://trensarmientoenlinea.com.a
 app.get("/api/tablero-vivo", async (req, res) => {
   const origin = req.headers.origin;
   if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
-  if (!claveTableroValida(req)) return res.status(403).json({ error: "forbidden" });
+  if (!claveTableroValida(req)) {
+    console.log("/api/tablero-vivo: 403 (clave inválida o ausente)");
+    return res.status(403).json({ error: "forbidden" });
+  }
   try {
     const barrido = await barridoEstructurado();
     const inusuales = new Set(trenesConOrigenInusual(barrido.todos).map((i) => datosServicio(i).s.numero));

@@ -2470,28 +2470,22 @@ console.log('[Firebase] Listener de estado inicializado');
     <div class="container">
       <span class="section-label">📍 En vivo</span>
       <h2 class="section-title" id="formaciones-vivo-title">¿Dónde está cada formación?</h2>
-      <p class="section-sub">Datos de la app de Trenes Argentinos (proxy no oficial). <span class="last-update-badge" id="tableroVivoUltAct">🕐 conectando…</span></p>
-      <div class="today-card">
-        <div class="today-body" style="padding:0;overflow-x:auto;">
-          <table style="width:100%;border-collapse:collapse;font-size:.85rem;min-width:640px;">
-            <thead>
-              <tr style="text-align:left;color:var(--muted);">
-                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Tren</th>
-                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Origen</th>
-                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Próx. estación</th>
-                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Destino</th>
-                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Prog.</th>
-                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Demora</th>
-                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Andén</th>
-                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Estado</th>
-              </tr>
-            </thead>
-            <tbody id="tableroVivoFilas"></tbody>
-          </table>
-          <p id="tableroVivoVacio" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:.85rem;">Sin servicios de Sarmiento en este momento.</p>
-          <p id="tableroVivoError" style="display:none;padding:12px 16px;color:var(--yellow);font-size:.78rem;margin:0;"></p>
-        </div>
+      <p class="section-sub">Estilo cartelera de estación · datos de la app de Trenes Argentinos (proxy no oficial). <span class="last-update-badge" id="tableroVivoUltAct">🕐 conectando…</span></p>
+      <div style="margin-bottom:12px;">
+        <select id="tableroVivoEstSel" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:.85rem;">
+          <option value="Once">Once</option>
+          <option value="Moreno">Moreno</option>
+        </select>
       </div>
+      <div id="tableroVivoBoard" style="display:none;background:#0a1420;border:3px solid var(--celeste);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);">
+        <div style="display:flex;justify-content:space-between;align-items:center;background:linear-gradient(#f3e6da,#e9d5c2);color:#1a2c42;padding:8px 16px;">
+          <div style="font-size:1.15rem;font-weight:800;letter-spacing:.5px;" id="tableroVivoEstNombre">ONCE</div>
+          <div style="text-align:right;"><div style="font-size:.65rem;color:#6b5b4d;text-transform:uppercase;letter-spacing:1px;">Hora actual</div><div style="font-size:1.25rem;font-weight:800;color:#0e63b0;font-variant-numeric:tabular-nums;" id="tableroVivoHora">--:--</div></div>
+        </div>
+        <div id="tableroVivoColumnas" style="display:flex;overflow-x:auto;"></div>
+      </div>
+      <p id="tableroVivoVacio" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:.85rem;">Sin próximas salidas para mostrar en este momento.</p>
+      <p id="tableroVivoError" style="display:none;padding:10px 14px;color:var(--yellow);font-size:.78rem;margin-top:10px;background:var(--yellow-bg);border-radius:8px;"></p>
     </div>
   </section>
 
@@ -3740,56 +3734,65 @@ renderStations();
 });
 </script>
 <script>
-// Formaciones en vivo — pide los datos al bot (trenbot.onrender.com), que es
-// quien consulta de verdad el proxy de la app de Trenes Argentinos. No es
-// una fuente oficial: es el mismo proxy comunitario que usa el bot del grupo.
+// Formaciones en vivo — estilo cartelera de estación. Pide los datos al bot
+// (trenbot.onrender.com), que es quien consulta de verdad el proxy de la app
+// de Trenes Argentinos. No es una fuente oficial: es el mismo proxy
+// comunitario que usa el bot del grupo.
 (function () {
-  const API = "https://trenbot.onrender.com/api/tablero-vivo";
-  const filas = document.getElementById("tableroVivoFilas");
+  const BASE = "https://trenbot.onrender.com/api/tablero-cabecera";
+  const sel = document.getElementById("tableroVivoEstSel");
+  const board = document.getElementById("tableroVivoBoard");
+  const columnas = document.getElementById("tableroVivoColumnas");
   const vacio = document.getElementById("tableroVivoVacio");
   const errorEl = document.getElementById("tableroVivoError");
   const ultAct = document.getElementById("tableroVivoUltAct");
-  if (!filas) return;
+  const estNombreEl = document.getElementById("tableroVivoEstNombre");
+  const horaEl = document.getElementById("tableroVivoHora");
+  if (!sel || !board) return;
 
   const hhmm = (iso) => (iso ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)) : "—");
-  const clip = (t, n) => (t && t.length > n ? t.slice(0, n) + "…" : t || "");
 
-  function colorDemora(min) {
-    if (min == null || min < 1) return "var(--muted)";
-    if (min < 10) return "var(--yellow)";
-    if (min < 20) return "#c2410c";
-    return "var(--red)";
+  function colStyle(estadoClase) {
+    if (estadoClase === "cancelado") return "background:var(--red-bg);color:var(--red);";
+    if (estadoClase === "confirmado") return "background:var(--green-bg);color:var(--green);";
+    return "background:var(--cel-light);color:var(--blue);";
   }
 
   function render(data) {
-    const servicios = data.servicios || [];
-    vacio.style.display = servicios.length ? "none" : "block";
-    filas.innerHTML = servicios
-      .map((s) => {
-        const dem = s.cancelado ? "—" : s.demoraMin == null ? "—" : (s.demoraMin >= 0 ? "+" : "") + s.demoraMin + " min";
-        const estadoCel = s.cancelado
-          ? `<span style="background:var(--red-bg);color:var(--red);padding:2px 8px;border-radius:999px;font-weight:700;font-size:.75rem;">CANCELADO${s.motivoCancelacion ? ": " + clip(s.motivoCancelacion, 26) : ""}</span>`
-          : s.estado || "—";
-        return `<tr>
-          <td style="padding:9px 12px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;color:var(--text);">#${s.numero ?? "?"}</td>
-          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${s.origen || "—"}${s.origenInusual ? ' <span style="background:var(--cel-light);color:var(--blue);padding:1px 7px;border-radius:999px;font-size:.7rem;">inusual</span>' : ""}</td>
-          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${s.proximaEstacion}</td>
-          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${s.destino}</td>
-          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${hhmm(s.prog)}</td>
-          <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:${colorDemora(s.demoraMin)};font-weight:${s.demoraMin >= 10 ? "700" : "400"};">${dem}</td>
-          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${s.anden || "—"}</td>
-          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${estadoCel}</td>
-        </tr>`;
+    const cols = data.columnas || [];
+    board.style.display = cols.length ? "block" : "none";
+    vacio.style.display = cols.length ? "none" : "block";
+    estNombreEl.textContent = (data.estacion || "").toUpperCase();
+    horaEl.textContent = data.horaActual || "--:--";
+
+    columnas.innerHTML = cols
+      .map((c) => {
+        const estadoClase = c.cancelado ? "cancelado" : /confirmado/i.test(c.estado || "") ? "confirmado" : "programado";
+        const estadoTxt = c.cancelado ? "Cancelado" : c.estado || "Programado";
+        const paradas = (data.estaciones || []).map((e) => "<li>" + e + "</li>").join("");
+        return '<div style="flex:1 0 150px;min-width:150px;border-right:1px solid var(--border);">' +
+          '<div style="text-align:center;padding:6px 4px;background:var(--cel-bg);border-bottom:1px solid var(--border);">' +
+          '<div style="font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Andén</div>' +
+          '<div style="font-size:1.15rem;font-weight:800;color:var(--navy);">' + (c.anden || "–") + '</div>' +
+          '<div style="font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-top:2px;">Hora salida</div>' +
+          '<div style="font-size:1rem;font-weight:800;color:var(--navy);">' + (c.horaSalida || "--:--") + '</div></div>' +
+          '<div style="text-align:center;font-size:.85rem;font-weight:800;letter-spacing:.5px;padding:6px 4px;color:var(--text);">' + (c.destino || "?").toUpperCase() + '</div>' +
+          '<div style="text-align:center;font-size:.68rem;font-weight:700;letter-spacing:.5px;padding:4px;text-transform:uppercase;' + colStyle(estadoClase) + '">' + estadoTxt + '</div>' +
+          '<ul style="list-style:none;margin:0;padding:6px 8px 12px;font-size:.7rem;color:var(--muted);line-height:1.7;">' + paradas + '</ul>' +
+          '</div>';
       })
       .join("");
-    errorEl.style.display = data.erroresProxy && data.erroresProxy.length ? "block" : "none";
-    if (data.erroresProxy && data.erroresProxy.length) errorEl.textContent = "⚠️ " + data.erroresProxy.join(" · ");
+
+    const motivos = cols.filter((c) => c.cancelado && c.motivoCancelacion).map((c) => c.motivoCancelacion);
+    errorEl.style.display = motivos.length ? "block" : "none";
+    if (motivos.length) errorEl.textContent = "⚠️ " + motivos.join(" · ");
   }
 
   let ultimoOk = 0;
   async function actualizar() {
     try {
-      const res = await fetch(API, { cache: "no-store" });
+      const qs = new URLSearchParams({ estacion: sel.value });
+      const res = await fetch(BASE + "?" + qs.toString(), { cache: "no-store" });
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       render(data);
@@ -3801,6 +3804,7 @@ renderStations();
     }
   }
 
+  sel.addEventListener("change", actualizar);
   actualizar();
   setInterval(actualizar, 20000);
 })();

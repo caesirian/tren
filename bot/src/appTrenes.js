@@ -145,7 +145,7 @@ export async function reporteEstacion(nombre) {
 // Sirve para probar cuándo el proxy trae cancelacion/leyenda con texto real.
 // Las 16 estaciones del ramal Once-Moreno completo (antes solo se barrían 7,
 // lo que dejaba afuera tramos enteros — ej. Flores, entre Once y Floresta).
-const ESTACIONES_BARRIDO = [
+export const ESTACIONES_BARRIDO = [
   "Once", "Caballito", "Flores", "Floresta", "Villa Luro", "Liniers", "Ciudadela", "Ramos Mejía",
   "Haedo", "Morón", "Castelar", "Ituzaingó", "Padua", "Merlo", "Paso del Rey", "Moreno",
 ];
@@ -306,4 +306,25 @@ export function trenesConOrigenInusual(items) {
     resultado.push(item);
   }
   return resultado;
+}
+
+// Datos para el tablero estilo cartelera física: próximas salidas de una
+// cabecera (Once/Moreno), una por columna, con andén y estado tal como los
+// necesita esa UI. cantidad=5 porque el cartel real de Once muestra 5.
+export async function columnasCabecera(nombreEstacion, cantidad = 5) {
+  const { servicios, candidatas } = await serviciosSarmiento(nombreEstacion);
+  if (!candidatas.length) return { estacion: nombreEstacion, columnas: [] };
+  const ordenados = [...servicios].sort((a, b) => (datosServicio(a).prog || "").localeCompare(datosServicio(b).prog || "")).slice(0, cantidad);
+  const columnas = ordenados.map((item) => {
+    const d = datosServicio(item);
+    return {
+      anden: d.anden,
+      horaSalida: hora(d.prog),
+      destino: d.destino,
+      estado: d.estado,
+      cancelado: !!d.s.cancelacion,
+      motivoCancelacion: d.s.cancelacion ? textoCancelacion(d.s.cancelacion) : null,
+    };
+  });
+  return { estacion: candidatas[0]?.nombre || nombreEstacion, columnas };
 }
