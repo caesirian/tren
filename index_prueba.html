@@ -2465,6 +2465,36 @@ console.log('[Firebase] Listener de estado inicializado');
     </div>
   </section>
 
+  <!-- FORMACIONES EN VIVO (prueba) -->
+  <section class="section section-cel" id="formaciones-vivo" aria-labelledby="formaciones-vivo-title">
+    <div class="container">
+      <span class="section-label">📍 En vivo</span>
+      <h2 class="section-title" id="formaciones-vivo-title">¿Dónde está cada formación?</h2>
+      <p class="section-sub">Datos de la app de Trenes Argentinos (proxy no oficial). <span class="last-update-badge" id="tableroVivoUltAct">🕐 conectando…</span></p>
+      <div class="today-card">
+        <div class="today-body" style="padding:0;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem;min-width:640px;">
+            <thead>
+              <tr style="text-align:left;color:var(--muted);">
+                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Tren</th>
+                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Origen</th>
+                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Próx. estación</th>
+                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Destino</th>
+                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Prog.</th>
+                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Demora</th>
+                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Andén</th>
+                <th style="padding:10px 12px;border-bottom:1px solid var(--border);">Estado</th>
+              </tr>
+            </thead>
+            <tbody id="tableroVivoFilas"></tbody>
+          </table>
+          <p id="tableroVivoVacio" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:.85rem;">Sin servicios de Sarmiento en este momento.</p>
+          <p id="tableroVivoError" style="display:none;padding:12px 16px;color:var(--yellow);font-size:.78rem;margin:0;"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- PRÓXIMO TREN -->
   <section class="section section-cel" id="proximo" aria-labelledby="proximo-title">
     <div class="container">
@@ -3708,6 +3738,72 @@ renderStations();
   }
 
 });
+</script>
+<script>
+// Formaciones en vivo — pide los datos al bot (trenbot.onrender.com), que es
+// quien consulta de verdad el proxy de la app de Trenes Argentinos. No es
+// una fuente oficial: es el mismo proxy comunitario que usa el bot del grupo.
+(function () {
+  const API = "https://trenbot.onrender.com/api/tablero-vivo";
+  const filas = document.getElementById("tableroVivoFilas");
+  const vacio = document.getElementById("tableroVivoVacio");
+  const errorEl = document.getElementById("tableroVivoError");
+  const ultAct = document.getElementById("tableroVivoUltAct");
+  if (!filas) return;
+
+  const hhmm = (iso) => (iso ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)) : "—");
+  const clip = (t, n) => (t && t.length > n ? t.slice(0, n) + "…" : t || "");
+
+  function colorDemora(min) {
+    if (min == null || min < 1) return "var(--muted)";
+    if (min < 10) return "var(--yellow)";
+    if (min < 20) return "#c2410c";
+    return "var(--red)";
+  }
+
+  function render(data) {
+    const servicios = data.servicios || [];
+    vacio.style.display = servicios.length ? "none" : "block";
+    filas.innerHTML = servicios
+      .map((s) => {
+        const dem = s.cancelado ? "—" : s.demoraMin == null ? "—" : (s.demoraMin >= 0 ? "+" : "") + s.demoraMin + " min";
+        const estadoCel = s.cancelado
+          ? `<span style="background:var(--red-bg);color:var(--red);padding:2px 8px;border-radius:999px;font-weight:700;font-size:.75rem;">CANCELADO${s.motivoCancelacion ? ": " + clip(s.motivoCancelacion, 26) : ""}</span>`
+          : s.estado || "—";
+        return `<tr>
+          <td style="padding:9px 12px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;color:var(--text);">#${s.numero ?? "?"}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${s.origen || "—"}${s.origenInusual ? ' <span style="background:var(--cel-light);color:var(--blue);padding:1px 7px;border-radius:999px;font-size:.7rem;">inusual</span>' : ""}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${s.proximaEstacion}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${s.destino}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${hhmm(s.prog)}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:${colorDemora(s.demoraMin)};font-weight:${s.demoraMin >= 10 ? "700" : "400"};">${dem}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${s.anden || "—"}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid var(--border);">${estadoCel}</td>
+        </tr>`;
+      })
+      .join("");
+    errorEl.style.display = data.erroresProxy && data.erroresProxy.length ? "block" : "none";
+    if (data.erroresProxy && data.erroresProxy.length) errorEl.textContent = "⚠️ " + data.erroresProxy.join(" · ");
+  }
+
+  let ultimoOk = 0;
+  async function actualizar() {
+    try {
+      const res = await fetch(API, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      render(data);
+      ultimoOk = Date.now();
+      ultAct.textContent = "🕐 Actualizado: " + hhmm(data.consultadoEn);
+    } catch (err) {
+      const seg = ultimoOk ? Math.round((Date.now() - ultimoOk) / 1000) : null;
+      ultAct.textContent = seg ? "🕐 Sin conexión hace " + seg + "s" : "🕐 No se pudo conectar";
+    }
+  }
+
+  actualizar();
+  setInterval(actualizar, 20000);
+})();
 </script>
 </body>
 </html>
