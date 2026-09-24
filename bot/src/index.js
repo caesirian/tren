@@ -1769,7 +1769,13 @@ app.get("/tablero-vivo", (req, res) => {
   res.set("Content-Type", "text/html; charset=utf-8").send(tableroVivoHTML());
 });
 
+// CORS: el sitio (trensarmientoenlinea.com.ar) llama a esta API desde el
+// navegador del visitante para pintar el tablero en vivo embebido. Solo se
+// habilita para ese dominio, igual que hace el proxy de OneSignal del sitio.
+const ORIGENES_TABLERO_PERMITIDOS = new Set(["https://trensarmientoenlinea.com.ar", "https://www.trensarmientoenlinea.com.ar"]);
 app.get("/api/tablero-vivo", async (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
   if (!claveTableroValida(req)) return res.status(403).json({ error: "forbidden" });
   try {
     const barrido = await barridoEstructurado();
