@@ -2466,26 +2466,68 @@ console.log('[Firebase] Listener de estado inicializado');
   </section>
 
   <!-- FORMACIONES EN VIVO (prueba) -->
+  <style>
+    #formaciones-vivo .tv-board { border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-lg); }
+    #formaciones-vivo .tv-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; background: linear-gradient(100deg, #4FC3F0 0%, var(--celeste) 45%, var(--blue) 100%); flex-wrap: wrap; gap: 10px; }
+    #formaciones-vivo .tv-est-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    #formaciones-vivo .tv-est-nombre { font-size: 1.6rem; font-weight: 800; color: var(--navy); letter-spacing: .5px; }
+    #formaciones-vivo .tv-est-sub { font-size: 1.05rem; font-weight: 600; color: #eaf6fd; }
+    #formaciones-vivo .tv-hora-wrap { display: flex; align-items: center; gap: 12px; }
+    #formaciones-vivo .tv-hora-label { text-align: right; font-size: .68rem; font-weight: 700; color: #eaf6fd; letter-spacing: 1px; line-height: 1.3; }
+    #formaciones-vivo .tv-divisor { width: 2px; align-self: stretch; background: rgba(255,255,255,.55); border-radius: 2px; }
+    #formaciones-vivo .tv-hora-num { font-size: 2rem; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+    #formaciones-vivo .tv-columnas { display: flex; background: var(--card); overflow-x: auto; }
+    #formaciones-vivo .tv-col { flex: 1 0 160px; min-width: 160px; border-right: 6px solid var(--bg); }
+    #formaciones-vivo .tv-col:last-child { border-right: none; }
+    #formaciones-vivo .tv-col-head { display: flex; background: var(--navy); }
+    #formaciones-vivo .tv-col-head > div { flex: 1; text-align: center; padding: 9px 4px; }
+    #formaciones-vivo .tv-col-head > div:first-child { border-right: 1px solid rgba(255,255,255,.18); }
+    #formaciones-vivo .tv-lbl { font-size: .6rem; font-weight: 700; letter-spacing: 1.5px; color: #93B4D6; text-transform: uppercase; }
+    #formaciones-vivo .tv-val { font-size: 1.2rem; font-weight: 800; color: #fff; margin-top: 2px; }
+    #formaciones-vivo .tv-destino { text-align: center; font-size: .95rem; font-weight: 800; color: var(--navy); padding: 12px 6px; background: var(--card); }
+    #formaciones-vivo .tv-estado { text-align: center; font-size: .72rem; font-weight: 800; letter-spacing: 1px; padding: 8px; text-transform: uppercase; color: #fff; }
+    #formaciones-vivo .tv-estado.confirmado { background: var(--green); }
+    #formaciones-vivo .tv-estado.programado { background: var(--celeste); }
+    #formaciones-vivo .tv-estado.cancelado { background: var(--red); }
+    #formaciones-vivo .tv-paradas { list-style: none; margin: 0; padding: 12px 0 18px; background: var(--navy); }
+    #formaciones-vivo .tv-paradas li { text-align: center; font-size: .7rem; font-weight: 700; letter-spacing: .3px; color: #C9DCF0; padding: 4px 6px; }
+    #formaciones-vivo .tv-banner { padding: 14px 22px; text-align: center; font-size: 1.05rem; font-weight: 800; }
+    #formaciones-vivo .tv-banner.tip { background: var(--green-bg); color: var(--green); }
+    #formaciones-vivo .tv-banner.alerta { background: var(--red-bg); color: var(--red); }
+    #formaciones-vivo .tv-footer { display: flex; align-items: center; gap: 12px; background: var(--blue); padding: 12px 20px; }
+    #formaciones-vivo .tv-footer .tv-barra { width: 3px; align-self: stretch; background: #fff; border-radius: 2px; }
+    #formaciones-vivo .tv-footer .tv-chica { font-size: .62rem; font-weight: 700; letter-spacing: 1px; color: #cfe3f5; text-transform: uppercase; }
+    #formaciones-vivo .tv-footer .tv-grande { font-size: .92rem; font-weight: 800; color: #fff; }
+  </style>
   <section class="section section-cel" id="formaciones-vivo" aria-labelledby="formaciones-vivo-title">
     <div class="container">
       <span class="section-label">📍 En vivo</span>
       <h2 class="section-title" id="formaciones-vivo-title">¿Dónde está cada formación?</h2>
-      <p class="section-sub">Estilo cartelera de estación · datos de la app de Trenes Argentinos (proxy no oficial). <span class="last-update-badge" id="tableroVivoUltAct">🕐 conectando…</span></p>
+      <p class="section-sub">Estilo cartelera de estación · datos de la app de Trenes Argentinos (proxy no oficial).</p>
       <div style="margin-bottom:12px;">
         <select id="tableroVivoEstSel" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:.85rem;">
           <option value="Once">Once</option>
           <option value="Moreno">Moreno</option>
         </select>
+        <span class="last-update-badge" id="tableroVivoUltAct" style="margin-left:8px;">🕐 conectando…</span>
       </div>
-      <div id="tableroVivoBoard" style="display:none;background:#0a1420;border:3px solid var(--celeste);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);">
-        <div style="display:flex;justify-content:space-between;align-items:center;background:linear-gradient(#f3e6da,#e9d5c2);color:#1a2c42;padding:8px 16px;">
-          <div style="font-size:1.15rem;font-weight:800;letter-spacing:.5px;" id="tableroVivoEstNombre">ONCE</div>
-          <div style="text-align:right;"><div style="font-size:.65rem;color:#6b5b4d;text-transform:uppercase;letter-spacing:1px;">Hora actual</div><div style="font-size:1.25rem;font-weight:800;color:#0e63b0;font-variant-numeric:tabular-nums;" id="tableroVivoHora">--:--</div></div>
+      <div class="tv-board" id="tableroVivoBoard" style="display:none;">
+        <div class="tv-head">
+          <div class="tv-est-line"><span class="tv-est-nombre" id="tableroVivoEstNombre">ONCE</span><span class="tv-est-sub">Próximas Salidas</span></div>
+          <div class="tv-hora-wrap">
+            <div class="tv-hora-label">HORA<br>ACTUAL</div>
+            <div class="tv-divisor"></div>
+            <div class="tv-hora-num" id="tableroVivoHora">--:--</div>
+          </div>
         </div>
-        <div id="tableroVivoColumnas" style="display:flex;overflow-x:auto;"></div>
+        <div class="tv-columnas" id="tableroVivoColumnas"></div>
+        <div class="tv-banner tip" id="tableroVivoBanner">Las personas con CUD pueden viajar en tren sin costo con SUBE.</div>
+        <div class="tv-footer">
+          <div class="tv-barra"></div>
+          <div><div class="tv-chica">Trenes Argentinos</div><div class="tv-grande">Línea Sarmiento</div></div>
+        </div>
       </div>
-      <p id="tableroVivoVacio" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:.85rem;">Sin próximas salidas para mostrar en este momento.</p>
-      <p id="tableroVivoError" style="display:none;padding:10px 14px;color:var(--yellow);font-size:.78rem;margin-top:10px;background:var(--yellow-bg);border-radius:8px;"></p>
+      <p id="tableroVivoVacio" style="display:none;padding:40px 20px;text-align:center;color:var(--muted);font-size:.85rem;background:var(--card);border-radius:var(--radius);">Sin próximas salidas para mostrar en este momento.</p>
     </div>
   </section>
 
@@ -3734,29 +3776,24 @@ renderStations();
 });
 </script>
 <script>
-// Formaciones en vivo — estilo cartelera de estación. Pide los datos al bot
-// (trenbot.onrender.com), que es quien consulta de verdad el proxy de la app
-// de Trenes Argentinos. No es una fuente oficial: es el mismo proxy
-// comunitario que usa el bot del grupo.
+// Formaciones en vivo — estilo cartelera de estación (calcado del diseño de
+// referencia). Pide los datos al bot (trenbot.onrender.com), que es quien
+// consulta de verdad el proxy de la app de Trenes Argentinos. No es una
+// fuente oficial: es el mismo proxy comunitario que usa el bot del grupo.
 (function () {
   const BASE = "https://trenbot.onrender.com/api/tablero-cabecera";
   const sel = document.getElementById("tableroVivoEstSel");
   const board = document.getElementById("tableroVivoBoard");
   const columnas = document.getElementById("tableroVivoColumnas");
   const vacio = document.getElementById("tableroVivoVacio");
-  const errorEl = document.getElementById("tableroVivoError");
+  const banner = document.getElementById("tableroVivoBanner");
   const ultAct = document.getElementById("tableroVivoUltAct");
   const estNombreEl = document.getElementById("tableroVivoEstNombre");
   const horaEl = document.getElementById("tableroVivoHora");
   if (!sel || !board) return;
 
+  const TIP_DEFAULT = "Las personas con CUD pueden viajar en tren sin costo con SUBE.";
   const hhmm = (iso) => (iso ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)) : "—");
-
-  function colStyle(estadoClase) {
-    if (estadoClase === "cancelado") return "background:var(--red-bg);color:var(--red);";
-    if (estadoClase === "confirmado") return "background:var(--green-bg);color:var(--green);";
-    return "background:var(--cel-light);color:var(--blue);";
-  }
 
   function render(data) {
     const cols = data.columnas || [];
@@ -3767,25 +3804,27 @@ renderStations();
 
     columnas.innerHTML = cols
       .map((c) => {
-        const estadoClase = c.cancelado ? "cancelado" : /confirmado/i.test(c.estado || "") ? "confirmado" : "programado";
+        const estadoClase = c.cancelado ? "cancelado" : /en\s*and[eé]n|confirmado|parti[oó]/i.test(c.estado || "") ? "confirmado" : "programado";
         const estadoTxt = c.cancelado ? "Cancelado" : c.estado || "Programado";
         const paradas = (data.estaciones || []).map((e) => "<li>" + e + "</li>").join("");
-        return '<div style="flex:1 0 150px;min-width:150px;border-right:1px solid var(--border);">' +
-          '<div style="text-align:center;padding:6px 4px;background:var(--cel-bg);border-bottom:1px solid var(--border);">' +
-          '<div style="font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Andén</div>' +
-          '<div style="font-size:1.15rem;font-weight:800;color:var(--navy);">' + (c.anden || "–") + '</div>' +
-          '<div style="font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-top:2px;">Hora salida</div>' +
-          '<div style="font-size:1rem;font-weight:800;color:var(--navy);">' + (c.horaSalida || "--:--") + '</div></div>' +
-          '<div style="text-align:center;font-size:.85rem;font-weight:800;letter-spacing:.5px;padding:6px 4px;color:var(--text);">' + (c.destino || "?").toUpperCase() + '</div>' +
-          '<div style="text-align:center;font-size:.68rem;font-weight:700;letter-spacing:.5px;padding:4px;text-transform:uppercase;' + colStyle(estadoClase) + '">' + estadoTxt + '</div>' +
-          '<ul style="list-style:none;margin:0;padding:6px 8px 12px;font-size:.7rem;color:var(--muted);line-height:1.7;">' + paradas + '</ul>' +
+        return '<div class="tv-col">' +
+          '<div class="tv-col-head"><div><div class="tv-lbl">Andén</div><div class="tv-val">' + (c.anden || "–") + '</div></div>' +
+          '<div><div class="tv-lbl">Hora salida</div><div class="tv-val">' + (c.horaSalida || "--:--") + '</div></div></div>' +
+          '<div class="tv-destino">' + (c.destino || "?").toUpperCase() + '</div>' +
+          '<div class="tv-estado ' + estadoClase + '">' + estadoTxt + '</div>' +
+          '<ul class="tv-paradas">' + paradas + '</ul>' +
           '</div>';
       })
       .join("");
 
     const motivos = cols.filter((c) => c.cancelado && c.motivoCancelacion).map((c) => c.motivoCancelacion);
-    errorEl.style.display = motivos.length ? "block" : "none";
-    if (motivos.length) errorEl.textContent = "⚠️ " + motivos.join(" · ");
+    if (motivos.length) {
+      banner.className = "tv-banner alerta";
+      banner.textContent = "⚠️ " + motivos.join(" · ");
+    } else {
+      banner.className = "tv-banner tip";
+      banner.textContent = TIP_DEFAULT;
+    }
   }
 
   let ultimoOk = 0;

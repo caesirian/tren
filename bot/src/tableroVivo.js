@@ -1,9 +1,10 @@
 // src/tableroVivo.js
-// HTML del tablero en tiempo real, estilo cartelera física de estación
-// (como la de Once): columnas por próxima salida, con andén, hora, destino,
-// estado (PROGRAMADO/CONFIRMADO/CANCELADO) y el listado de estaciones del
-// ramal debajo de cada una. Página autocontenida, servida por este mismo bot
-// en GET /tablero-vivo. Consulta a GET /api/tablero-cabecera cada 20s.
+// HTML del tablero en tiempo real, calcado del diseño de referencia (fondo
+// celeste degradé, columnas andén/hora en navy, destino en blanco, estado en
+// verde/rojo, paradas en navy, banner inferior y pie "Trenes Argentinos /
+// Línea Sarmiento"). Misma paleta que trensarmientoenlinea.com.ar. Página
+// autocontenida, servida por este bot en GET /tablero-vivo. Consulta a
+// GET /api/tablero-cabecera cada 20s.
 export function tableroVivoHTML() {
   return `<!doctype html>
 <html lang="es-AR">
@@ -12,61 +13,78 @@ export function tableroVivoHTML() {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tablero en vivo — Sarmiento</title>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    --navy:#002B5C; --blue:#0055A4; --celeste:#0095D4; --cel-light:#D6EDF7; --cel-bg:#EEF6FB;
+    --text:#1A2C42; --muted:#5A7A99; --border:#CDDAEA; --bg:#F2F7FB; --card:#FFFFFF;
+    --green:#15803D; --green-bg:#DCFCE7; --red:#DC2626; --red-bg:#FEE2E2;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #050810; color: #e6edf3; }
-  header { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; border-bottom: 2px solid #1c2b3a; }
-  h1 { font-size: 16px; margin: 0; font-weight: 600; color: #9fb0c0; }
-  .sub { font-size: 11.5px; color: #5b6773; margin-top: 2px; }
-  #estado { font-size: 12px; color: #5b6773; }
-  select#estSel { background: #0d1520; color: #cfe8f7; border: 1px solid #1c2b3a; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
-  .board { background: #0a1420; border: 3px solid #1c74a8; border-radius: 4px; margin: 16px; overflow: hidden; }
-  .board-top { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(#f3e6da, #e9d5c2); color: #1a2c42; padding: 8px 16px; }
-  .board-top .est-nombre { font-size: 20px; font-weight: 800; letter-spacing: .5px; }
-  .board-top .hora-actual-label { font-size: 11px; color: #6b5b4d; text-transform: uppercase; letter-spacing: 1px; }
-  .board-top .hora-actual { font-size: 22px; font-weight: 800; color: #0e63b0; font-variant-numeric: tabular-nums; }
-  .columnas { display: flex; overflow-x: auto; }
-  .col { flex: 1 0 150px; min-width: 150px; border-right: 2px solid #1c74a8; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--muted); flex-wrap: wrap; gap: 8px; }
+  .topbar select { padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font-size: 13px; }
+  .board { margin: 14px; border-radius: 14px; overflow: hidden; box-shadow: 0 6px 24px rgba(0,43,92,.14); }
+  .board-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 26px; background: linear-gradient(100deg, #4FC3F0 0%, var(--celeste) 45%, var(--blue) 100%); }
+  .board-head .est-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .board-head .est-nombre { font-size: 30px; font-weight: 800; color: var(--navy); letter-spacing: .5px; }
+  .board-head .est-sub { font-size: 19px; font-weight: 600; color: #eaf6fd; }
+  .board-head .hora-wrap { display: flex; align-items: center; gap: 14px; }
+  .board-head .hora-label { text-align: right; font-size: 11px; font-weight: 700; color: #eaf6fd; letter-spacing: 1px; line-height: 1.3; }
+  .board-head .divisor { width: 2px; align-self: stretch; background: rgba(255,255,255,.55); border-radius: 2px; }
+  .board-head .hora-num { font-size: 38px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+  .columnas { display: flex; background: #fff; overflow-x: auto; }
+  .col { flex: 1 0 165px; min-width: 165px; border-right: 6px solid var(--bg); }
   .col:last-child { border-right: none; }
-  .col-head { background: linear-gradient(#f3e6da, #e9d5c2); color: #1a2c42; text-align: center; padding: 6px 4px; border-bottom: 2px solid #1c74a8; }
-  .col-head .anden-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #6b5b4d; }
-  .col-head .anden-num { font-size: 20px; font-weight: 800; line-height: 1.1; }
-  .col-head .hora-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #6b5b4d; margin-top: 2px; }
-  .col-head .hora-num { font-size: 18px; font-weight: 800; }
-  .col-destino { text-align: center; font-size: 15px; font-weight: 800; letter-spacing: .5px; padding: 6px 4px; background: #0a1420; }
-  .col-estado { text-align: center; font-size: 11.5px; font-weight: 700; letter-spacing: .5px; padding: 4px; text-transform: uppercase; }
-  .col-estado.confirmado { background: #146a3a; color: #c9f5d9; }
-  .col-estado.programado { background: #14324a; color: #bcdff5; }
-  .col-estado.cancelado { background: #7a1414; color: #ffd0d0; }
-  .col-paradas { list-style: none; margin: 0; padding: 6px 8px 12px; font-size: 11.5px; color: #a9c3d6; line-height: 1.7; }
-  .ticker { background: #b4501a; color: #fff; padding: 7px 16px; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; }
-  .ticker span { display: inline-block; padding-left: 100%; animation: mover 18s linear infinite; }
-  @keyframes mover { from { transform: translateX(0); } to { transform: translateX(-100%); } }
-  #vacio { padding: 40px; text-align: center; color: #5b6773; }
-  footer { text-align: center; color: #4b5563; font-size: 11px; padding: 16px; }
+  .col-head { display: flex; background: var(--navy); }
+  .col-head > div { flex: 1; text-align: center; padding: 9px 4px; }
+  .col-head > div:first-child { border-right: 1px solid rgba(255,255,255,.18); }
+  .col-head .lbl { font-size: 9.5px; font-weight: 700; letter-spacing: 1.5px; color: #93B4D6; text-transform: uppercase; }
+  .col-head .val { font-size: 21px; font-weight: 800; color: #fff; margin-top: 2px; }
+  .col-destino { text-align: center; font-size: 16px; font-weight: 800; color: var(--navy); padding: 12px 6px; background: #fff; letter-spacing: .3px; }
+  .col-estado { text-align: center; font-size: 12.5px; font-weight: 800; letter-spacing: 1px; padding: 8px; text-transform: uppercase; color: #fff; }
+  .col-estado.confirmado { background: var(--green); }
+  .col-estado.programado { background: var(--celeste); }
+  .col-estado.cancelado { background: var(--red); }
+  .col-paradas { list-style: none; margin: 0; padding: 12px 0 18px; background: var(--navy); }
+  .col-paradas li { text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .3px; color: #C9DCF0; padding: 4px 6px; }
+  .banner { padding: 16px 26px; text-align: center; font-size: 19px; font-weight: 800; }
+  .banner.tip { background: var(--green-bg); color: var(--green); }
+  .banner.alerta { background: var(--red-bg); color: var(--red); }
+  .footer-bar { display: flex; align-items: center; gap: 12px; background: var(--blue); padding: 12px 22px; }
+  .footer-bar .barra { width: 3px; align-self: stretch; background: #fff; border-radius: 2px; }
+  .footer-bar .marca-chica { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #cfe3f5; text-transform: uppercase; }
+  .footer-bar .marca-grande { font-size: 15px; font-weight: 800; color: #fff; }
+  #vacio { padding: 60px 20px; text-align: center; color: var(--muted); background: var(--card); border-radius: 14px; margin: 14px; }
+  footer.credito { text-align: center; color: #9AA9B8; font-size: 11px; padding: 14px; }
 </style>
 </head>
 <body>
-<header>
-  <div>
-    <h1>🚆 Sarmiento — tablero en vivo</h1>
-    <div class="sub">Estilo cartelera de estación · datos del proxy de la app de Trenes Argentinos (no oficial)</div>
-  </div>
+<div class="topbar">
+  <span>🚆 Sarmiento — tablero en vivo (no oficial)</span>
   <div style="display:flex;align-items:center;gap:10px;">
     <select id="estSel"><option value="Once">Once</option><option value="Moreno">Moreno</option></select>
-    <div id="estado">conectando…</div>
+    <span id="estado">conectando…</span>
   </div>
-</header>
+</div>
+
 <div class="board" id="board" style="display:none">
-  <div class="board-top">
-    <div class="est-nombre" id="boardEst">ONCE</div>
-    <div style="text-align:right"><div class="hora-actual-label">Hora actual</div><div class="hora-actual" id="boardHora">--:--</div></div>
+  <div class="board-head">
+    <div class="est-line"><span class="est-nombre" id="boardEst">ONCE</span><span class="est-sub">Próximas Salidas</span></div>
+    <div class="hora-wrap">
+      <div class="hora-label">HORA<br>ACTUAL</div>
+      <div class="divisor"></div>
+      <div class="hora-num" id="boardHora">--:--</div>
+    </div>
   </div>
   <div class="columnas" id="columnas"></div>
+  <div class="banner tip" id="banner">Las personas con CUD pueden viajar en tren sin costo con SUBE.</div>
+  <div class="footer-bar">
+    <div class="barra"></div>
+    <div><div class="marca-chica">Trenes Argentinos</div><div class="marca-grande">Línea Sarmiento</div></div>
+  </div>
 </div>
 <div id="vacio" style="display:none">Sin próximas salidas para mostrar en este momento.</div>
-<div class="ticker" id="ticker" style="display:none"><span id="tickerTxt"></span></div>
-<footer>Fuente: proxy no oficial de la app de Trenes Argentinos (ariedro/api-trenes) — no es un dato oficial garantizado.</footer>
+<footer class="credito">Fuente: proxy no oficial de la app de Trenes Argentinos (ariedro/api-trenes) — no es un dato oficial garantizado.</footer>
+
 <script>
 (function () {
   const params = new URLSearchParams(location.search);
@@ -78,8 +96,8 @@ export function tableroVivoHTML() {
   const estadoEl = document.getElementById("estado");
   const boardEst = document.getElementById("boardEst");
   const boardHora = document.getElementById("boardHora");
-  const ticker = document.getElementById("ticker");
-  const tickerTxt = document.getElementById("tickerTxt");
+  const banner = document.getElementById("banner");
+  const TIP_DEFAULT = "Las personas con CUD pueden viajar en tren sin costo con SUBE.";
 
   function urlFor(estacion) {
     const qs = new URLSearchParams({ estacion });
@@ -96,12 +114,12 @@ export function tableroVivoHTML() {
 
     columnas.innerHTML = cols
       .map((c) => {
-        const estadoClase = c.cancelado ? "cancelado" : /confirmado/i.test(c.estado || "") ? "confirmado" : "programado";
+        const estadoClase = c.cancelado ? "cancelado" : /en\\s*and[eé]n|confirmado|parti[oó]/i.test(c.estado || "") ? "confirmado" : "programado";
         const estadoTxt = c.cancelado ? "Cancelado" : c.estado || "Programado";
         const paradas = (data.estaciones || []).map((e) => "<li>" + e + "</li>").join("");
         return '<div class="col">' +
-          '<div class="col-head"><div class="anden-label">Andén</div><div class="anden-num">' + (c.anden || "–") + '</div>' +
-          '<div class="hora-label">Hora salida</div><div class="hora-num">' + (c.horaSalida || "--:--") + '</div></div>' +
+          '<div class="col-head"><div><div class="lbl">Andén</div><div class="val">' + (c.anden || "–") + '</div></div>' +
+          '<div><div class="lbl">Hora salida</div><div class="val">' + (c.horaSalida || "--:--") + '</div></div></div>' +
           '<div class="col-destino">' + (c.destino || "?").toUpperCase() + '</div>' +
           '<div class="col-estado ' + estadoClase + '">' + estadoTxt + '</div>' +
           '<ul class="col-paradas">' + paradas + '</ul>' +
@@ -111,10 +129,11 @@ export function tableroVivoHTML() {
 
     const motivos = cols.filter((c) => c.cancelado && c.motivoCancelacion).map((c) => c.motivoCancelacion);
     if (motivos.length) {
-      ticker.style.display = "block";
-      tickerTxt.textContent = motivos.join("   •   ");
+      banner.className = "banner alerta";
+      banner.textContent = "⚠️ " + motivos.join("   •   ");
     } else {
-      ticker.style.display = "none";
+      banner.className = "banner tip";
+      banner.textContent = TIP_DEFAULT;
     }
   }
 
