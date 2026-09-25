@@ -2531,6 +2531,39 @@ console.log('[Firebase] Listener de estado inicializado');
     </div>
   </section>
 
+  <style>
+    #mapa-vivo .mv-aviso { margin: 0 0 14px; padding: 10px 14px; background: var(--yellow-bg); color: var(--yellow); border-radius: 10px; font-size: .78rem; }
+    #mapa-vivo .mv-leyenda { display: flex; gap: 16px; flex-wrap: wrap; font-size: .78rem; color: var(--muted); margin-bottom: 10px; }
+    #mapa-vivo .mv-leyenda span { display: inline-flex; align-items: center; gap: 5px; }
+    #mapa-vivo .mv-leyenda i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    #mapa-vivo .mv-wrap { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 40px 20px 56px; overflow-x: auto; }
+    #mapa-vivo .mv-track { position: relative; min-width: 1000px; height: 6px; background: var(--border); border-radius: 4px; margin: 0 26px; }
+    #mapa-vivo .mv-estacion { position: absolute; top: -5px; width: 15px; height: 15px; border-radius: 50%; background: var(--card); border: 3px solid var(--celeste); transform: translateX(-50%); }
+    #mapa-vivo .mv-estacion .mv-nombre { position: absolute; top: 17px; left: 50%; transform: translateX(-50%) rotate(45deg); transform-origin: top left; font-size: .62rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
+    #mapa-vivo .mv-tren { position: absolute; top: -12px; width: 22px; height: 22px; border-radius: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; font-size: .62rem; font-weight: 800; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,43,92,.25); transition: left 1s linear; }
+    #mapa-vivo .mv-tren.ok { background: var(--green); }
+    #mapa-vivo .mv-tren.demorado { background: var(--yellow); }
+    #mapa-vivo .mv-tren.muy-demorado { background: var(--red); }
+    #mapa-vivo .mv-tren.cancelado { background: #9CA3AF; }
+    #mapa-vivo .mv-tren .mv-tip { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 5px 9px; border-radius: 8px; font-size: .68rem; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
+    #mapa-vivo .mv-tren:hover .mv-tip { display: block; }
+  </style>
+  <section class="section section-white" id="mapa-vivo" aria-labelledby="mapa-vivo-title">
+    <div class="container">
+      <span class="section-label">🗺️ En vivo</span>
+      <h2 class="section-title" id="mapa-vivo-title">Mapa esquemático del ramal</h2>
+      <p class="section-sub">Once a la izquierda, Moreno a la derecha. <span class="last-update-badge" id="mapaVivoEstado">🕐 conectando…</span></p>
+      <p class="mv-aviso">⚠️ Posición ESTIMADA por horarios, no es GPS real: se calcula entre la última estación confirmada y la siguiente del proxy de la app de Trenes Argentinos. Puede estar corrida, sobre todo con demoras grandes.</p>
+      <div class="mv-leyenda">
+        <span><i style="background:var(--green)"></i> en horario</span>
+        <span><i style="background:var(--yellow)"></i> demorado</span>
+        <span><i style="background:var(--red)"></i> muy demorado</span>
+        <span><i style="background:#9CA3AF"></i> cancelado</span>
+      </div>
+      <div class="mv-wrap"><div class="mv-track" id="mapaVivoTrack"></div></div>
+    </div>
+  </section>
+
   <!-- PRÓXIMO TREN -->
   <section class="section section-cel" id="proximo" aria-labelledby="proximo-title">
     <div class="container">
@@ -3846,6 +3879,70 @@ renderStations();
   sel.addEventListener("change", actualizar);
   actualizar();
   setInterval(actualizar, 20000);
+})();
+</script>
+<script>
+// Mapa esquemático en vivo — pide los datos al bot (trenbot.onrender.com).
+// Posición interpolada por horario, no GPS real (ver aviso en la sección).
+(function () {
+  const API = "https://trenbot.onrender.com/api/tablero-mapa";
+  const track = document.getElementById("mapaVivoTrack");
+  const estadoEl = document.getElementById("mapaVivoEstado");
+  if (!track) return;
+
+  function claseDemora(t) {
+    if (t.cancelado) return "cancelado";
+    if (t.demoraMax >= 20) return "muy-demorado";
+    if (t.demoraMax >= 10) return "demorado";
+    return "ok";
+  }
+
+  let dibujadas = false;
+  function dibujarEstaciones(nombres) {
+    track.querySelectorAll(".mv-estacion").forEach((n) => n.remove());
+    const n = nombres.length;
+    nombres.forEach((nombre, i) => {
+      const div = document.createElement("div");
+      div.className = "mv-estacion";
+      div.style.left = (i / (n - 1)) * 100 + "%";
+      div.innerHTML = '<span class="mv-nombre">' + nombre + '</span>';
+      track.appendChild(div);
+    });
+    dibujadas = true;
+  }
+
+  function render(data) {
+    if (!dibujadas) dibujarEstaciones(data.estaciones || []);
+    const n = (data.estaciones || []).length;
+    track.querySelectorAll(".mv-tren").forEach((n) => n.remove());
+    (data.trenes || []).forEach((t) => {
+      const div = document.createElement("div");
+      div.className = "mv-tren " + claseDemora(t);
+      div.style.left = (t.posicion / (n - 1)) * 100 + "%";
+      div.textContent = t.numero ?? "";
+      const dem = t.cancelado ? "Cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
+      div.innerHTML += '<span class="mv-tip">#' + (t.numero ?? "?") + " → " + t.destino + " · " + dem + '</span>';
+      track.appendChild(div);
+    });
+    estadoEl.textContent = "🕐 " + (data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "") + " · " + (data.trenes || []).length + " formaciones";
+  }
+
+  let ultimoOk = 0;
+  async function actualizar() {
+    try {
+      const res = await fetch(API, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      render(data);
+      ultimoOk = Date.now();
+    } catch (err) {
+      const seg = ultimoOk ? Math.round((Date.now() - ultimoOk) / 1000) : null;
+      estadoEl.textContent = seg ? "🕐 sin conexión hace " + seg + "s" : "🕐 no se pudo conectar";
+    }
+  }
+
+  actualizar();
+  setInterval(actualizar, 15000);
 })();
 </script>
 </body>
