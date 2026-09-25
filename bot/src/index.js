@@ -29,8 +29,9 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, ESTACIONES_BARRIDO } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO } from "./appTrenes.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
+import { mapaVivoHTML } from "./mapaVivo.js";
 import { chequearCancelacionesProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
@@ -1780,6 +1781,31 @@ app.get("/tablero-vivo", (req, res) => {
 // de abajo de cada columna. Se cachea 20s (varias visitas casi juntas no
 // deberían disparar 5 consultas nuevas al proxy cada vez).
 let cacheCabecera = new Map(); // estacion -> { momento, data }
+app.get("/mapa-vivo", (req, res) => {
+  if (!claveTableroValida(req)) {
+    console.log("/mapa-vivo: 403 (clave inválida o ausente)");
+    return res.status(403).send("forbidden");
+  }
+  res.set("Content-Type", "text/html; charset=utf-8").send(mapaVivoHTML());
+});
+
+app.get("/api/tablero-mapa", async (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+  if (!claveTableroValida(req)) {
+    console.log("/api/tablero-mapa: 403 (clave inválida o ausente)");
+    return res.status(403).json({ error: "forbidden" });
+  }
+  try {
+    const barrido = await barridoEstructurado();
+    const trenes = posicionesEnVivo(barrido.todos, new Date());
+    res.json({ estaciones: ESTACIONES_BARRIDO, trenes, horaActual: hora(new Date().toISOString()), consultadoEn: new Date().toISOString(), erroresProxy: barrido.errores });
+  } catch (err) {
+    console.error("Error en /api/tablero-mapa:", err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.get("/api/tablero-cabecera", async (req, res) => {
   const origin = req.headers.origin;
   if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);

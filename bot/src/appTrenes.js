@@ -328,3 +328,72 @@ export async function columnasCabecera(nombreEstacion, cantidad = 5) {
   });
   return { estacion: candidatas[0]?.nombre || nombreEstacion, columnas };
 }
+
+// ---------------------------------------------------------------------------
+// Mapa esquemático: posición interpolada de cada tren entre estaciones
+// ---------------------------------------------------------------------------
+// No hay GPS real en el proxy (no confirmado, ver notas). La posición se
+// ESTIMA por tiempo: cada tren aparece varias veces en el barrido (una por
+// estación que todavía tiene por delante); se ordenan esas apariciones según
+// el ORDEN REAL de las 16 estaciones del ramal (no por hora, para no
+// depender de que el reloj esté bien), y de ahí sale el sentido. Con eso se
+// ubica al tren entre las dos estaciones cuya hora (estimada si hay, si no
+// programada) engloba el momento actual. Es una aproximación: si el tren
+// viene muy demorado, la posición estimada se corre para el mismo lado.
+export function posicionesEnVivo(items, ahora = new Date()) {
+  const orden = new Map(ESTACIONES_BARRIDO.map((n, i) => [n, i]));
+  const porTren = new Map();
+  for (const item of items) {
+    const d = datosServicio(item);
+    const idx = orden.get(item.est.nombre);
+    if (idx == null) continue; // estación fuera de las 16 conocidas (no debería pasar)
+    const num = d.s.numero ?? `s-${Math.random()}`;
+    if (!porTren.has(num)) porTren.set(num, { numero: d.s.numero ?? null, destino: d.destino, cancelado: !!d.s.cancelacion, cruces: [] });
+    porTren.get(num).cruces.push({ idx, nombre: item.est.nombre, prog: d.prog, tiempo: d.estim || d.prog, demora: d.demora });
+  }
+
+  const resultado = [];
+  for (const tren of porTren.values()) {
+    const conTiempo = tren.cruces.filter((c) => c.tiempo);
+    if (conTiempo.length < 1) continue;
+    // El orden que importa para interpolar es el CRONOLÓGICO (por hora), no
+    // el de índice de estación: en sentido Moreno→Once el índice de
+    // estación va bajando a medida que pasa el tiempo.
+    const porHora = [...conTiempo].sort((a, b) => new Date(a.tiempo) - new Date(b.tiempo));
+    const sentido = porHora.length > 1 && porHora[0].idx > porHora[porHora.length - 1].idx ? "Moreno-Once" : "Once-Moreno";
+
+    // Si el índice de estación no es monótono a lo largo del tiempo (no
+    // sube ni baja siempre), el dato es inconsistente — se descarta ese tren
+    // para el mapa en vez de mostrar una posición engañosa.
+    const diffs = porHora.slice(1).map((c, i) => c.idx - porHora[i].idx);
+    const consistente = diffs.every((d) => d >= 0) || diffs.every((d) => d <= 0);
+    if (!consistente) continue;
+
+    const t = ahora.getTime();
+    let posicion;
+    if (t <= new Date(porHora[0].tiempo).getTime()) {
+      posicion = porHora[0].idx; // todavía no llega a la primera estación que tenemos de él
+    } else if (t >= new Date(porHora[porHora.length - 1].tiempo).getTime()) {
+      posicion = porHora[porHora.length - 1].idx; // ya pasó la última que tenemos (puede estar por llegar a destino)
+    } else {
+      let i = 0;
+      while (i < porHora.length - 1 && !(t >= new Date(porHora[i].tiempo).getTime() && t <= new Date(porHora[i + 1].tiempo).getTime())) i++;
+      const a = porHora[i];
+      const b = porHora[i + 1];
+      const total = new Date(b.tiempo).getTime() - new Date(a.tiempo).getTime();
+      const frac = total > 0 ? (t - new Date(a.tiempo).getTime()) / total : 0;
+      posicion = a.idx + (b.idx - a.idx) * frac;
+    }
+
+    resultado.push({
+      numero: tren.numero,
+      destino: tren.destino,
+      cancelado: tren.cancelado,
+      sentido,
+      posicion, // 0..15, fraccionario
+      demoraMax: Math.max(0, ...porHora.map((c) => c.demora ?? 0)),
+      proximaEstacion: porHora[0].nombre,
+    });
+  }
+  return resultado;
+}
