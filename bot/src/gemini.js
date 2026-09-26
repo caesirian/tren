@@ -281,5 +281,12 @@ Reglas estrictas:
     model: MODEL,
     contents: prompt,
   });
-  return response.text.trim();
+  // Gemini a veces envuelve la respuesta en un bloque ```text pese a que le
+  // pedimos que no lo haga — si no lo sacamos, queda la palabra "text"
+  // suelta cuando nosotros lo volvemos a envolver en nuestro propio bloque.
+  return response.text
+    .trim()
+    .replace(/^```[a-zA-Z]*\n?/, "")
+    .replace(/```$/, "")
+    .trim();
 }

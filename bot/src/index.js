@@ -31,6 +31,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO } from "./appTrenes.js";
+import { generarImagenTablero } from "./tableroImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
@@ -565,14 +566,17 @@ bot.command("hablar", async (ctx) => {
 // nunca los toca el modelo.
 // Arma el texto del tablero (usado por /tablero y /tablerogrupo). Devuelve
 // { texto, error } — si hay error, mostrarlo tal cual, no hay tabla.
-async function armarTextoTablero(estacion) {
-  const { filas, revisadas, error } = await filasParaTabla(estacion, 8);
-  if (error) return { texto: null, error };
+// Arma la IMAGEN del tablero (dibujada con código, no con IA) — datos
+// exactos, estilo calcado del cartel real de Trenes Argentinos.
+async function armarImagenTablero(estacion) {
+  const { filas, revisadas, error } = await filasParaTabla(estacion, 5);
+  if (error) return { buffer: null, error };
   if (!filas.length) {
-    return { texto: null, error: `Sin servicios de Sarmiento saliendo de ${estacion} en este momento.` };
+    return { buffer: null, error: `Sin servicios de Sarmiento saliendo de ${estacion} en este momento.` };
   }
-  const tabla = await formatearTablaSalidas(filas, `Próximas salidas — ${revisadas.join(", ")}`);
-  return { texto: `🚉 *Tablero — ${revisadas.join(", ")}*\n\`\`\`\n${tabla}\n\`\`\``, error: null };
+  const origenNombre = revisadas[0] || estacion;
+  const buffer = generarImagenTablero(filas, origenNombre, horaArgentinaTexto(new Date()));
+  return { buffer, error: null, origenNombre };
 }
 
 bot.command("tablero", async (ctx) => {
@@ -580,13 +584,13 @@ bot.command("tablero", async (ctx) => {
   const estacion = (ctx.message.text || "").replace(/^\/tablero(@\w+)?\s*/i, "").trim() || "Once";
 
   try {
-    await ctx.sendChatAction("typing");
-    const { texto, error } = await armarTextoTablero(estacion);
+    await ctx.sendChatAction("upload_photo");
+    const { buffer, error, origenNombre } = await armarImagenTablero(estacion);
     if (error) {
       await ctx.reply(error);
       return;
     }
-    await ctx.reply(texto, { parse_mode: "Markdown" });
+    await ctx.replyWithPhoto({ source: buffer }, { caption: `🚉 Tablero — ${origenNombre}` });
   } catch (err) {
     console.error("Error en /tablero:", err.message);
     await ctx.reply("No pude armar el tablero: " + err.message).catch(() => {});
@@ -613,15 +617,18 @@ bot.command("tablerogrupo", async (ctx) => {
   }
 
   try {
-    await ctx.sendChatAction("typing");
-    const { texto, error } = await armarTextoTablero(estacion);
+    await ctx.sendChatAction("upload_photo");
+    const { buffer, error, origenNombre } = await armarImagenTablero(estacion);
     if (error) {
       await ctx.reply(error);
       return;
     }
 
-    const opciones = { parse_mode: "Markdown", ...(temaId ? { message_thread_id: Number(temaId) } : {}) };
-    await bot.telegram.sendMessage(grupoId, texto, opciones);
+    const opciones = {
+      caption: `🚉 Tablero — ${origenNombre}`,
+      ...(temaId ? { message_thread_id: Number(temaId) } : {}),
+    };
+    await bot.telegram.sendPhoto(grupoId, { source: buffer }, opciones);
     await ctx.reply(`✅ Tablero publicado en el grupo${temaId ? ` (tema ${temaId})` : ""}.`);
   } catch (err) {
     console.error("Error en /tablerogrupo:", err.message);
@@ -633,6 +640,7 @@ bot.command("tablerogrupo", async (ctx) => {
     } else {
       await ctx.reply("No pude publicar el tablero: " + motivo).catch(() => {});
     }
+
   }
 });
 

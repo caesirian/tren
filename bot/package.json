@@ -14,7 +14,8 @@
     "@google/genai": "^0.14.0",
     "dotenv": "^16.4.5",
     "node-cache": "^5.1.2",
-    "firebase-admin": "^12.6.0"
+    "firebase-admin": "^12.6.0",
+    "@napi-rs/canvas": "^0.1.53"
   },
   "engines": {
     "node": ">=18.0.0"
