@@ -23,6 +23,7 @@ import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
 import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria } from "./firestoreStatus.js";
+import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
@@ -1256,6 +1257,37 @@ bot.action(/^cap:(tomar|ignorar):(.+)$/, async (ctx) => {
   }
 });
 
+// Igual mecánica que cap:, pero para propuestas generadas por el bot mismo
+// (cancelaciones/demoras del proxy, avisos de la fuente de verdad) en vez de
+// por una imagen. Ver src/propuestasEstado.js.
+bot.action(/^est:(tomar|ignorar):(.+)$/, async (ctx) => {
+  if (!esAdminEstado(ctx)) return ctx.answerCbQuery();
+  const [, accion, id] = ctx.match;
+  const quien = ctx.from?.username ? `@${ctx.from.username}` : String(ctx.from?.id);
+  try {
+    const r = await revisarPropuesta({ id, accion, quien }, { aplicarEstado: actualizarEstadoServicio });
+    const quitarBotones = () => ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => {});
+    if (r.resultado === "no_encontrada") return void (await ctx.answerCbQuery("No encontré esa propuesta en Firestore.", { show_alert: true }));
+    if (r.resultado === "ya_revisada") {
+      await ctx.answerCbQuery(`Ya estaba revisada (${r.revision?.accion || "?"}).`);
+      return void (await quitarBotones());
+    }
+    await quitarBotones();
+    if (r.resultado === "ignorada") {
+      await ctx.answerCbQuery("Ignorada.");
+      await ctx.reply("🚫 Propuesta ignorada. El semáforo no se tocó.");
+    } else {
+      const p = r.propuesta;
+      await ctx.answerCbQuery("Semáforo actualizado.");
+      await ctx.reply(`✅ Tomado. Semáforo: ${ETIQUETAS_CONFIRMACION[p.estado]}${p.mensaje ? ` — "${p.mensaje}"` : ""}`);
+    }
+  } catch (err) {
+    console.error("Error revisando propuesta de estado:", err.message);
+    await ctx.answerCbQuery("No pude aplicarlo, ver mensaje.").catch(() => {});
+    await ctx.reply("No pude aplicar la revisión: " + err.message).catch(() => {});
+  }
+});
+
 // Las imágenes de comunicados que suben colaboradores EN EL GRUPO se procesan
 // en silencio: el bot no publica nada en el grupo (ni confirmaciones ni
 // errores), solo le informa al admin por privado. Si la imagen llega por
@@ -1403,6 +1435,7 @@ async function procesarAudioDeFuente(ctx) {
 
     const resultado = await procesarMensajeFuente({ texto, quien, userId: from.id, origen: "audio" });
     if (resultado) olvidarTema("estado");
+    await sugerirEstadoDesdeAviso(resultado, "aviso_fuente_audio");
     const hora = (iso) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
     const conclusion = !resultado
       ? "→ No lo tomé como aviso del servicio (charla u otro tema). No cargué nada."
@@ -1501,6 +1534,7 @@ bot.on("text", async (ctx) => {
           const resultado = await procesarMensajeFuente({ texto: textoOriginal, quien, userId: ctx.from?.id });
           if (resultado) {
             olvidarTema("estado"); // lo que se contestó antes sobre el estado quedó viejo
+            await sugerirEstadoDesdeAviso(resultado, "aviso_fuente_texto");
             console.log(
               resultado === "normalizado"
                 ? `Aviso de fuente: normalización, avisos abiertos cerrados (${quien})`
@@ -1883,6 +1917,55 @@ const PORT = process.env.PORT || 3000;
 // Chequeo periódico compartido por el cron externo y el timer interno: avisa
 // cancelaciones nuevas siempre; si /apptrenes auto está activo (incidente en
 // curso), además manda el barrido COMPLETO de las 16 estaciones.
+// Le propone al admin, por privado, un cambio de semáforo a partir de una
+// detección automática (cancelación/demora del proxy, o aviso de la fuente
+// de verdad por texto/audio). El bot NUNCA escribe el semáforo solo desde
+// acá: solo si el admin toca "✅ Tomar". detalle es el texto que ve el admin
+// arriba de la propuesta, para saber de qué se trata.
+async function sugerirEstado({ origen, detalle, alerta }) {
+  if (!process.env.ADMIN_TELEGRAM_ID) return;
+  try {
+    const r = await crearPropuesta({ origen, detalle, alerta });
+    if (!r) return; // alerta sin severidad reconocida (ej. informativa) -> no hay nada para proponer
+    const { id, propuesta } = r;
+    let texto = `🚦 Propuesta de semáforo (${origen})\n${detalle}\n\n👉 Semáforo → ${ETIQUETAS_CONFIRMACION[propuesta.estado]}${propuesta.mensaje ? ` — "${propuesta.mensaje}"` : ""}`;
+    const actual = await getEstadoServicio().catch(() => null);
+    if (actual) texto += `\n📊 Ahora en el sitio: ${actual.etiqueta} — "${actual.mensaje}"`;
+    const botones = id
+      ? Markup.inlineKeyboard([
+          [Markup.button.callback(`✅ Tomar → ${ETIQUETAS_CONFIRMACION[propuesta.estado]}`, `est:tomar:${id}`)],
+          [Markup.button.callback("🚫 Ignorar", `est:ignorar:${id}`)],
+        ])
+      : undefined;
+    await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, texto, botones);
+  } catch (err) {
+    console.error(`Error sugiriendo estado (${origen}):`, err.message);
+  }
+}
+
+// Traduce un resultado de procesarMensajeFuente (texto o audio de la fuente
+// de verdad) en una propuesta de semáforo. "otro_relevante" no tiene
+// severidad operativa clara, así que no genera propuesta (queda solo como
+// contexto para responder preguntas). Un aviso RENOVADO (ya avisado antes)
+// tampoco vuelve a proponer, para no repetir el mismo cartel cada vez que se
+// reconfirma lo mismo.
+async function sugerirEstadoDesdeAviso(resultado, origen) {
+  if (!resultado) return;
+  if (resultado === "normalizado") {
+    await sugerirEstado({ origen, detalle: "La fuente de verdad informó que el servicio se normalizó.", alerta: { estado: "normalizado", texto: "Servicio normalizado." } });
+    return;
+  }
+  if (resultado.renovado) return;
+  const MAPA_TIPO_A_ESTADO = { accidente: "cancelado", servicio_limitado: "demorado", demora: "demorado", interrumpido: "interrumpido" };
+  const estado = MAPA_TIPO_A_ESTADO[resultado.tipo];
+  if (!estado) return;
+  await sugerirEstado({
+    origen,
+    detalle: `Aviso de fuente de verdad [${resultado.tipo}]: ${resultado.resumen}`,
+    alerta: { estado, texto: resultado.resumen, lugar: null },
+  });
+}
+
 async function chequeoPeriodicoProxy(origen) {
   const TEMA_ALERTAS = Number(process.env.TEMA_ALERTAS_ID || 33551);
   const publicarEnGrupo = async (texto) => {
@@ -1907,6 +1990,14 @@ async function chequeoPeriodicoProxy(origen) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, cancelProxy.texto).catch((err) => console.error("Error avisando cancelaciones del proxy:", err.message));
     }
     for (const t of cancelProxy.textosGrupo || []) await publicarEnGrupo(t);
+    for (const item of cancelProxy.nuevas || []) {
+      const d = datosServicio(item);
+      await sugerirEstado({
+        origen: "proxy_cancelacion",
+        detalle: `Tren cancelado, destino ${d.destino}, programado ${hora(d.prog)} (${d.est.nombre}).`,
+        alerta: { estado: "cancelado", texto: `Tren cancelado con destino ${d.destino} (${hora(d.prog)}).`, lugar: d.est.nombre },
+      });
+    }
   } catch (err) {
     console.error(`Error chequeando cancelaciones del proxy (${origen}):`, err.message);
   }
@@ -1918,6 +2009,14 @@ async function chequeoPeriodicoProxy(origen) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, demorasProxy.texto).catch((err) => console.error("Error avisando demoras del proxy:", err.message));
     }
     for (const t of demorasProxy.textosGrupo || []) await publicarEnGrupo(t);
+    for (const item of demorasProxy.nuevos || []) {
+      const d = datosServicio(item);
+      await sugerirEstado({
+        origen: "proxy_demora",
+        detalle: `Tren demorado ~${d.demora} min, destino ${d.destino}, programado ${hora(d.prog)} (${d.est.nombre}).`,
+        alerta: { estado: "demorado", texto: `Demoras de ~${d.demora} min con destino ${d.destino}.`, lugar: d.est.nombre },
+      });
+    }
   } catch (err) {
     console.error(`Error chequeando demoras del proxy (${origen}):`, err.message);
   }
