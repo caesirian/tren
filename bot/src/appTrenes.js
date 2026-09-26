@@ -324,6 +324,8 @@ export async function columnasCabecera(nombreEstacion, cantidad = 5) {
       estado: d.estado,
       cancelado: !!d.s.cancelacion,
       motivoCancelacion: d.s.cancelacion ? textoCancelacion(d.s.cancelacion) : null,
+      origen: d.origenReal,
+      origenInusual: !!d.origenReal && !ESTACIONES_ORIGEN_NORMAL.has(d.origenReal),
     };
   });
   return { estacion: candidatas[0]?.nombre || nombreEstacion, columnas };
@@ -348,7 +350,7 @@ export function posicionesEnVivo(items, ahora = new Date()) {
     const idx = orden.get(item.est.nombre);
     if (idx == null) continue; // estación fuera de las 16 conocidas (no debería pasar)
     const num = d.s.numero ?? `s-${Math.random()}`;
-    if (!porTren.has(num)) porTren.set(num, { numero: d.s.numero ?? null, destino: d.destino, cancelado: !!d.s.cancelacion, cruces: [] });
+    if (!porTren.has(num)) porTren.set(num, { numero: d.s.numero ?? null, destino: d.destino, cancelado: !!d.s.cancelacion, origen: d.origenReal, cruces: [] });
     porTren.get(num).cruces.push({ idx, nombre: item.est.nombre, prog: d.prog, tiempo: d.estim || d.prog, demora: d.demora });
   }
 
@@ -389,6 +391,7 @@ export function posicionesEnVivo(items, ahora = new Date()) {
       numero: tren.numero,
       destino: tren.destino,
       cancelado: tren.cancelado,
+      origenInusual: !!tren.origen && !ESTACIONES_ORIGEN_NORMAL.has(tren.origen),
       sentido,
       posicion, // 0..15, fraccionario
       demoraMax: Math.max(0, ...porHora.map((c) => c.demora ?? 0)),

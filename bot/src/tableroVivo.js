@@ -40,6 +40,8 @@ export function tableroVivoHTML() {
   .col-head .lbl { font-size: 9.5px; font-weight: 700; letter-spacing: 1.5px; color: #93B4D6; text-transform: uppercase; }
   .col-head .val { font-size: 21px; font-weight: 800; color: #fff; margin-top: 2px; }
   .col-destino { text-align: center; font-size: 16px; font-weight: 800; color: var(--navy); padding: 12px 6px; background: #fff; letter-spacing: .3px; }
+  .col-origen-inusual { text-align: center; font-size: 10.5px; font-weight: 700; color: #4338CA; background: #EEF0FF; padding: 3px 6px; margin: 0 8px 6px; border-radius: 6px; }
+  .tren-origen-inusual { outline: 3px solid #4338CA; outline-offset: 1px; }
   .col-estado { text-align: center; font-size: 12.5px; font-weight: 800; letter-spacing: 1px; padding: 8px; text-transform: uppercase; color: #fff; }
   .col-estado.confirmado { background: var(--green); }
   .col-estado.programado { background: var(--celeste); }
@@ -121,6 +123,7 @@ export function tableroVivoHTML() {
           '<div class="col-head"><div><div class="lbl">Andén</div><div class="val">' + (c.anden || "–") + '</div></div>' +
           '<div><div class="lbl">Hora salida</div><div class="val">' + (c.horaSalida || "--:--") + '</div></div></div>' +
           '<div class="col-destino">' + (c.destino || "?").toUpperCase() + '</div>' +
+          (c.origenInusual ? '<div class="col-origen-inusual">⚠ Sale de ' + c.origen + '</div>' : "") +
           '<div class="col-estado ' + estadoClase + '">' + estadoTxt + '</div>' +
           '<ul class="col-paradas">' + paradas + '</ul>' +
           '</div>';

@@ -31,6 +31,7 @@ export function mapaVivoHTML() {
   .tren.demorado { background: var(--yellow); }
   .tren.muy-demorado { background: var(--red); }
   .tren.cancelado { background: #9CA3AF; }
+  .tren.origen-inusual { outline: 3px solid #4338CA; outline-offset: 1px; }
   .tren .tip { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 6px 9px; border-radius: 8px; font-size: 11px; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
   .tren:hover .tip { display: block; }
   .leyenda { display: flex; gap: 16px; flex-wrap: wrap; padding: 0 16px; font-size: 11.5px; color: var(--muted); margin-top: 4px; }
@@ -50,6 +51,7 @@ export function mapaVivoHTML() {
   <span><i style="background:var(--yellow)"></i> demorado</span>
   <span><i style="background:var(--red)"></i> muy demorado</span>
   <span><i style="background:#9CA3AF"></i> cancelado</span>
+  <span><i style="background:transparent;border:2px solid #4338CA"></i> origen inusual</span>
 </div>
 <div class="mapa-wrap"><div class="track" id="track"></div></div>
 <footer class="credito">Fuente: proxy no oficial de la app de Trenes Argentinos (ariedro/api-trenes) — no es un dato oficial garantizado. Once queda a la izquierda, Moreno a la derecha.</footer>
@@ -93,11 +95,12 @@ export function mapaVivoHTML() {
     track.querySelectorAll(".tren").forEach((n) => n.remove());
     (data.trenes || []).forEach((t) => {
       const div = document.createElement("div");
-      div.className = "tren " + claseDemora(t);
+      div.className = "tren " + claseDemora(t) + (t.origenInusual ? " origen-inusual" : "");
       div.style.left = (t.posicion / (n - 1)) * 100 + "%";
       div.textContent = t.numero ?? "";
       const dem = t.cancelado ? "Cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
-      div.innerHTML += '<span class="tip">#' + (t.numero ?? "?") + ' → ' + t.destino + ' · ' + dem + '</span>';
+      const inusual = t.origenInusual ? " · ⚠ origen inusual" : "";
+      div.innerHTML += '<span class="tip">#' + (t.numero ?? "?") + ' → ' + t.destino + ' · ' + dem + inusual + '</span>';
       track.appendChild(div);
     });
     estadoEl.textContent = "actualizado " + (data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "") + " · " + (data.trenes || []).length + " formaciones";

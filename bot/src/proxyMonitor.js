@@ -23,6 +23,8 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora } from "./appTrenes.js";
 
 const COLECCION = "cancelacionesProxyVistas";
+const COLECCION_DEMORAS = "demorasProxyAvisadas";
+const UMBRAL_DEMORA_MIN = 10; // mismo umbral que "anormal" en el resto del bot
 const COLECCION_ORIGEN = "origenesInusualesVistos";
 const RETENCION_DIAS = 3;
 
@@ -155,6 +157,67 @@ export async function chequearOrigenesInusuales() {
   return { nuevos, texto };
 }
 
+// Trenes que aparecen demorados 10+ min. Igual mecánica que las
+// cancelaciones: una vez avisado un tren para un día, no se repite aunque la
+// demora fluctúe un poco. Si al chequeo siguiente la demora creció mucho
+// más, sí conviene poder volver a avisar — no implementado todavía (queda
+// para pulir si hace falta).
+export async function chequearDemorasProxy() {
+  if (!monitorProxyActivo()) return { nuevas: [], texto: null, desactivado: true };
+  let barrido;
+  try {
+    barrido = await barridoEstructurado(); // comparte caché con el resto de los chequeos
+  } catch (err) {
+    console.error("Error consultando el proxy de la app para demoras:", err.message);
+    return { nuevas: [], texto: null, error: err.message };
+  }
+
+  const demorados = barrido.todos.filter((item) => {
+    const d = datosServicio(item);
+    return !d.s.cancelacion && d.demora != null && d.demora >= UMBRAL_DEMORA_MIN;
+  });
+
+  const nuevos = [];
+  for (const item of demorados) {
+    const clave = claveCancelacion(item); // misma forma de clave (numero-estacion-dia), colección distinta
+    const dia = (() => {
+      const d = datosServicio(item);
+      return d.prog ? new Date(d.prog).toISOString().slice(0, 10) : "s-fecha";
+    })();
+    const claveDia = `${datosServicio(item).s.numero ?? "s-num"}-${dia}`;
+    if (vistosEnMemoria.has(`demora:${claveDia}`)) continue;
+    const firestore = ensureInit();
+    let visto = false;
+    if (firestore) {
+      try {
+        visto = (await firestore.collection(COLECCION_DEMORAS).doc(claveDia).get()).exists;
+      } catch (err) {
+        console.error("Error chequeando demora vista:", err.message);
+      }
+    }
+    if (visto) continue;
+    vistosEnMemoria.add(`demora:${claveDia}`);
+    if (firestore) firestore.collection(COLECCION_DEMORAS).doc(claveDia).set({ timestamp: FieldValue.serverTimestamp() }).catch((err) => console.error("Error guardando demora avisada:", err.message));
+    nuevos.push(item);
+  }
+
+  if (!nuevos.length) return { nuevos: [], texto: null };
+  const texto =
+    `⏰ La app de Trenes Argentinos informa ${nuevos.length} tren(es) con demora nueva de 10+ min:\n\n` +
+    nuevos
+      .map((item) => {
+        const d = datosServicio(item);
+        return `• #${d.s.numero ?? "?"} → ${d.destino} | ${d.est.nombre}: prog ${hora(d.prog)} / est ${hora(d.estim)} (+${d.demora} min)`;
+      })
+      .join("\n") +
+    `\n\n(Detectado por el proxy no oficial. Se publicó en el grupo.)`;
+  const textosGrupo = nuevos.map((item) => {
+    const d = datosServicio(item);
+    return `⏰ El tren con destino ${d.destino}, programado para las ${hora(d.prog)} (${d.est.nombre}), sale demorado (~${d.demora} min, estimado ${hora(d.estim)}).`;
+  });
+  return { nuevos, texto, textosGrupo };
+}
+
 export async function chequearCancelacionesProxy() {
   if (!monitorProxyActivo()) return { nuevas: [], texto: null, desactivado: true };
   let barrido;
@@ -179,8 +242,12 @@ export async function chequearCancelacionesProxy() {
   const texto =
     `🚨 La app de Trenes Argentinos informa ${nuevas.length} cancelación(es) nueva(s) de Sarmiento:\n\n` +
     nuevas.map(lineaCancelacion).join("\n") +
-    `\n\n(Detectado por el proxy no oficial; todavía no se publica en el grupo — /apptrenes scan para el panorama completo.)`;
-  return { nuevas, texto };
+    `\n\n(Detectado por el proxy no oficial. Se publicó en el grupo.)`;
+  const textosGrupo = nuevas.map((item) => {
+    const d = datosServicio(item);
+    return `🚨 Se canceló el tren con destino ${d.destino}, programado para las ${hora(d.prog)} (${d.est.nombre}). ${textoCancelacion(d.s.cancelacion)}.`;
+  });
+  return { nuevas, texto, textosGrupo };
 }
 
 // Para el contexto del bot al responder preguntas: cancelaciones y leyendas

@@ -32,7 +32,7 @@ import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO } from "./appTrenes.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
-import { chequearCancelacionesProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
+import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
@@ -1884,6 +1884,16 @@ const PORT = process.env.PORT || 3000;
 // cancelaciones nuevas siempre; si /apptrenes auto está activo (incidente en
 // curso), además manda el barrido COMPLETO de las 16 estaciones.
 async function chequeoPeriodicoProxy(origen) {
+  const TEMA_ALERTAS = Number(process.env.TEMA_ALERTAS_ID || 33551);
+  const publicarEnGrupo = async (texto) => {
+    const grupoId = process.env.ALLOWED_GROUP_ID;
+    if (!grupoId) {
+      console.error("No pude publicar en el grupo: falta ALLOWED_GROUP_ID.");
+      return;
+    }
+    await bot.telegram.sendMessage(grupoId, texto, { message_thread_id: TEMA_ALERTAS }).catch((err) => console.error(`Error publicando en el grupo (tema ${TEMA_ALERTAS}):`, err.message));
+  };
+
   try {
     const cancelProxy = await chequearCancelacionesProxy();
     console.log(
@@ -1896,8 +1906,20 @@ async function chequeoPeriodicoProxy(origen) {
     if (cancelProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, cancelProxy.texto).catch((err) => console.error("Error avisando cancelaciones del proxy:", err.message));
     }
+    for (const t of cancelProxy.textosGrupo || []) await publicarEnGrupo(t);
   } catch (err) {
     console.error(`Error chequeando cancelaciones del proxy (${origen}):`, err.message);
+  }
+
+  try {
+    const demorasProxy = await chequearDemorasProxy();
+    if (!demorasProxy.desactivado) console.log(`Chequeo proxy (${origen}): ${demorasProxy.nuevos?.length ?? 0} tren(es) con demora nueva de 10+ min`);
+    if (demorasProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, demorasProxy.texto).catch((err) => console.error("Error avisando demoras del proxy:", err.message));
+    }
+    for (const t of demorasProxy.textosGrupo || []) await publicarEnGrupo(t);
+  } catch (err) {
+    console.error(`Error chequeando demoras del proxy (${origen}):`, err.message);
   }
 
   try {

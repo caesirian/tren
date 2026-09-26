@@ -2485,6 +2485,7 @@ console.log('[Firebase] Listener de estado inicializado');
     #formaciones-vivo .tv-lbl { font-size: .6rem; font-weight: 700; letter-spacing: 1.5px; color: #93B4D6; text-transform: uppercase; }
     #formaciones-vivo .tv-val { font-size: 1.2rem; font-weight: 800; color: #fff; margin-top: 2px; }
     #formaciones-vivo .tv-destino { text-align: center; font-size: .95rem; font-weight: 800; color: var(--navy); padding: 12px 6px; background: var(--card); }
+    #formaciones-vivo .tv-origen-inusual { text-align: center; font-size: .68rem; font-weight: 700; color: #4338CA; background: #EEF0FF; padding: 3px 6px; margin: 0 8px 6px; border-radius: 6px; }
     #formaciones-vivo .tv-estado { text-align: center; font-size: .72rem; font-weight: 800; letter-spacing: 1px; padding: 8px; text-transform: uppercase; color: #fff; }
     #formaciones-vivo .tv-estado.confirmado { background: var(--green); }
     #formaciones-vivo .tv-estado.programado { background: var(--celeste); }
@@ -2545,6 +2546,7 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-tren.demorado { background: var(--yellow); }
     #mapa-vivo .mv-tren.muy-demorado { background: var(--red); }
     #mapa-vivo .mv-tren.cancelado { background: #9CA3AF; }
+    #mapa-vivo .mv-tren.origen-inusual { outline: 3px solid #4338CA; outline-offset: 1px; }
     #mapa-vivo .mv-tren .mv-tip { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 5px 9px; border-radius: 8px; font-size: .68rem; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
     #mapa-vivo .mv-tren:hover .mv-tip { display: block; }
   </style>
@@ -2559,6 +2561,7 @@ console.log('[Firebase] Listener de estado inicializado');
         <span><i style="background:var(--yellow)"></i> demorado</span>
         <span><i style="background:var(--red)"></i> muy demorado</span>
         <span><i style="background:#9CA3AF"></i> cancelado</span>
+        <span><i style="background:transparent;border:2px solid #4338CA"></i> origen inusual</span>
       </div>
       <div class="mv-wrap"><div class="mv-track" id="mapaVivoTrack"></div></div>
     </div>
@@ -3844,6 +3847,7 @@ renderStations();
           '<div class="tv-col-head"><div><div class="tv-lbl">Andén</div><div class="tv-val">' + (c.anden || "–") + '</div></div>' +
           '<div><div class="tv-lbl">Hora salida</div><div class="tv-val">' + (c.horaSalida || "--:--") + '</div></div></div>' +
           '<div class="tv-destino">' + (c.destino || "?").toUpperCase() + '</div>' +
+          (c.origenInusual ? '<div class="tv-origen-inusual">⚠ Sale de ' + c.origen + '</div>' : "") +
           '<div class="tv-estado ' + estadoClase + '">' + estadoTxt + '</div>' +
           '<ul class="tv-paradas">' + paradas + '</ul>' +
           '</div>';
@@ -3917,11 +3921,12 @@ renderStations();
     track.querySelectorAll(".mv-tren").forEach((n) => n.remove());
     (data.trenes || []).forEach((t) => {
       const div = document.createElement("div");
-      div.className = "mv-tren " + claseDemora(t);
+      div.className = "mv-tren " + claseDemora(t) + (t.origenInusual ? " origen-inusual" : "");
       div.style.left = (t.posicion / (n - 1)) * 100 + "%";
       div.textContent = t.numero ?? "";
       const dem = t.cancelado ? "Cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
-      div.innerHTML += '<span class="mv-tip">#' + (t.numero ?? "?") + " → " + t.destino + " · " + dem + '</span>';
+      const inusual = t.origenInusual ? " · ⚠ origen inusual" : "";
+      div.innerHTML += '<span class="mv-tip">#' + (t.numero ?? "?") + " → " + t.destino + " · " + dem + inusual + '</span>';
       track.appendChild(div);
     });
     estadoEl.textContent = "🕐 " + (data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "") + " · " + (data.trenes || []).length + " formaciones";
