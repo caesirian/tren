@@ -47,6 +47,7 @@ import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
 import { guardarReporte, listarReportesPendientes, marcarReporteRevisado } from "./reportLogger.js";
 import { publicarNoticia } from "./noticiaPublisher.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
+import { consultarColectivoEnVivo } from "./colectivoSearch.js";
 import { chequearYNotificar } from "./monitor.js";
 import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados, listarUsuariosPrivados, getHistorialUsuario, getUltimaPreguntaUsuario } from "./dailyReport.js";
 import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "./retryQueue.js";
@@ -259,6 +260,17 @@ async function armarContexto(pregunta) {
     if (paro) {
       partes.push(
         `\n== BÚSQUEDA WEB EN VIVO — PAROS/MEDIDAS GREMIALES (${paro.deCache ? "resultado en caché, buscado" : "recién buscado"} el ${paro.buscadoEn}) ==\n${paro.texto}\nEsto viene de una búsqueda web real (no es un dato fijo cargado a mano). Aclará que conviene confirmar cerca del horario de viaje en @TrenSarmiento, @InfoTSarmiento o trensarmientoenlinea.com.ar, porque estas cosas pueden cambiar de último momento.`
+      );
+    }
+  }
+
+  // Preguntas sobre líneas de colectivo: no tenemos esa info cargada a
+  // mano, así que acá sí vale una búsqueda web real (cacheada).
+  if (/\bcolectivo\b|colectivos|bondi(s)?\b|\bl[ií]nea\s*\d+\b|\bmicro\b|\bmicros\b/i.test(pregunta)) {
+    const colectivo = await consultarColectivoEnVivo(pregunta);
+    if (colectivo) {
+      partes.push(
+        `\n== BÚSQUEDA WEB EN VIVO — COLECTIVOS (${colectivo.deCache ? "resultado en caché, buscado" : "recién buscado"} el ${colectivo.buscadoEn}) ==\n${colectivo.texto}\nEsto viene de una búsqueda web real (no es un dato fijo cargado a mano). Aclará que conviene confirmar recorrido/frecuencia exacta antes de viajar, porque esto puede cambiar.`
       );
     }
   }

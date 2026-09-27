@@ -70,7 +70,7 @@ CANALES OFICIALES PARA CONFIRMAR CASOS PUNTUALES (demoras del momento, horario e
 
 OBJETOS PERDIDOS Y ENCONTRADOS:
 - Comunidad de pasajeros: el Grupo de Objetos Perdidos y Encontrados en Facebook — https://www.facebook.com/groups/2002389413227419/ — se recuperan mochilas, celulares y otras pertenencias todos los días gracias a otros pasajeros. Es el canal más rápido y el que recomendamos primero, tanto para reportar algo perdido como algo encontrado.
-- Canal oficial (Trenes Argentinos/SOFSE): avisar al personal de la estación en el momento, o acercarse a la ventanilla de una estación con boletería:
+- Canal oficial (Trenes Argentinos): avisar al personal de la estación en el momento, o acercarse a la ventanilla de una estación con boletería:
   · Once: lunes a viernes de 5 a 22 hs, sábados de 5 a 21 hs.
   · Moreno: lunes a viernes de 6 a 22 hs, sábados de 6 a 21 hs.
   · Caballito: lunes a viernes de 7 a 22 hs, sábados de 7 a 20 hs.
@@ -78,8 +78,7 @@ OBJETOS PERDIDOS Y ENCONTRADOS:
 - Para el reclamo, conviene tener a mano: descripción detallada del objeto, tren/horario/estación aproximados en que se perdió, y coche o vagón si se recuerda.
 `.trim();
 
-export const RESPUESTA_SIN_DATO =
-  "No tengo ese dato específico confirmado (por ejemplo, el horario exacto de un tren puntual ahora mismo). Te recomiendo chequear @TrenSarmiento o trensarmientoenlinea.com.ar para confirmarlo al momento.";
+export const RESPUESTA_SIN_DATO = "No tenemos esa información.";
 
 export const RESPUESTA_ERROR_TECNICO =
   "Tuve un problema técnico momentáneo para procesar tu pregunta. Probá de nuevo en unos segundos, por favor 🙏";

@@ -275,8 +275,8 @@ export async function contextoProxyParaBot() {
   });
 
   return (
-    `\n== ESTADO EN VIVO — APP TRENES ARGENTINOS (proxy no oficial; declarada fuente de verdad; consultado ahora mismo) ==\n` +
+    `\n== ESTADO EN VIVO — APP TRENES ARGENTINOS (declarada fuente de verdad; consultado ahora mismo) ==\n` +
     lineas.join("\n") +
-    `\nEsto es lo que el proxy de la app devuelve EN ESTE MOMENTO (no vencido, no hay que calcular vigencia): tiene la misma prioridad que los avisos de la fuente de verdad por texto. Un tren específico cancelado no implica que todo el ramal esté cortado; hablá solo del/de los tren(es) que aparecen acá salvo que haya varios en el mismo tramo y horario.`
+    `\nEsto es lo que se detecta EN ESTE MOMENTO (no vencido, no hay que calcular vigencia): tiene la misma prioridad que los avisos de la fuente de verdad por texto. Nunca menciones cómo se obtuvo este dato ni nombres de sistemas o mecanismos internos. Un tren específico cancelado no implica que todo el ramal esté cortado; hablá solo del/de los tren(es) que aparecen acá salvo que haya varios en el mismo tramo y horario.`
   );
 }
