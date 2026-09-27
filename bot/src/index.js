@@ -26,12 +26,12 @@ import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementari
 import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
-import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion } from "./schedule.js";
+import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion, buscarEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO } from "./appTrenes.js";
-import { generarImagenTablero } from "./tableroImagen.js";
+import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
@@ -590,6 +590,55 @@ async function armarImagenTablero(estacion) {
   const buffer = generarImagenTablero(filas, origenNombre, horaArgentinaTexto(new Date()));
   return { buffer, error: null, origenNombre };
 }
+
+// Tablero de estación INTERMEDIA (Morón, Castelar, etc.) estilo "PRÓXIMO
+// TREN en X minutos" — distinto al de las cabeceras (Once/Moreno, que usan
+// andén). Va por sentido: si no lo especificás, manda las dos imágenes
+// (hacia Once y hacia Moreno). Uso: /tableroestacion <estación> [once|moreno]
+bot.command("tableroestacion", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const partes = (ctx.message.text || "").replace(/^\/tableroestacion(@\w+)?\s*/i, "").split(" ").filter(Boolean);
+  let sentidoPedido = null;
+  if (partes.length && /^(once|moreno)$/i.test(partes[partes.length - 1])) {
+    sentidoPedido = partes.pop().toLowerCase();
+  }
+  const nombreEstacion = partes.join(" ").trim();
+  if (!nombreEstacion) {
+    await ctx.reply("Uso: /tableroestacion <estación> [once|moreno]\nEj: /tableroestacion moron moreno");
+    return;
+  }
+
+  const estacion = buscarEstacion(nombreEstacion);
+  if (!estacion) {
+    await ctx.reply(`No encontré la estación "${nombreEstacion}".`);
+    return;
+  }
+
+  try {
+    await ctx.sendChatAction("upload_photo");
+    const ahora = new Date();
+    const horaTexto = horaArgentinaTexto(ahora);
+    const proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora, sentido: sentidoPedido });
+
+    const sentidos = [];
+    if (sentidoPedido !== "once" && proximos.haciaMoreno.length) sentidos.push({ nombre: "Moreno", datos: proximos.haciaMoreno });
+    if (sentidoPedido !== "moreno" && proximos.haciaOnce.length) sentidos.push({ nombre: "Once", datos: proximos.haciaOnce });
+
+    if (!sentidos.length) {
+      await ctx.reply(`No quedan más trenes hoy en ${estacion.name} para ese sentido.`);
+      return;
+    }
+
+    for (const s of sentidos) {
+      const buffer = generarImagenProximoTren(estacion.name, s.nombre, s.datos, horaTexto);
+      await ctx.replyWithPhoto({ source: buffer }, { caption: `🚉 ${estacion.name} — sentido ${s.nombre}` });
+    }
+  } catch (err) {
+    console.error("Error en /tableroestacion:", err.message);
+    await ctx.reply("No pude armar el tablero: " + err.message).catch(() => {});
+  }
+});
 
 bot.command("tablero", async (ctx) => {
   if (!esAdminEstado(ctx)) return;

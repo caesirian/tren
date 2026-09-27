@@ -136,3 +136,126 @@ export function generarImagenTablero(filas, origenNombre, horaActualTexto) {
 
   return canvas.toBuffer("image/png");
 }
+
+// --- Tablero de estación intermedia ("PRÓXIMO TREN" en minutos), por
+// sentido — calcado del cartel real de las estaciones del medio del ramal
+// (Morón, Castelar, etc.), distinto al de las cabeceras (Once/Moreno).
+
+const COLOR_HEADER_GRIS = "#e9e9ea";
+const COLOR_CAJA_AZUL = "#141a52";
+const COLOR_LINEA_CELESTE = "#33c9f0";
+const COLOR_PIE_AZUL = "#1560c9";
+
+// proximos: [{ enMinutos, hora }] — al menos 1, hasta 3 (próximo/siguiente/subsiguiente)
+export function generarImagenProximoTren(estacionNombre, sentidoDestino, proximos, horaActualTexto) {
+  const ANCHO = 900;
+  const ALTO = 560;
+  const canvas = createCanvas(ANCHO, ALTO);
+  const ctx = canvas.getContext("2d");
+  ctx.textBaseline = "middle";
+
+  const altoHeader = 90;
+  ctx.fillStyle = COLOR_HEADER_GRIS;
+  ctx.fillRect(0, 0, ANCHO, altoHeader);
+  ctx.fillStyle = "#274b8f";
+  ctx.font = "bold 34px sans-serif";
+  ctx.fillText(estacionNombre.toUpperCase(), 24, altoHeader / 2);
+  ctx.textAlign = "right";
+  ctx.font = "16px sans-serif";
+  ctx.fillText("HORA", ANCHO - 24, altoHeader / 2 - 16);
+  ctx.font = "bold 30px sans-serif";
+  ctx.fillStyle = "#33c9f0";
+  ctx.fillText("ACTUAL " + horaActualTexto, ANCHO - 24, altoHeader / 2 + 14);
+  ctx.textAlign = "left";
+
+  const yCuerpo = altoHeader + 6;
+  const altoCuerpo = ALTO - altoHeader - 6 - 44;
+  const anchoIzq = ANCHO * 0.55;
+
+  ctx.strokeStyle = COLOR_LINEA_CELESTE;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(6, yCuerpo, anchoIzq - 12, altoCuerpo - 6);
+  ctx.fillStyle = COLOR_CAJA_AZUL;
+  ctx.fillRect(9, yCuerpo + 46, anchoIzq - 18, altoCuerpo - 6 - 46);
+  ctx.fillStyle = "#f2f2f2";
+  ctx.fillRect(9, yCuerpo, anchoIzq - 18, 46);
+  ctx.fillStyle = "#1a1a2e";
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText("PRÓXIMO TREN", 26, yCuerpo + 24);
+
+  const proximo = proximos[0];
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 130px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(String(proximo?.enMinutos ?? "-"), anchoIzq / 2, yCuerpo + 46 + 130);
+  ctx.font = "22px sans-serif";
+  ctx.fillText("MINUTOS", anchoIzq / 2, yCuerpo + 46 + 200);
+  ctx.textAlign = "left";
+  ctx.strokeStyle = COLOR_LINEA_CELESTE;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(26, yCuerpo + altoCuerpo - 60);
+  ctx.lineTo(anchoIzq - 34, yCuerpo + altoCuerpo - 60);
+  ctx.stroke();
+  ctx.fillStyle = "#cfd6f5";
+  ctx.font = "16px sans-serif";
+  ctx.fillText("DESTINO:", 26, yCuerpo + altoCuerpo - 30);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 24px sans-serif";
+  ctx.fillText(sentidoDestino.toUpperCase(), 150, yCuerpo + altoCuerpo - 30);
+
+  const xDer = anchoIzq + 6;
+  const anchoDer = ANCHO - xDer - 6;
+  const alturas = [0, (altoCuerpo - 6) / 2];
+  const etiquetas = ["SIGUIENTE", "SUBSIGUIENTE"];
+
+  [proximos[1], proximos[2]].forEach((p, i) => {
+    const yBox = yCuerpo + alturas[i];
+    const hBox = (altoCuerpo - 6) / 2;
+    ctx.strokeStyle = COLOR_LINEA_CELESTE;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(xDer, yBox, anchoDer, hBox - 4);
+    ctx.fillStyle = COLOR_CAJA_AZUL;
+    ctx.fillRect(xDer + 2, yBox + 2, anchoDer - 4, hBox - 8);
+
+    ctx.fillStyle = "#cfd6f5";
+    ctx.font = "bold 18px sans-serif";
+    ctx.fillText(`${etiquetas[i]}`, xDer + 20, yBox + 26);
+    ctx.fillText("TREN EN:", xDer + 20, yBox + 50);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 64px sans-serif";
+    ctx.fillText(p ? String(p.enMinutos) : "-", xDer + 180, yBox + 45);
+    ctx.font = "16px sans-serif";
+    ctx.fillText("MINUTOS", xDer + 320, yBox + 45);
+
+    ctx.strokeStyle = COLOR_LINEA_CELESTE;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(xDer + 20, yBox + hBox - 34);
+    ctx.lineTo(xDer + anchoDer - 20, yBox + hBox - 34);
+    ctx.stroke();
+    ctx.fillStyle = "#cfd6f5";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("DESTINO:", xDer + 20, yBox + hBox - 16);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText(sentidoDestino.toUpperCase(), xDer + 130, yBox + hBox - 16);
+  });
+
+  const yTicker = yCuerpo + altoCuerpo + 4;
+  ctx.fillStyle = COLOR_TICKER;
+  ctx.fillRect(0, yTicker, ANCHO, 24);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText("El servicio funciona con normalidad — datos en vivo", 16, yTicker + 12);
+
+  const yPie = yTicker + 24;
+  ctx.fillStyle = COLOR_PIE_AZUL;
+  ctx.fillRect(0, yPie, ANCHO, ALTO - yPie);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillText("TRENES ARGENTINOS · LÍNEA SARMIENTO", 16, yPie + (ALTO - yPie) / 2);
+
+  return canvas.toBuffer("image/png");
+}
