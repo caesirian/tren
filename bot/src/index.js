@@ -22,7 +22,7 @@ import { Telegraf, Markup } from "telegraf";
 import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
-import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria } from "./firestoreStatus.js";
+import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria, listarAlertasComplementarias, quitarAlertaComplementaria, limpiarAlertasComplementarias } from "./firestoreStatus.js";
 import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
@@ -1143,11 +1143,52 @@ bot.command("alerta", async (ctx) => {
     return;
   }
   try {
-    await agregarAlertaComplementaria(texto);
-    await ctx.reply(`✅ Alerta sumada al semáforo del sitio (no cambia el color, es un aviso aparte):\n"${texto}"`);
+    const r = await agregarAlertaComplementaria(texto);
+    if (!r.agregado) {
+      await ctx.reply(`⚠️ No la sumé: ya hay una alerta activa muy parecida:\n"${r.similar}"\n\nSi igual querés forzarla, primero sacá la vieja con /alertas.`);
+    } else {
+      await ctx.reply(`✅ Alerta sumada al semáforo del sitio (no cambia el color, es un aviso aparte):\n"${texto}"`);
+    }
   } catch (err) {
     console.error("Error en /alerta:", err.message);
     await ctx.reply("No pude sumar la alerta: " + err.message);
+  }
+});
+
+// Ver / limpiar las alertas complementarias que se muestran en el sitio.
+// Uso: /alertas | /alertas quitar <n> | /alertas limpiar
+bot.command("alertas", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  const args = (ctx.message.text || "").split(" ").slice(1);
+  try {
+    if (args[0]?.toLowerCase() === "limpiar") {
+      await limpiarAlertasComplementarias();
+      await ctx.reply("✅ Se vaciaron todas las alertas complementarias del sitio.");
+      return;
+    }
+    if (args[0]?.toLowerCase() === "quitar") {
+      const n = Number(args[1]);
+      if (!Number.isInteger(n) || n < 1) {
+        await ctx.reply("Uso: /alertas quitar <n> (el número que muestra /alertas).");
+        return;
+      }
+      const quitada = await quitarAlertaComplementaria(n - 1);
+      await ctx.reply(`🗑️ Saqué del sitio:\n"${quitada}"`);
+      return;
+    }
+    const actuales = await listarAlertasComplementarias();
+    if (!actuales.length) {
+      await ctx.reply("No hay alertas complementarias activas en el sitio.");
+      return;
+    }
+    await ctx.reply(
+      `📋 Alertas complementarias activas (${actuales.length}):\n\n` +
+        actuales.map((a, i) => `${i + 1}. ${a}`).join("\n\n") +
+        `\n\n/alertas quitar <n> para sacar una · /alertas limpiar para vaciar todo.`
+    );
+  } catch (err) {
+    console.error("Error en /alertas:", err.message);
+    await ctx.reply("No pude gestionar las alertas: " + err.message);
   }
 });
 
@@ -1429,14 +1470,18 @@ async function procesarComunicadoDeImagenSerial(ctx) {
     // Se suma como alerta COMPLEMENTARIA del semáforo (campo alertas[] que
     // ya lee el sitio, independiente del color/mensaje principal) — no
     // como noticia. Best-effort: si falla, no corta el flujo principal
-    // (el comunicado ya quedó guardado igual para el bot).
-    let publicadoEnSitio = true;
+    // (el comunicado ya quedó guardado igual para el bot). Si ya hay una
+    // alerta activa parecida (aunque esté redactada distinto), no se
+    // duplica — así no se repite el mismo aviso en el sitio cada vez que
+    // sube una foto nueva del mismo comunicado.
+    let estadoSitio = "agregado";
     try {
       const tituloTipo = { paro: "Paro", demora: "Demoras", normalizacion: "Normalización del servicio", obra: "Obra programada", "aviso general": "Aviso", otro: "Aviso" }[datos.tipo] || "Aviso";
       const textoAlerta = `${tituloTipo}${datos.fecha ? ` (${datos.fecha})` : ""}: ${datos.resumen}${datos.horario ? ` Horario: ${datos.horario}.` : ""}`;
-      await agregarAlertaComplementaria(textoAlerta);
+      const r = await agregarAlertaComplementaria(textoAlerta);
+      estadoSitio = r.agregado ? "agregado" : "ya_habia";
     } catch (err) {
-      publicadoEnSitio = false;
+      estadoSitio = "error";
       console.error("Error agregando alerta complementaria del comunicado:", err.message);
     }
 
@@ -1447,9 +1492,11 @@ async function procesarComunicadoDeImagenSerial(ctx) {
       `Horario: ${datos.horario || "no especificado"}\n` +
       `Resumen: ${datos.resumen}\n\n` +
       `A partir de ahora el bot puede usar este dato al responder preguntas relacionadas.` +
-      (publicadoEnSitio
+      (estadoSitio === "agregado"
         ? ` También se sumó como alerta complementaria del semáforo en el sitio (no cambia el color, es un aviso aparte).`
-        : ` ⚠️ No se pudo sumar la alerta al sitio, revisá los logs.`);
+        : estadoSitio === "ya_habia"
+          ? ` Ya había una alerta activa parecida en el sitio, no se duplicó.`
+          : ` ⚠️ No se pudo sumar la alerta al sitio, revisá los logs.`);
 
     if (enGrupo) {
       // Grupo: nada público. Solo el admin recibe el resumen, por privado.

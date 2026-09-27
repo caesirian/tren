@@ -12,6 +12,7 @@
 
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { similitud } from "./imageIntel.js";
 
 let db = null;
 
@@ -49,18 +50,52 @@ const ETIQUETAS_ESTADO = {
   paro: "Servicio interrumpido",
 };
 
+// Umbral de similitud para considerar que un texto nuevo es "el mismo aviso"
+// que uno ya activo (0..1, ver similitud() en imageIntel.js). arrayUnion por
+// sí solo solo evita el string EXACTO repetido — si Gemini redacta el mismo
+// comunicado con otras palabras cada vez que se sube una foto, arrayUnion no
+// lo detecta y el aviso termina apareciendo varias veces en el sitio.
+const UMBRAL_SIMILITUD_ALERTA = 0.55;
+
 // Suma un texto al array "alertas" del documento — el sitio ya lo muestra
 // independiente del color del semáforo (pensado justo para avisos tipo
 // "obra programada" con servicio aún normal). NO toca estado ni mensaje,
-// es un complemento, no un reemplazo. arrayUnion evita duplicar el mismo
-// texto si se sube el mismo comunicado dos veces.
+// es un complemento, no un reemplazo. Antes de sumar, chequea si ya hay un
+// aviso activo parecido (por similitud de texto, no solo string exacto) y
+// si lo hay, no vuelve a grabarlo. Devuelve { agregado: boolean, similar? }.
 export async function agregarAlertaComplementaria(texto) {
   const firestore = ensureInit();
   if (!firestore) throw new Error("Firestore no está configurado (faltan credenciales).");
-  await firestore
-    .collection("estadoServicio")
-    .doc("actual")
-    .set({ alertas: FieldValue.arrayUnion(texto) }, { merge: true });
+  const ref = firestore.collection("estadoServicio").doc("actual");
+  const snap = await ref.get();
+  const actuales = Array.isArray(snap.data()?.alertas) ? snap.data().alertas : [];
+  const parecido = actuales.find((a) => similitud(a, texto) >= UMBRAL_SIMILITUD_ALERTA);
+  if (parecido) return { agregado: false, similar: parecido };
+  await ref.set({ alertas: FieldValue.arrayUnion(texto) }, { merge: true });
+  return { agregado: true };
+}
+
+export async function listarAlertasComplementarias() {
+  const firestore = ensureInit();
+  if (!firestore) throw new Error("Firestore no está configurado (faltan credenciales).");
+  const snap = await firestore.collection("estadoServicio").doc("actual").get();
+  return Array.isArray(snap.data()?.alertas) ? snap.data().alertas : [];
+}
+
+// indice es 0-based, tal como lo devuelve listarAlertasComplementarias().
+export async function quitarAlertaComplementaria(indice) {
+  const actuales = await listarAlertasComplementarias();
+  if (indice < 0 || indice >= actuales.length) throw new Error(`No hay una alerta en la posición ${indice + 1} (hay ${actuales.length}).`);
+  const restantes = actuales.filter((_, i) => i !== indice);
+  const firestore = ensureInit();
+  await firestore.collection("estadoServicio").doc("actual").set({ alertas: restantes }, { merge: true });
+  return actuales[indice];
+}
+
+export async function limpiarAlertasComplementarias() {
+  const firestore = ensureInit();
+  if (!firestore) throw new Error("Firestore no está configurado (faltan credenciales).");
+  await firestore.collection("estadoServicio").doc("actual").set({ alertas: [] }, { merge: true });
 }
 
 export async function actualizarEstadoServicio({ estado, mensaje, editor }) {
