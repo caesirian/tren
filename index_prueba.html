@@ -1973,6 +1973,7 @@ console.log('[Firebase] Listener de estado inicializado');
     <ul class="nav-links" id="navLinks" role="list">
       <li><a href="#proximo">🔍 Próximo tren</a></li>
       <li><a href="#estado">📡 Estado</a></li>
+      <li><a href="#formaciones-vivo">🚉 Tablero</a></li>
       <li><a href="#horarios">🕐 Horarios</a></li>
       <li><a href="#diferencial">⭐ Diferencial</a></li>
       <li><a href="#tarifas">💳 Tarifas</a></li>
@@ -2467,68 +2468,99 @@ console.log('[Firebase] Listener de estado inicializado');
 
   <!-- FORMACIONES EN VIVO (prueba) -->
   <style>
-    #formaciones-vivo .tv-board { border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-lg); }
-    #formaciones-vivo .tv-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; background: linear-gradient(100deg, #4FC3F0 0%, var(--celeste) 45%, var(--blue) 100%); flex-wrap: wrap; gap: 10px; }
-    #formaciones-vivo .tv-est-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-    #formaciones-vivo .tv-est-nombre { font-size: 1.6rem; font-weight: 800; color: var(--navy); letter-spacing: .5px; }
-    #formaciones-vivo .tv-est-sub { font-size: 1.05rem; font-weight: 600; color: #eaf6fd; }
-    #formaciones-vivo .tv-hora-wrap { display: flex; align-items: center; gap: 12px; }
-    #formaciones-vivo .tv-hora-label { text-align: right; font-size: .68rem; font-weight: 700; color: #eaf6fd; letter-spacing: 1px; line-height: 1.3; }
+    /* Tablero en vivo: todo el tablero escala con su propio ancho (unidades cqw),
+       como si fuera la pantalla de la cabecera. Cada declaración lleva primero un
+       valor en px de respaldo por si el navegador no soporta container queries. */
+    #formaciones-vivo { background: linear-gradient(180deg, var(--navy) 0%, #003a7d 100%); }
+    #formaciones-vivo .tv-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 20px; margin-bottom: 20px; }
+    #formaciones-vivo .tv-top .section-sub { margin-bottom: 0; }
+    #formaciones-vivo .tv-live { display: inline-flex; align-items: center; gap: 7px; margin-left: 4px; color: #cfe9fb; font-weight: 600; font-size: .8rem; }
+    #formaciones-vivo .tv-live i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; animation: tvPulse 2s infinite; }
+    @keyframes tvPulse { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.6); } 70% { box-shadow: 0 0 0 9px rgba(34,197,94,0); } 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); } }
+    @media (prefers-reduced-motion: reduce) { #formaciones-vivo .tv-live i { animation: none; } }
+    #formaciones-vivo .tv-toggle { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: rgba(255,255,255,.12); }
+    #formaciones-vivo .tv-toggle button { border: 0; background: transparent; color: #cfe9fb; font: inherit; font-weight: 700; font-size: .9rem; padding: 9px 20px; min-height: 40px; border-radius: 999px; cursor: pointer; }
+    #formaciones-vivo .tv-toggle button[aria-pressed="true"] { background: #fff; color: var(--navy); }
+    #formaciones-vivo .tv-toggle button:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }
+    #formaciones-vivo .tv-vacio { text-align: center; color: #cfe9fb; padding: 36px 10px; font-size: .95rem; margin: 0; }
+
+    #formaciones-vivo .tv-wrap { max-width: 900px; margin: 0 auto; }
+    #formaciones-vivo .tv-board { container-type: inline-size; border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 18px 50px rgba(0,0,0,.4); }
+
+    /* Cabecera del tablero (unidades relativas al ancho del tablero) */
+    #formaciones-vivo .tv-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 14px; padding: 12px 14px; padding: 3cqw 3.5cqw; background: linear-gradient(100deg, #4FC3F0 0%, var(--celeste) 45%, var(--blue) 100%); }
+    #formaciones-vivo .tv-est-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    #formaciones-vivo .tv-est-nombre { font-weight: 800; color: var(--navy); letter-spacing: .5px; font-size: 24px; font-size: clamp(20px, 6cqw, 44px); }
+    #formaciones-vivo .tv-est-sub { font-weight: 600; color: #eaf6fd; font-size: 14px; font-size: clamp(12px, 3.6cqw, 26px); }
+    #formaciones-vivo .tv-hora-wrap { display: flex; align-items: center; gap: 10px; }
+    #formaciones-vivo .tv-hora-label { text-align: right; font-weight: 700; color: #eaf6fd; letter-spacing: 1px; line-height: 1.25; font-size: 9px; font-size: clamp(8px, 1.9cqw, 13px); }
     #formaciones-vivo .tv-divisor { width: 2px; align-self: stretch; background: rgba(255,255,255,.55); border-radius: 2px; }
-    #formaciones-vivo .tv-hora-num { font-size: 2rem; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
-    #formaciones-vivo .tv-columnas { display: flex; background: var(--card); overflow-x: auto; }
-    #formaciones-vivo .tv-col { flex: 1 0 160px; min-width: 160px; border-right: 6px solid var(--bg); }
-    #formaciones-vivo .tv-col:last-child { border-right: none; }
-    #formaciones-vivo .tv-col-head { display: flex; background: var(--navy); }
-    #formaciones-vivo .tv-col-head > div { flex: 1; text-align: center; padding: 9px 4px; }
-    #formaciones-vivo .tv-col-head > div:first-child { border-right: 1px solid rgba(255,255,255,.18); }
-    #formaciones-vivo .tv-lbl { font-size: .6rem; font-weight: 700; letter-spacing: 1.5px; color: #93B4D6; text-transform: uppercase; }
-    #formaciones-vivo .tv-val { font-size: 1.2rem; font-weight: 800; color: #fff; margin-top: 2px; }
-    #formaciones-vivo .tv-destino { text-align: center; font-size: .95rem; font-weight: 800; color: var(--navy); padding: 12px 6px; background: var(--card); }
-    #formaciones-vivo .tv-origen-inusual { text-align: center; font-size: .68rem; font-weight: 700; color: #4338CA; background: #EEF0FF; padding: 3px 6px; margin: 0 8px 6px; border-radius: 6px; }
-    #formaciones-vivo .tv-estado { text-align: center; font-size: .72rem; font-weight: 800; letter-spacing: 1px; padding: 8px; text-transform: uppercase; color: #fff; }
+    #formaciones-vivo .tv-hora-num { font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; font-size: 26px; font-size: clamp(22px, 7cqw, 52px); }
+
+    /* Columnas: una por andén/salida. Grid con cantidad de columnas fijada por JS. */
+    #formaciones-vivo .tv-columnas { display: grid; gap: 4px; padding: 5px; gap: 1.2cqw; padding: 1.6cqw; background: var(--cel-bg); }
+    #formaciones-vivo .tv-col { container-type: inline-size; min-width: 0; background: var(--navy); }
+    #formaciones-vivo .tv-col-head { display: grid; grid-template-columns: 36% 64%; }
+    #formaciones-vivo .tv-cell { text-align: center; padding: 4px 1px; padding: 4cqw 1cqw; min-width: 0; overflow: hidden; }
+    #formaciones-vivo .tv-cell.anden { border-right: 1px solid rgba(255,255,255,.18); }
+    #formaciones-vivo .tv-lbl { font-weight: 700; text-transform: uppercase; letter-spacing: .01em; color: #93B4D6; white-space: nowrap; font-size: 7px; font-size: max(6.3px, 6cqw); }
+    #formaciones-vivo .tv-val { font-weight: 800; color: #fff; line-height: 1.1; margin-top: 2px; margin-top: 1cqw; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #formaciones-vivo .tv-cell.anden .tv-val { font-size: 15px; font-size: 18cqw; }
+    #formaciones-vivo .tv-cell.hora .tv-val { font-size: 14px; font-size: 16cqw; }
+    #formaciones-vivo .tv-destino { background: #fff; color: var(--navy); font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 5px 2px; padding: 3.5cqw 1cqw; font-size: 12px; font-size: 12cqw; letter-spacing: .01em; }
+    #formaciones-vivo .tv-origen-inusual { text-align: center; font-weight: 700; color: #4338CA; background: #EEF0FF; padding: 2px 3px; padding: 1.5cqw 2cqw; font-size: 8px; font-size: max(7px, 6.4cqw); line-height: 1.25; }
+    #formaciones-vivo .tv-estado { text-align: center; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; overflow: hidden; padding: 4px 1px; padding: 2.6cqw 1cqw; font-size: 9px; font-size: max(8px, 8.6cqw); }
     #formaciones-vivo .tv-estado.confirmado { background: var(--green); }
     #formaciones-vivo .tv-estado.programado { background: var(--celeste); }
     #formaciones-vivo .tv-estado.cancelado { background: var(--red); }
-    #formaciones-vivo .tv-paradas { list-style: none; margin: 0; padding: 12px 0 18px; background: var(--navy); }
-    #formaciones-vivo .tv-paradas li { text-align: center; font-size: .7rem; font-weight: 700; letter-spacing: .3px; color: #C9DCF0; padding: 4px 6px; }
-    #formaciones-vivo .tv-banner { padding: 14px 22px; text-align: center; font-size: 1.05rem; font-weight: 800; }
+    #formaciones-vivo .tv-paradas { list-style: none; margin: 0; background: var(--navy); padding: 6px 2px 10px; padding: 4cqw 1cqw 6cqw; }
+    #formaciones-vivo .tv-paradas li { text-align: center; font-weight: 700; text-transform: uppercase; color: #C9DCF0; white-space: nowrap; overflow: hidden; line-height: 1.65; font-size: 9px; font-size: max(8.5px, 10cqw); }
+
+    #formaciones-vivo .tv-banner { text-align: center; font-weight: 800; line-height: 1.3; padding: 10px 12px; padding: 2.6cqw 3.5cqw; font-size: 13px; font-size: clamp(12px, 3.3cqw, 22px); }
     #formaciones-vivo .tv-banner.tip { background: var(--green-bg); color: var(--green); }
     #formaciones-vivo .tv-banner.alerta { background: var(--red-bg); color: var(--red); }
-    #formaciones-vivo .tv-footer { display: flex; align-items: center; gap: 12px; background: var(--blue); padding: 12px 20px; }
-    #formaciones-vivo .tv-footer .tv-barra { width: 3px; align-self: stretch; background: #fff; border-radius: 2px; }
-    #formaciones-vivo .tv-footer .tv-chica { font-size: .62rem; font-weight: 700; letter-spacing: 1px; color: #cfe3f5; text-transform: uppercase; }
-    #formaciones-vivo .tv-footer .tv-grande { font-size: .92rem; font-weight: 800; color: #fff; }
+    #formaciones-vivo .tv-footer { display: flex; align-items: center; gap: 10px; background: var(--blue); padding: 9px 14px; padding: 2.4cqw 3.5cqw; }
+    #formaciones-vivo .tv-barra { width: 3px; align-self: stretch; background: #fff; border-radius: 2px; }
+    #formaciones-vivo .tv-chica { font-weight: 700; letter-spacing: 1px; color: #cfe3f5; text-transform: uppercase; font-size: 9px; font-size: clamp(8px, 1.9cqw, 12px); }
+    #formaciones-vivo .tv-grande { font-weight: 800; color: #fff; font-size: 14px; font-size: clamp(12px, 3.2cqw, 20px); }
+
+    @media (max-width: 480px) {
+      #formaciones-vivo .container { padding: 0 10px; }
+      #formaciones-vivo .tv-top { padding: 0 6px; }
+    }
   </style>
-  <section class="section section-cel" id="formaciones-vivo" aria-labelledby="formaciones-vivo-title">
+  <section class="section section-navy" id="formaciones-vivo" aria-labelledby="formaciones-vivo-title">
     <div class="container">
-      <span class="section-label">📍 En vivo</span>
-      <h2 class="section-title" id="formaciones-vivo-title">¿Dónde está cada formación?</h2>
-      <p class="section-sub">Estilo cartelera de estación · datos de la app de Trenes Argentinos (proxy no oficial).</p>
-      <div style="margin-bottom:12px;">
-        <select id="tableroVivoEstSel" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:.85rem;">
-          <option value="Once">Once</option>
-          <option value="Moreno">Moreno</option>
-        </select>
-        <span class="last-update-badge" id="tableroVivoUltAct" style="margin-left:8px;">🕐 conectando…</span>
+      <div class="tv-top">
+        <div>
+          <span class="section-label">🚉 En vivo</span>
+          <h2 class="section-title" id="formaciones-vivo-title">Tablero de próximas salidas</h2>
+          <p class="section-sub">Como el de la estación cabecera, se actualiza solo. <span class="tv-live"><i></i><span id="tableroVivoUltAct">conectando…</span></span></p>
+        </div>
+        <div class="tv-toggle" role="group" aria-label="Elegí la cabecera">
+          <button type="button" data-est="Once" aria-pressed="true">Once</button>
+          <button type="button" data-est="Moreno" aria-pressed="false">Moreno</button>
+        </div>
       </div>
-      <div class="tv-board" id="tableroVivoBoard" style="display:none;">
-        <div class="tv-head">
-          <div class="tv-est-line"><span class="tv-est-nombre" id="tableroVivoEstNombre">ONCE</span><span class="tv-est-sub">Próximas Salidas</span></div>
-          <div class="tv-hora-wrap">
-            <div class="tv-hora-label">HORA<br>ACTUAL</div>
-            <div class="tv-divisor"></div>
-            <div class="tv-hora-num" id="tableroVivoHora">--:--</div>
+      <div class="tv-wrap" id="tableroVivoWrap">
+        <div class="tv-board" id="tableroVivoBoard" role="region" aria-label="Tablero de próximas salidas" style="display:none;">
+          <div class="tv-head">
+            <div class="tv-est-line"><span class="tv-est-nombre" id="tableroVivoEstNombre">ONCE</span><span class="tv-est-sub">Próximas Salidas</span></div>
+            <div class="tv-hora-wrap">
+              <div class="tv-hora-label">HORA<br>ACTUAL</div>
+              <div class="tv-divisor"></div>
+              <div class="tv-hora-num" id="tableroVivoHora">--:--</div>
+            </div>
+          </div>
+          <div class="tv-columnas" id="tableroVivoColumnas"></div>
+          <div class="tv-banner tip" id="tableroVivoBanner">Las personas con CUD pueden viajar en tren sin costo con SUBE.</div>
+          <div class="tv-footer">
+            <div class="tv-barra"></div>
+            <div><div class="tv-chica">Trenes Argentinos</div><div class="tv-grande">Línea Sarmiento</div></div>
           </div>
         </div>
-        <div class="tv-columnas" id="tableroVivoColumnas"></div>
-        <div class="tv-banner tip" id="tableroVivoBanner">Las personas con CUD pueden viajar en tren sin costo con SUBE.</div>
-        <div class="tv-footer">
-          <div class="tv-barra"></div>
-          <div><div class="tv-chica">Trenes Argentinos</div><div class="tv-grande">Línea Sarmiento</div></div>
-        </div>
+        <p class="tv-vacio" id="tableroVivoVacio">Cargando tablero…</p>
       </div>
-      <p id="tableroVivoVacio" style="display:none;padding:40px 20px;text-align:center;color:var(--muted);font-size:.85rem;background:var(--card);border-radius:var(--radius);">Sin próximas salidas para mostrar en este momento.</p>
     </div>
   </section>
 
@@ -3812,49 +3844,84 @@ renderStations();
 });
 </script>
 <script>
-// Formaciones en vivo — estilo cartelera de estación (calcado del diseño de
-// referencia). Pide los datos al bot (trenbot.onrender.com), que es quien
-// consulta de verdad el proxy de la app de Trenes Argentinos. No es una
-// fuente oficial: es el mismo proxy comunitario que usa el bot del grupo.
+// Tablero en vivo de la cabecera (Once / Moreno). Pide los datos al bot
+// (trenbot.onrender.com), que es quien consulta el servicio. El tablero escala
+// con su propio ancho (ver CSS), así que acá solo se decide CUÁNTAS columnas
+// caben legibles: 3 en pantallas muy angostas, 4 en celular, 5 en pantallas grandes.
 (function () {
-  const BASE = "https://trenbot.onrender.com/api/tablero-cabecera";
-  const sel = document.getElementById("tableroVivoEstSel");
-  const board = document.getElementById("tableroVivoBoard");
-  const columnas = document.getElementById("tableroVivoColumnas");
-  const vacio = document.getElementById("tableroVivoVacio");
-  const banner = document.getElementById("tableroVivoBanner");
-  const ultAct = document.getElementById("tableroVivoUltAct");
-  const estNombreEl = document.getElementById("tableroVivoEstNombre");
-  const horaEl = document.getElementById("tableroVivoHora");
-  if (!sel || !board) return;
+  "use strict";
+  var BASE = "https://trenbot.onrender.com/api/tablero-cabecera";
+  var wrap = document.getElementById("tableroVivoWrap");
+  var board = document.getElementById("tableroVivoBoard");
+  if (!wrap || !board) return;
+  var columnas = document.getElementById("tableroVivoColumnas");
+  var vacio = document.getElementById("tableroVivoVacio");
+  var banner = document.getElementById("tableroVivoBanner");
+  var estadoEl = document.getElementById("tableroVivoUltAct");
+  var estNombreEl = document.getElementById("tableroVivoEstNombre");
+  var horaEl = document.getElementById("tableroVivoHora");
+  var botones = Array.prototype.slice.call(document.querySelectorAll("#formaciones-vivo .tv-toggle button"));
 
-  const TIP_DEFAULT = "Las personas con CUD pueden viajar en tren sin costo con SUBE.";
-  const hhmm = (iso) => (iso ? new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)) : "—");
+  var TIP_DEFAULT = "Las personas con CUD pueden viajar en tren sin costo con SUBE.";
+  var NOMBRES_CORTOS = { "Villa Luro": "V. Luro", "Padua": "S.A. de Padua" };
+  var estacionActual = "Once";
+  var ultimosDatos = null;
+  var pedido = 0;
+  var ultimoOk = 0;
+  var anchoPrevio = 0;
+
+  var fmt = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false });
+  function hhmm(iso) { return iso ? fmt.format(new Date(iso)) : "—"; }
+  function esc(t) {
+    return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function cuantasColumnas() {
+    var w = wrap.clientWidth || 360;
+    return w < 350 ? 3 : w < 680 ? 4 : 5;
+  }
 
   function render(data) {
-    const cols = data.columnas || [];
-    board.style.display = cols.length ? "block" : "none";
-    vacio.style.display = cols.length ? "none" : "block";
-    estNombreEl.textContent = (data.estacion || "").toUpperCase();
-    horaEl.textContent = data.horaActual || "--:--";
+    var orden = data.estaciones || [];
+    var idx = orden.indexOf(estacionActual);
+    var paradas;
+    if (idx === 0) paradas = orden.slice(1);                              // Once: hacia Moreno
+    else if (idx === orden.length - 1) paradas = orden.slice(0, -1).reverse(); // Moreno: hacia Once
+    else paradas = idx > 0 ? orden.slice(idx + 1) : orden;
 
-    columnas.innerHTML = cols
-      .map((c) => {
-        const estadoClase = c.cancelado ? "cancelado" : /en\s*and[eé]n|confirmado|parti[oó]/i.test(c.estado || "") ? "confirmado" : "programado";
-        const estadoTxt = c.cancelado ? "Cancelado" : c.estado || "Programado";
-        const paradas = (data.estaciones || []).map((e) => "<li>" + e + "</li>").join("");
-        return '<div class="tv-col">' +
-          '<div class="tv-col-head"><div><div class="tv-lbl">Andén</div><div class="tv-val">' + (c.anden || "–") + '</div></div>' +
-          '<div><div class="tv-lbl">Hora salida</div><div class="tv-val">' + (c.horaSalida || "--:--") + '</div></div></div>' +
-          '<div class="tv-destino">' + (c.destino || "?").toUpperCase() + '</div>' +
-          (c.origenInusual ? '<div class="tv-origen-inusual">⚠ Sale de ' + c.origen + '</div>' : "") +
-          '<div class="tv-estado ' + estadoClase + '">' + estadoTxt + '</div>' +
-          '<ul class="tv-paradas">' + paradas + '</ul>' +
-          '</div>';
-      })
-      .join("");
+    estNombreEl.textContent = (data.estacion || estacionActual).toUpperCase();
 
-    const motivos = cols.filter((c) => c.cancelado && c.motivoCancelacion).map((c) => c.motivoCancelacion);
+    var n = cuantasColumnas();
+    var cols = (data.columnas || []).slice(0, n);
+    if (!cols.length) {
+      board.style.display = "none";
+      vacio.textContent = "No hay próximas salidas para mostrar en este momento.";
+      vacio.style.display = "block";
+      return;
+    }
+    board.style.display = "block";
+    vacio.style.display = "none";
+    columnas.style.gridTemplateColumns = "repeat(" + n + ", minmax(0, 1fr))";
+
+    var lista = paradas.map(function (e) { return "<li>" + esc(NOMBRES_CORTOS[e] || e) + "</li>"; }).join("");
+    columnas.innerHTML = cols.map(function (c) {
+      var clase = c.cancelado ? "cancelado" : /en\s*and[eé]n|confirmado|parti[oó]/i.test(c.estado || "") ? "confirmado" : "programado";
+      var estadoTxt = c.cancelado ? "Cancelado" : c.estado || "Programado";
+      return '<div class="tv-col">' +
+        '<div class="tv-col-head">' +
+          '<div class="tv-cell anden"><div class="tv-lbl">Andén</div><div class="tv-val">' + esc(c.anden || "–") + '</div></div>' +
+          '<div class="tv-cell hora"><div class="tv-lbl">Hora salida</div><div class="tv-val">' + esc(c.horaSalida || "--:--") + '</div></div>' +
+        '</div>' +
+        '<div class="tv-destino">' + esc((c.destino || "?").toUpperCase()) + '</div>' +
+        (c.origenInusual ? '<div class="tv-origen-inusual">⚠ Sale de ' + esc(c.origen) + '</div>' : "") +
+        '<div class="tv-estado ' + clase + '">' + esc(estadoTxt) + '</div>' +
+        '<ul class="tv-paradas">' + lista + '</ul>' +
+        '</div>';
+    }).join("");
+
+    var motivos = cols.filter(function (c) { return c.cancelado && c.motivoCancelacion; }).map(function (c) { return c.motivoCancelacion; });
     if (motivos.length) {
       banner.className = "tv-banner alerta";
       banner.textContent = "⚠️ " + motivos.join(" · ");
@@ -3864,23 +3931,56 @@ renderStations();
     }
   }
 
-  let ultimoOk = 0;
-  async function actualizar() {
-    try {
-      const qs = new URLSearchParams({ estacion: sel.value });
-      const res = await fetch(BASE + "?" + qs.toString(), { cache: "no-store" });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      render(data);
-      ultimoOk = Date.now();
-      ultAct.textContent = "🕐 Actualizado: " + hhmm(data.consultadoEn);
-    } catch (err) {
-      const seg = ultimoOk ? Math.round((Date.now() - ultimoOk) / 1000) : null;
-      ultAct.textContent = seg ? "🕐 Sin conexión hace " + seg + "s" : "🕐 No se pudo conectar";
-    }
+  function tickHora() { horaEl.textContent = fmt.format(new Date()); }
+
+  function actualizar() {
+    if (document.hidden) return Promise.resolve();
+    var mio = ++pedido;
+    return fetch(BASE + "?estacion=" + encodeURIComponent(estacionActual), { cache: "no-store" })
+      .then(function (res) { if (!res.ok) throw new Error("HTTP " + res.status); return res.json(); })
+      .then(function (data) {
+        if (mio !== pedido) return; // ya se pidió otra cosa después (cambio de cabecera)
+        ultimosDatos = data;
+        ultimoOk = Date.now();
+        render(data);
+        estadoEl.textContent = "actualizado " + hhmm(data.consultadoEn);
+      })
+      .catch(function () {
+        if (mio !== pedido) return;
+        var seg = ultimoOk ? Math.round((Date.now() - ultimoOk) / 1000) : null;
+        estadoEl.textContent = seg ? "sin conexión hace " + seg + "s" : "no se pudo conectar";
+        if (!ultimosDatos) {
+          vacio.textContent = "No pudimos cargar el tablero ahora. Reintentamos solos en unos segundos.";
+          vacio.style.display = "block";
+        }
+      });
   }
 
-  sel.addEventListener("change", actualizar);
+  botones.forEach(function (b) {
+    b.addEventListener("click", function () {
+      var est = b.getAttribute("data-est");
+      if (est === estacionActual) return;
+      estacionActual = est;
+      botones.forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+      ultimosDatos = null;
+      board.style.display = "none";
+      vacio.textContent = "Cargando tablero de " + est + "…";
+      vacio.style.display = "block";
+      actualizar();
+    });
+  });
+
+  // Si cambia el ancho (girar el celular, redimensionar), se vuelve a dibujar con la cantidad de columnas que corresponda.
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () {
+      var w = wrap.clientWidth;
+      if (w !== anchoPrevio) { anchoPrevio = w; if (ultimosDatos) render(ultimosDatos); }
+    }).observe(wrap);
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) { tickHora(); actualizar(); } });
+
+  tickHora();
+  setInterval(tickHora, 5000);
   actualizar();
   setInterval(actualizar, 20000);
 })();
