@@ -1972,8 +1972,8 @@ console.log('[Firebase] Listener de estado inicializado');
     <button type="button" class="nav-toggle" id="navToggle" aria-label="Abrir menú de navegación" aria-expanded="false" aria-controls="navLinks">☰</button>
     <ul class="nav-links" id="navLinks" role="list">
       <li><a href="#proximo">🔍 Próximo tren</a></li>
-      <li><a href="#estado">📡 Estado</a></li>
       <li><a href="#formaciones-vivo">🚉 Tablero</a></li>
+      <li><a href="#estado">📡 Estado</a></li>
       <li><a href="#horarios">🕐 Horarios</a></li>
       <li><a href="#diferencial">⭐ Diferencial</a></li>
       <li><a href="#tarifas">💳 Tarifas</a></li>
@@ -2427,51 +2427,12 @@ console.log('[Firebase] Listener de estado inicializado');
     </button>
   </div>
 
-  <!-- ESTADO HOY -->
-  <section class="section section-white" id="estado" aria-labelledby="estado-title">
-    <div class="container">
-      <span class="section-label" id="estadoLabel">📡 Hoy</span>
-      <h2 class="section-title" id="estado-title">Estado del servicio</h2>
-      <p class="section-sub">Novedades vigentes y alertas. <span class="last-update-badge" id="lastUpdateSection" style="vertical-align:middle;">🕐 Verificado: —</span></p>
-      <div class="row">
-        <div class="col-half">
-          <div class="today-card">
-            <div class="today-header">🔔 Alertas vigentes hoy</div>
-            <div class="today-body">
-              <div class="today-status" id="estadoGeneral">Estado general: <span class="badge-alerta" id="estadoBadge">⚠️ Con modificaciones</span></div>
-              <p style="font-size:.88rem;color:var(--muted);margin-bottom:12px;">Novedades de la comunidad del Tren Sarmiento En Línea:</p>
-              <div class="today-alerts" role="list" id="alertasList"></div>
-              <!-- Historial de estado últimos 7 días -->
-              <div id="historialEstadoWrap" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;display:none;">
-                <div style="font-size:.75rem;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Últimos 7 días</div>
-                <div id="historialEstadoList" style="display:flex;flex-direction:column;gap:6px;"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="col-half">
-          <div class="today-card" id="noticias">
-            <div class="today-header" style="display:flex;align-items:center;justify-content:space-between;">
-              <span>📰 Últimas noticias</span>
-              <button class="noticias-ver-todas" id="noticiasVerTodas" style="font-size:.72rem;padding:4px 12px;">Ver todas →</button>
-            </div>
-            <div class="today-body">
-              <div class="noticias-grid" id="noticiasGrid">
-                <p style="font-size:.85rem;color:var(--muted);">Cargando noticias…</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- FORMACIONES EN VIVO (prueba) -->
+  <!-- TABLERO DE PRÓXIMAS SALIDAS (debajo del semáforo, antes del estado) -->
   <style>
     /* Tablero en vivo: todo el tablero escala con su propio ancho (unidades cqw),
        como si fuera la pantalla de la cabecera. Cada declaración lleva primero un
        valor en px de respaldo por si el navegador no soporta container queries. */
-    #formaciones-vivo { background: linear-gradient(180deg, var(--navy) 0%, #003a7d 100%); }
+    #formaciones-vivo { background: linear-gradient(180deg, var(--navy) 0%, #003a7d 100%); border-top: 1px solid rgba(255,255,255,.12); }
     #formaciones-vivo .tv-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 20px; margin-bottom: 20px; }
     #formaciones-vivo .tv-top .section-sub { margin-bottom: 0; }
     #formaciones-vivo .tv-live { display: inline-flex; align-items: center; gap: 7px; margin-left: 4px; color: #cfe9fb; font-weight: 600; font-size: .8rem; }
@@ -2564,6 +2525,45 @@ console.log('[Firebase] Listener de estado inicializado');
     </div>
   </section>
 
+  <!-- ESTADO HOY -->
+  <section class="section section-white" id="estado" aria-labelledby="estado-title">
+    <div class="container">
+      <span class="section-label" id="estadoLabel">📡 Hoy</span>
+      <h2 class="section-title" id="estado-title">Estado del servicio</h2>
+      <p class="section-sub">Novedades vigentes y alertas. <span class="last-update-badge" id="lastUpdateSection" style="vertical-align:middle;">🕐 Verificado: —</span></p>
+      <div class="row">
+        <div class="col-half">
+          <div class="today-card">
+            <div class="today-header">🔔 Alertas vigentes hoy</div>
+            <div class="today-body">
+              <div class="today-status" id="estadoGeneral">Estado general: <span class="badge-alerta" id="estadoBadge">⚠️ Con modificaciones</span></div>
+              <p style="font-size:.88rem;color:var(--muted);margin-bottom:12px;">Novedades de la comunidad del Tren Sarmiento En Línea:</p>
+              <div class="today-alerts" role="list" id="alertasList"></div>
+              <!-- Historial de estado últimos 7 días -->
+              <div id="historialEstadoWrap" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;display:none;">
+                <div style="font-size:.75rem;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Últimos 7 días</div>
+                <div id="historialEstadoList" style="display:flex;flex-direction:column;gap:6px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-half">
+          <div class="today-card" id="noticias">
+            <div class="today-header" style="display:flex;align-items:center;justify-content:space-between;">
+              <span>📰 Últimas noticias</span>
+              <button class="noticias-ver-todas" id="noticiasVerTodas" style="font-size:.72rem;padding:4px 12px;">Ver todas →</button>
+            </div>
+            <div class="today-body">
+              <div class="noticias-grid" id="noticiasGrid">
+                <p style="font-size:.85rem;color:var(--muted);">Cargando noticias…</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <style>
     #mapa-vivo .mv-aviso { margin: 0 0 14px; padding: 10px 14px; background: var(--yellow-bg); color: var(--yellow); border-radius: 10px; font-size: .78rem; }
     #mapa-vivo .mv-leyenda { display: flex; gap: 16px; flex-wrap: wrap; font-size: .78rem; color: var(--muted); margin-bottom: 10px; }
@@ -2582,7 +2582,7 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-tren .mv-tip { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 5px 9px; border-radius: 8px; font-size: .68rem; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
     #mapa-vivo .mv-tren:hover .mv-tip { display: block; }
   </style>
-  <section class="section section-white" id="mapa-vivo" aria-labelledby="mapa-vivo-title">
+  <section class="section section-cel" id="mapa-vivo" aria-labelledby="mapa-vivo-title">
     <div class="container">
       <span class="section-label">🗺️ En vivo</span>
       <h2 class="section-title" id="mapa-vivo-title">Mapa esquemático del ramal</h2>
