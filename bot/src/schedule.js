@@ -883,3 +883,81 @@ export function proximosLocalesTodasEstaciones(ahora = new Date()) {
   }
   return resultado;
 }
+
+// ─── Cruce con el cronograma (locales) ───────────────────────────────────────
+// Busca en el cronograma el servicio que corresponde a un tren visto en el proxy
+// de la app. Prioriza el número de tren (si el proxy usa la misma numeración);
+// si no, cruza por sentido + estación + hora programada (±tolerancia minutos).
+// Devuelve null si no hay coincidencia (el tren NO figura en el cronograma).
+//   { n, dia, sentido, origenId, origenNombre, horaOrigen, esLocal, porNumero, difMin }
+export function buscarEnCronograma({ numero, sentido = null, estacionNombre, prog, tolerancia = 2 }) {
+  const est = estacionNombre ? buscarEstacion(estacionNombre) : null;
+  const fechaProg = prog ? new Date(prog) : null;
+  if (fechaProg && Number.isNaN(fechaProg.getTime())) return null; // fecha ilegible: no arriesgar un cruce falso
+  const fecha = fechaProg ?? new Date();
+  const { hour, minute } = horaArgentina(fecha);
+  const progMin = fechaProg ? toMins(hour, minute) : null;
+  const sentidos = sentido ? [sentido] : ["m", "o"];
+
+  // Para trenes pasada la medianoche el cronograma usa minutos > 1440 y el día de ayer.
+  const dias = [
+    { dia: getDayType(fecha), min: progMin },
+    { dia: getPrevDayType(fecha), min: progMin + 1440 },
+  ];
+
+  const armar = (tr, dia, dir, difMin, porNumero) => ({
+    n: tr.n,
+    dia,
+    sentido: dir,
+    origenId: tr.first,
+    origenNombre: STATIONS[tr.first].name,
+    horaOrigen: minAHora(tr.t[tr.first]),
+    esLocal: tr.first !== (dir === "m" ? 0 : 15),
+    porNumero,
+    difMin,
+  });
+
+  // 1) Por número de tren
+  if (numero != null) {
+    for (const { dia, min } of dias) {
+      for (const dir of ["m", "o"]) {
+        const tr = TRENES[dia][dir].find((x) => String(x.n) === String(numero));
+        if (!tr) continue;
+        const tEst = est ? tr.t[est.id] : null;
+        return armar(tr, dia, dir, tEst != null && progMin != null ? min - tEst : null, true);
+      }
+    }
+  }
+
+  // 2) Por sentido + estación + hora
+  if (est && progMin != null) {
+    let mejor = null;
+    for (const { dia, min } of dias) {
+      for (const dir of sentidos) {
+        for (const tr of TRENES[dia][dir]) {
+          const tEst = tr.t[est.id];
+          if (tEst == null) continue;
+          const dif = min - tEst;
+          if (Math.abs(dif) <= tolerancia && (!mejor || Math.abs(dif) < Math.abs(mejor.difMin))) {
+            mejor = armar(tr, dia, dir, dif, false);
+          }
+        }
+      }
+    }
+    if (mejor) return mejor;
+  }
+  return null;
+}
+
+// Todos los locales del cronograma de un tipo de día, con número, para cotejar.
+export function localesConNumero(dia) {
+  const out = [];
+  for (const dir of ["m", "o"]) {
+    const terminal = dir === "m" ? 0 : 15;
+    for (const tr of TRENES[dia][dir]) {
+      if (tr.first === terminal) continue;
+      out.push({ n: tr.n, estacion: STATIONS[tr.first].name, estacionId: tr.first, hora: minAHora(tr.t[tr.first]), direccion: dir === "m" ? "moreno" : "once" });
+    }
+  }
+  return out.sort((a, b) => a.hora.localeCompare(b.hora));
+}

@@ -21,12 +21,26 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora } from "./appTrenes.js";
+import { clasificarServicio, textoClasificacionPrivada } from "./locales.js";
 
 const COLECCION = "cancelacionesProxyVistas";
 const COLECCION_DEMORAS = "demorasProxyAvisadas";
 const UMBRAL_DEMORA_MIN = 10; // mismo umbral que "anormal" en el resto del bot
 const COLECCION_ORIGEN = "origenesInusualesVistos";
+const COLECCION_LOCALES = "localesFueraCronogramaVistos";
 const RETENCION_DIAS = 3;
+
+// Publicar en el grupo que un tren cancelado/demorado es un LOCAL: apagado por
+// defecto (a pedido, primero se prueba la detección con aviso solo privado).
+// Se activa con LOCALES_AVISO_GRUPO=true.
+export function avisoGrupoLocalesActivo() {
+  return String(process.env.LOCALES_AVISO_GRUPO ?? "false").trim().toLowerCase() === "true";
+}
+function etiquetaGrupoLocal(item) {
+  if (!avisoGrupoLocalesActivo()) return "";
+  const c = clasificarServicio(item);
+  return c.esLocal ? ` 🚉 Es un local (sale de ${c.origen}).` : "";
+}
 
 let db = null;
 function ensureInit() {
@@ -105,7 +119,9 @@ async function limpiarVistasViejas() {
 
 function lineaCancelacion(item) {
   const { est, s, prog, destino } = datosServicio(item);
-  return `• #${s.numero ?? "?"} ${est.nombre} → ${destino} · prog ${hora(prog)}\n   ❌ ${textoCancelacion(s.cancelacion)}`;
+  const base = `• #${s.numero ?? "?"} ${est.nombre} → ${destino} · prog ${hora(prog)}\n   ❌ ${textoCancelacion(s.cancelacion)}`;
+  const extra = textoClasificacionPrivada(clasificarServicio(item));
+  return extra ? `${base}\n${extra}` : base;
 }
 
 // Para el cron: detecta cancelaciones nuevas y arma el texto para avisar al
@@ -207,13 +223,15 @@ export async function chequearDemorasProxy() {
     nuevos
       .map((item) => {
         const d = datosServicio(item);
-        return `• #${d.s.numero ?? "?"} → ${d.destino} | ${d.est.nombre}: prog ${hora(d.prog)} / est ${hora(d.estim)} (+${d.demora} min)`;
+        const base = `• #${d.s.numero ?? "?"} → ${d.destino} | ${d.est.nombre}: prog ${hora(d.prog)} / est ${hora(d.estim)} (+${d.demora} min)`;
+        const extra = textoClasificacionPrivada(clasificarServicio(item));
+        return extra ? `${base}\n${extra}` : base;
       })
       .join("\n") +
     `\n\n(Detectado por el proxy no oficial. Se publicó en el grupo.)`;
   const textosGrupo = nuevos.map((item) => {
     const d = datosServicio(item);
-    return `⏰ El tren con destino ${d.destino}, programado para las ${hora(d.prog)} (${d.est.nombre}), sale demorado (~${d.demora} min, estimado ${hora(d.estim)}).`;
+    return `⏰ El tren con destino ${d.destino}, programado para las ${hora(d.prog)} (${d.est.nombre}), sale demorado (~${d.demora} min, estimado ${hora(d.estim)}).${etiquetaGrupoLocal(item)}`;
   });
   return { nuevos, texto, textosGrupo };
 }
@@ -245,9 +263,58 @@ export async function chequearCancelacionesProxy() {
     `\n\n(Detectado por el proxy no oficial. Se publicó en el grupo.)`;
   const textosGrupo = nuevas.map((item) => {
     const d = datosServicio(item);
-    return `🚨 Se canceló el tren con destino ${d.destino}, programado para las ${hora(d.prog)} (${d.est.nombre}). ${textoCancelacion(d.s.cancelacion)}.`;
+    return `🚨 Se canceló el tren con destino ${d.destino}, programado para las ${hora(d.prog)} (${d.est.nombre}). ${textoCancelacion(d.s.cancelacion)}.${etiquetaGrupoLocal(item)}`;
   });
   return { nuevas, texto, textosGrupo };
+}
+
+// Locales confirmados por el proxy que están FUERA DE CRONOGRAMA (no figuran en
+// el cronograma, salen de otra estación o con otro horario). Aviso solo privado.
+// Una vez por tren/origen/día.
+export async function chequearLocalesFueraCronograma() {
+  if (!monitorProxyActivo()) return { nuevos: [], texto: null, desactivado: true };
+  let barrido;
+  try {
+    barrido = await barridoEstructurado(); // comparte caché con el resto de los chequeos
+  } catch (err) {
+    console.error("Error consultando el proxy para locales fuera de cronograma:", err.message);
+    return { nuevos: [], texto: null, error: err.message };
+  }
+
+  const nuevos = [];
+  for (const item of barrido.todos) {
+    const c = clasificarServicio(item);
+    if (!c.fueraDeCronograma) continue;
+    const d = datosServicio(item);
+    const dia = d.prog ? new Date(d.prog).toISOString().slice(0, 10) : "s-fecha";
+    const clave = `${c.numero ?? "s-num"}-${String(c.origen).replace(/[^a-zA-Z0-9]/g, "")}-${dia}`;
+    if (vistosEnMemoria.has(`local:${clave}`)) continue;
+    const firestore = ensureInit();
+    let visto = false;
+    if (firestore) {
+      try {
+        visto = (await firestore.collection(COLECCION_LOCALES).doc(clave).get()).exists;
+      } catch (err) {
+        console.error("Error chequeando local fuera de cronograma visto:", err.message);
+      }
+    }
+    vistosEnMemoria.add(`local:${clave}`);
+    if (visto) continue;
+    if (firestore) firestore.collection(COLECCION_LOCALES).doc(clave).set({ timestamp: FieldValue.serverTimestamp() }).catch((err) => console.error("Error guardando local fuera de cronograma:", err.message));
+    nuevos.push({ item, c });
+  }
+  if (!nuevos.length) return { nuevos: [], texto: null };
+
+  const texto =
+    `🚉⚠️ ${nuevos.length} local(es) confirmado(s) por el proxy fuera de cronograma:\n\n` +
+    nuevos
+      .map(({ item, c }) => {
+        const d = datosServicio(item);
+        return `• #${c.numero ?? "?"} ${c.etiqueta} · prog ${hora(d.prog)} (${d.est.nombre})\n   ${c.motivos.join("; ")}`;
+      })
+      .join("\n") +
+    `\n\n(Aviso solo privado. Cotejo contra el cronograma base del 9/3/2026; en feriados puede dar falsos positivos.)`;
+  return { nuevos: nuevos.map((n) => n.item), texto };
 }
 
 // Para el contexto del bot al responder preguntas: cancelaciones y leyendas

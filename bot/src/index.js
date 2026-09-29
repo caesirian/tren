@@ -34,7 +34,8 @@ import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
-import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, contextoProxyParaBot } from "./proxyMonitor.js";
+import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, contextoProxyParaBot } from "./proxyMonitor.js";
+import { reporteLocales } from "./locales.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
@@ -702,6 +703,18 @@ bot.command("tablerogrupo", async (ctx) => {
       await ctx.reply("No pude publicar el tablero: " + motivo).catch(() => {});
     }
 
+  }
+});
+
+bot.command("locales", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  try {
+    const texto = await reporteLocales();
+    for (let i = 0; i < texto.length; i += 3900) {
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, texto.slice(i, i + 3900)).catch((err) => console.error("Error en /locales:", err.message));
+    }
+  } catch (err) {
+    await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, `No pude armar /locales: ${err.message}`).catch(() => {});
   }
 });
 
@@ -2145,6 +2158,16 @@ async function chequeoPeriodicoProxy(origen) {
     }
   } catch (err) {
     console.error(`Error chequeando orígenes inusuales (${origen}):`, err.message);
+  }
+
+  try {
+    const localesProxy = await chequearLocalesFueraCronograma();
+    if (!localesProxy.desactivado) console.log(`Chequeo proxy (${origen}): ${localesProxy.nuevos?.length ?? 0} local(es) fuera de cronograma nuevo(s)`);
+    if (localesProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, localesProxy.texto).catch((err) => console.error("Error avisando locales fuera de cronograma:", err.message));
+    }
+  } catch (err) {
+    console.error(`Error chequeando locales fuera de cronograma (${origen}):`, err.message);
   }
 
   if (escaneoCompletoActivo() && process.env.ADMIN_TELEGRAM_ID) {
