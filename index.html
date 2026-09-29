@@ -669,7 +669,7 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   .nav-status-label { display: none; }
   .nav-status { padding: 6px 8px; flex-shrink: 0; }
   .nav-bell { padding: 6px 8px; flex-shrink: 0; }
-  .nav-bell-label { font-size: .68rem; }
+  .nav-bell-label { font-size: 1.05rem; }
 }
 @media(max-width:400px){
   .nav-brand-name { max-width: 90px; font-size: .82rem; }
@@ -1874,7 +1874,7 @@ console.log('[Firebase] Listener de estado inicializado');
 <a class="skip-link" href="#main-content">Ir al contenido principal</a>
 
 <!-- BANNER PUBLICITARIO TOP -->
-<div class="ad-container ad-top" style="margin: 0; border-radius: 0; border-left: none; border-right: none; border-top: none;">
+<div class="ad-container ad-top" style="margin: 0 auto; border-radius: 0; border-left: none; border-right: none; border-top: none;">
   <span class="ad-label">Publicidad</span>
   <div class="ad-placeholder">
     <div class="ad-placeholder-icon">📢</div>
@@ -1898,7 +1898,7 @@ console.log('[Firebase] Listener de estado inicializado');
       <span class="nav-status-label" id="navStatusLabel">Normal</span>
     </a>
     <button type="button" class="nav-bell" id="navBell" aria-label="Activar alertas push" title="Alertas push" style="display:none">
-      <span class="nav-bell-label" id="navBellLabel">🔔 alertas desactivadas</span>
+      <span class="nav-bell-label" id="navBellLabel">🔔</span>
     </button>
     <button type="button" class="nav-toggle" id="navToggle" aria-label="Abrir menú de navegación" aria-expanded="false" aria-controls="navLinks">☰</button>
     <ul class="nav-links" id="navLinks" role="list">
@@ -3969,12 +3969,12 @@ const ONE_SIGNAL_CONFIGURED = typeof OneSignalDeferred !== 'undefined' &&
     navBell.style.display = '';  // mostrar siempre una vez que OneSignal cargó
     if (subscribed) {
       navBell.classList.add('subscribed');
-      bellLabel.textContent = '🔔 alertas activadas';
+      bellLabel.textContent = '🔔';
       navBell.setAttribute('aria-label', 'Alertas activadas — tocá para desactivar');
       navBell.setAttribute('title', 'Alertas activadas');
     } else {
       navBell.classList.remove('subscribed');
-      bellLabel.textContent = '🔔 alertas desactivadas';
+      bellLabel.textContent = '🔔';
       navBell.setAttribute('aria-label', 'Alertas desactivadas — tocá para activar');
       navBell.setAttribute('title', 'Activar alertas');
     }
