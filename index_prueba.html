@@ -664,15 +664,15 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   .nav-brand-sub { display: none; }
   .nav-brand-name { font-size: .92rem; }
   .nav-inner { padding: 0 12px; gap: 6px; }
-  .nav-brand { min-width: 0; flex-shrink: 1; overflow: hidden; }
-  .nav-brand-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 140px; }
+  .nav-brand { min-width: 0; flex: 1 1 auto; overflow: visible; gap: 8px; }
+  .nav-brand-name { white-space: normal; overflow: visible; display: block; max-width: none; line-height: 1.1; }
   .nav-status-label { display: none; }
   .nav-status { padding: 6px 8px; flex-shrink: 0; }
   .nav-bell { padding: 6px 8px; flex-shrink: 0; }
   .nav-bell-label { font-size: 1.05rem; }
 }
 @media(max-width:400px){
-  .nav-brand-name { max-width: 90px; font-size: .82rem; }
+  .nav-brand-name { max-width: none; font-size: .8rem; }
   .nav-logo-box { width: 36px; height: 36px; }
   .nav-logo-box img { width: 36px; height: 36px; }
 }
