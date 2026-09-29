@@ -40,7 +40,7 @@ export function avisoGrupoLocalesActivo() {
 function etiquetaGrupoLocal(item) {
   if (!avisoGrupoLocalesActivo()) return "";
   const c = clasificarServicio(item);
-  return c.esLocal ? ` 🚉 Es un local (sale de ${c.origen}).` : "";
+  return c.esLocal ? ` 🚉 Es un local (sale de ${c.origen}${c.destino && c.destino !== "?" ? ` hacia ${c.destino}` : ""}).` : "";
 }
 
 let db = null;

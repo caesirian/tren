@@ -164,14 +164,15 @@ export async function reporteLocales() {
 
 // Textos CORTOS para el grupo (una línea).
 export function textoGrupoLocal(c) {
+  const hacia = c.destino && c.destino !== "?" ? ` hacia ${c.destino}` : "";
   if (c.sinProgramar) {
-    if (c.horaSalida) return `🚉 Se anunció la salida de una formación vacía desde ${c.origen} a las ${c.horaSalida} (no figura como local programado).`;
+    if (c.horaSalida) return `🚉 Se anunció la salida de una formación vacía desde ${c.origen}${hacia} a las ${c.horaSalida} (no figura como local programado).`;
     const vista = c.estacionVista?.hora ? `pasa por ${c.estacionVista.nombre} a las ${c.estacionVista.hora}; ` : "";
-    return `🚉 Se anunció la salida de una formación vacía desde ${c.origen} (${vista}no figura como local programado).`;
+    return `🚉 Se anunció la salida de una formación vacía desde ${c.origen}${hacia} (${vista}no figura como local programado).`;
   }
   if (c.reprogramado) {
     const nueva = c.horaSalida ?? c.estacionVista?.hora;
-    return `⏰ El local de las ${c.horaOriginal} desde ${c.origen} hacia ${c.destino} se reprogramó y sale a las ${nueva}, por única vez.`;
+    return `⏰ El local de las ${c.horaOriginal} desde ${c.origen}${hacia} se reprogramó y sale a las ${nueva}, por única vez.`;
   }
   return null;
 }
