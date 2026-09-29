@@ -26,7 +26,7 @@ import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementari
 import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
-import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, getDayType, infoTransporteEstacion, buscarEstacion } from "./schedule.js";
+import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, horariosLocalesEstacionTodosLosDias, LOCALES, getDayType, infoTransporteEstacion, buscarEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
@@ -149,17 +149,27 @@ const PALABRAS_TEMA = [
   "cancelaron", "suspendido", "suspendida",
 ];
 
-// Palabras/signos que indican que es una pregunta.
-const PISTAS_PREGUNTA = [
-  "?", "¿", "cuándo", "cuando", "cuánto", "cuanto", "dónde", "donde", "cómo",
-  "como", "hay", "sabe", "alguien sabe", "a qué hora", "a que hora",
-  "qué hora", "que hora",
-];
+// Palabras/signos que indican que es una pregunta. Las "fuertes" alcanzan solas;
+// las "débiles" (cómo, hay, cuando…) se buscan como PALABRA completa, porque
+// como texto suelto matchean en frases que no son preguntas ("viajé bien, como
+// siempre") y el bot terminaba contestando comentarios.
+const PISTAS_PREGUNTA_FUERTES = ["?", "¿", "alguien sabe", "a qué hora", "a que hora", "qué hora", "que hora"];
+const RE_PISTAS_PREGUNTA_DEBILES = /(^|[^a-záéíóúñ])(cu[aá]ndo|cu[aá]nto|d[oó]nde|c[oó]mo|hay|sabe)([^a-záéíóúñ]|$)/i;
+
+// Comentario al aire de que el viaje/servicio anduvo bien ("viajé bien",
+// "llegué bien", "todo normal", "sin demoras"). NO es una consulta: el bot no
+// responde nada (a pedido de Coco, 29/9). Solo aplica si no hay signo de pregunta.
+const RE_COMENTARIO_POSITIVO =
+  /(viaj[eéó]|llegu[eé]|lleg[oó]|anduvo|funcion[oó]|pas[eé]|sali[oó]|fue|iba|va|est[aá]|todo|vengo|vine)[^?¿\n]{0,40}(\bbien\b|normal|tranquil|sin (problemas|demoras|novedades|inconvenientes)|perfecto|puntual|r[aá]pido)|\bsin (problemas|demoras|novedades|inconvenientes)\b/i;
+function esComentarioPositivo(text) {
+  return !/[?¿]/.test(text) && RE_COMENTARIO_POSITIVO.test(text);
+}
 
 function pareceConsultaRelevante(text) {
   const lower = text.toLowerCase();
+  if (esComentarioPositivo(lower)) return false; // comentario de que viajó bien: no se responde
   const tieneTema = PALABRAS_TEMA.some((p) => lower.includes(p));
-  const tienePregunta = PISTAS_PREGUNTA.some((p) => lower.includes(p));
+  const tienePregunta = PISTAS_PREGUNTA_FUERTES.some((p) => lower.includes(p)) || RE_PISTAS_PREGUNTA_DEBILES.test(lower);
   return tieneTema && tienePregunta;
 }
 
@@ -325,15 +335,25 @@ Próximos trenes hacia Once desde ${estacion.name}: ${proximos.haciaOnce.map((t)
 Último tren de hoy saliendo de Moreno: ${ultimos.desdeMoreno.ultimo} (penúltimo: ${ultimos.desdeMoreno.penultimo})
 Estos horarios están calculados en el momento con el cronograma base oficial vigente y son la fuente más precisa disponible — no derives a la app si esta sección ya responde la pregunta.`);
 
+      // Siempre se da el cronograma COMPLETO de locales de la estación (todos los
+      // horarios del día, hayan pasado o no); los próximos se marcan aparte.
       const locales = proximosLocales(estacion.name, ahora);
       const todosLosHorarios = horariosLocalesEstacion(estacion.name, ahora);
+      const porDia = horariosLocalesEstacionTodosLosDias(estacion.name);
+      const nombreDia = { lv: "lunes a viernes", sab: "sábados", dom: "domingos y feriados" };
+      const diaHoy = getDayType(ahora);
+      const fmt = (arr) => arr.map((l) => `${l.hora} ${l.direccion}`).join(", ");
       let bloqueLocales;
-      if (!todosLosHorarios.length) {
-        bloqueLocales = `Esta estación NO tiene servicios "locales" designados hoy (en días hábiles hay locales en Flores, Liniers, Merlo y Castelar; sábados y domingos solo en Castelar, de madrugada). Puede tomar cualquier tren regular con los horarios de arriba.`;
-      } else if (!locales.length) {
-        bloqueLocales = `Ya pasaron todos los locales programados de HOY en esta estación (eran a las ${todosLosHorarios.map((l) => `${l.hora} ${l.direccion}`).join(", ")}) — no es que el servicio dejó de funcionar, simplemente ya no quedan más locales por salir hoy. Puede tomar cualquier tren regular con los horarios de arriba, o volver a preguntar mañana por los mismos horarios.`;
+      if (!Object.values(porDia).some((a) => a.length)) {
+        bloqueLocales = `Esta estación NO tiene servicios "locales" designados en ningún día (los locales salen de Flores, Liniers, Merlo y Castelar). Puede tomar cualquier tren regular con los horarios de arriba.`;
       } else {
-        bloqueLocales = locales.map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ");
+        const otros = Object.keys(porDia).filter((d) => d !== diaHoy && porDia[d].length).map((d) => `${nombreDia[d]}: ${fmt(porDia[d])}`);
+        const proxTxt = locales.length ? `Los que todavía no salieron hoy: ${locales.map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ")}.` : `Hoy ya salieron todos.`;
+        bloqueLocales =
+          `CRONOGRAMA COMPLETO de locales de ${estacion.name} para HOY (${nombreDia[diaHoy]}): ${todosLosHorarios.length ? fmt(todosLosHorarios) : "hoy no tiene locales en esta estación"}.\n` +
+          `${proxTxt}\n` +
+          (otros.length ? `Otros días — ${otros.join(" | ")}.\n` : "") +
+          `Al responder, dá SIEMPRE el cronograma completo de hoy (todos los horarios, aunque ya hayan pasado); no lo recortes a los próximos.`;
       }
       partes.push(`
 == "LOCALES" (formaciones que arrancan VACÍAS) EN "${estacion.name}" ==
@@ -343,17 +363,16 @@ ${bloqueLocales}`);
   } else if (/\blocal(es)?\b/i.test(pregunta)) {
     // Preguntan por "locales" sin decir de qué estación — les paso el listado completo de hoy.
     const ahora = new Date();
-    const todos = proximosLocalesTodasEstaciones(ahora);
-    const estaciones = Object.keys(todos);
+    const diaHoy = getDayType(ahora);
+    const nombreDia = { lv: "lunes a viernes", sab: "sábados", dom: "domingos y feriados" }[diaHoy];
+    const porEstacion = {};
+    for (const l of LOCALES[diaHoy]) (porEstacion[l.estacion] ||= []).push(`${l.hora} ${l.direccion === "moreno" ? "hacia Moreno" : "hacia Once"}`);
+    const estaciones = Object.keys(porEstacion);
     partes.push(`
-== TODOS LOS "LOCALES" DE HOY (calculado ahora, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==
+== CRONOGRAMA COMPLETO DE "LOCALES" DE HOY (${nombreDia}; hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==
 IMPORTANTE: un "local" es una formación que arranca VACÍA en esa estación puntual (no cualquier tren de paso). En días hábiles hay locales en Flores, Liniers, Merlo y Castelar; sábados y domingos solo en Castelar, de madrugada.
-${
-  estaciones.length
-    ? estaciones.map((est) => `${est}: ${todos[est].map((l) => `${l.hora} ${l.direccion} (en ${l.enMinutos} min)`).join(", ")}`).join("\n")
-    : "No quedan más locales programados por hoy."
-}
-Esta es la lista completa y precisa — no derives a la app, esto ya responde la pregunta.`);
+${estaciones.length ? estaciones.map((est) => `${est}: ${porEstacion[est].join(", ")}`).join("\n") : "Hoy no hay locales programados."}
+Esta es la lista completa del día, incluidos los que ya salieron: dala completa (no la recortes a los próximos) y no derives a la app, esto ya responde la pregunta.`);
   } else if (/último|ultimo|primer(o)?\s+tren|primeros?\s+servicios?/i.test(pregunta)) {
     // Preguntan por el primer/último tren sin decir de qué estación — les doy
     // el horario real de las terminales (Once y Moreno), que es lo más útil.

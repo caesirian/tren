@@ -851,6 +851,21 @@ export function horariosLocalesEstacion(nombreEstacion, ahora = new Date()) {
     .sort((a, b) => a.hora.localeCompare(b.hora));
 }
 
+// Cronograma COMPLETO de locales de una estación para los tres tipos de día
+// (lv / sab / dom), sin filtrar por la hora actual. Para responder "¿a qué hora
+// salen los locales de X?" con todos los horarios, hayan pasado o no.
+export function horariosLocalesEstacionTodosLosDias(nombreEstacion) {
+  const buscado = normTxt(nombreEstacion);
+  const out = {};
+  for (const dia of Object.keys(LOCALES)) {
+    out[dia] = LOCALES[dia]
+      .filter((l) => normTxt(l.estacion) === buscado)
+      .map((l) => ({ hora: l.hora, direccion: l.direccion === "moreno" ? "hacia Moreno" : "hacia Once" }))
+      .sort((a, b) => a.hora.localeCompare(b.hora));
+  }
+  return out;
+}
+
 // Próximos locales (formación vacía) de una estación, en lo que queda del día.
 export function proximosLocales(nombreEstacion, ahora = new Date()) {
   const { hour, minute } = horaArgentina(ahora);
