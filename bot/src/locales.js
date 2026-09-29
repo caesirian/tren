@@ -32,7 +32,18 @@ function sentidoDe(destino) {
 const esTerminal = (nombre) => ["once", "moreno"].includes(norm(nombre));
 
 // item = { est, r } del barrido del proxy.
+// Nunca tira: si algo falla al clasificar, devuelve "normal" para no cortar el
+// aviso de cancelación/demora que ya funcionaba.
 export function clasificarServicio(item) {
+  try {
+    return clasificarServicioInterno(item);
+  } catch (err) {
+    console.error("Error clasificando servicio (local/normal):", err.message);
+    return { esLocal: false, tipo: "normal", numero: null, origen: null, cronograma: null, fueraDeCronograma: false, motivos: [], etiqueta: null };
+  }
+}
+
+function clasificarServicioInterno(item) {
   const d = datosServicio(item);
   const numero = d.s.numero ?? null;
   const sentido = sentidoDe(d.destino);
