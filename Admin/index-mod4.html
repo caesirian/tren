@@ -1387,10 +1387,10 @@ function utClearStatus() {
 
 
 // ══════════════════════════════════════════════════════════════
-// NOTIFICACIONES PUSH — vía proxy en Render (evita CORS)
+// NOTIFICACIONES PUSH — vía servicio en Render (evita CORS)
 // La REST API Key de OneSignal vive en variables de entorno de Render.
 // ══════════════════════════════════════════════════════════════
-const PROXY_URL = 'https://tren-webs.onrender.com';
+const NOTIF_API_URL = 'https://tren-webs.onrender.com';
 
 // Contadores de caracteres
 ['notifTitulo','notifMensaje'].forEach(id => {
@@ -1421,7 +1421,7 @@ document.getElementById('notifEnviarBtn').addEventListener('click', async () => 
   notifSetStatus('', '');
 
   try {
-    const res = await fetch(`${PROXY_URL}/notif/enviar`, {
+    const res = await fetch(`${NOTIF_API_URL}/notif/enviar`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ titulo, mensaje, url })
@@ -1453,7 +1453,7 @@ async function notifCargarHistorial() {
   if (!wrap) return;
   wrap.innerHTML = '<p style="font-size:.82rem;color:var(--muted);">Cargando historial…</p>';
   try {
-    const res  = await fetch(`${PROXY_URL}/notif/historial?limit=20&offset=0`);
+    const res  = await fetch(`${NOTIF_API_URL}/notif/historial?limit=20&offset=0`);
     const data = await res.json();
     if (!data.ok) throw new Error(JSON.stringify(data.error));
     const notifs = data.notifications || [];
