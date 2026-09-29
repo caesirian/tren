@@ -2203,6 +2203,7 @@ async function chequeoPeriodicoProxy(origen) {
     if (localesProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, localesProxy.texto).catch((err) => console.error("Error avisando locales fuera de cronograma:", err.message));
     }
+    for (const t of localesProxy.textosGrupo || []) await publicarEnGrupo(t);
   } catch (err) {
     console.error(`Error chequeando locales fuera de cronograma (${origen}):`, err.message);
   }

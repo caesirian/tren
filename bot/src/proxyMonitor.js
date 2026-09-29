@@ -30,11 +30,12 @@ const COLECCION_ORIGEN = "origenesInusualesVistos";
 const COLECCION_LOCALES = "localesFueraCronogramaVistos";
 const RETENCION_DIAS = 3;
 
-// Publicar en el grupo que un tren cancelado/demorado es un LOCAL: apagado por
-// defecto (a pedido, primero se prueba la detección con aviso solo privado).
-// Se activa con LOCALES_AVISO_GRUPO=true.
+// Avisos de locales en el GRUPO (a pedido de Coco, 29/9): activo por defecto.
+// Incluye (1) la aclaración "es un local" en las cancelaciones/demoras y (2) el
+// aviso corto de una formación vacía que sale de una estación sin ser un local
+// programado. Se apaga con LOCALES_AVISO_GRUPO=false.
 export function avisoGrupoLocalesActivo() {
-  return String(process.env.LOCALES_AVISO_GRUPO ?? "false").trim().toLowerCase() === "true";
+  return String(process.env.LOCALES_AVISO_GRUPO ?? "true").trim().toLowerCase() !== "false";
 }
 function etiquetaGrupoLocal(item) {
   if (!avisoGrupoLocalesActivo()) return "";
@@ -287,7 +288,8 @@ export async function chequearLocalesFueraCronograma() {
     if (!c.fueraDeCronograma) continue;
     const d = datosServicio(item);
     const dia = d.prog ? new Date(d.prog).toISOString().slice(0, 10) : "s-fecha";
-    const clave = `${c.numero ?? "s-num"}-${String(c.origen).replace(/[^a-zA-Z0-9]/g, "")}-${dia}`;
+    const horaProg = c.numero == null && d.prog ? `-${hora(d.prog).replace(/[^0-9]/g, "")}` : "";
+    const clave = `${c.numero ?? "s-num"}-${String(c.origen).replace(/[^a-zA-Z0-9]/g, "")}${horaProg}-${dia}`;
     if (vistosEnMemoria.has(`local:${clave}`)) continue;
     const firestore = ensureInit();
     let visto = false;
@@ -314,7 +316,11 @@ export async function chequearLocalesFueraCronograma() {
       })
       .join("\n") +
     `\n\n(Aviso solo privado. Cotejo contra el cronograma base del 9/3/2026; en feriados puede dar falsos positivos.)`;
-  return { nuevos: nuevos.map((n) => n.item), texto };
+  // Aviso corto para el grupo: solo los locales NO programados, una línea cada uno.
+  const textosGrupo = avisoGrupoLocalesActivo()
+    ? [...new Set(nuevos.filter((n) => n.c.sinProgramar).map((n) => `🚉 Se anunció la salida de una formación vacía desde ${n.c.origen} (no figura como local programado).`))]
+    : [];
+  return { nuevos: nuevos.map((n) => n.item), texto, textosGrupo };
 }
 
 // Para el contexto del bot al responder preguntas: cancelaciones y leyendas

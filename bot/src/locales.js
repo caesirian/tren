@@ -39,7 +39,7 @@ export function clasificarServicio(item) {
     return clasificarServicioInterno(item);
   } catch (err) {
     console.error("Error clasificando servicio (local/normal):", err.message);
-    return { esLocal: false, tipo: "normal", numero: null, origen: null, cronograma: null, fueraDeCronograma: false, motivos: [], etiqueta: null };
+    return { esLocal: false, tipo: "normal", numero: null, origen: null, cronograma: null, fueraDeCronograma: false, sinProgramar: false, motivos: [], etiqueta: null };
   }
 }
 
@@ -82,6 +82,9 @@ function clasificarServicioInterno(item) {
     origen: origenMostrado,
     cronograma: cron,
     fueraDeCronograma: esLocal && motivos.length > 0,
+    // Local NO programado: no figura en el cronograma, o figura pero saliendo de
+    // otra estación. (Un local programado que solo cambió de horario no cuenta.)
+    sinProgramar: esLocal && (!cron || (!!origenProxyEst && origenProxyEst.id !== cron.origenId)),
     motivos,
     etiqueta,
   };
