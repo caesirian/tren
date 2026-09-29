@@ -21,7 +21,7 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora } from "./appTrenes.js";
-import { clasificarServicio, textoClasificacionPrivada } from "./locales.js";
+import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal } from "./locales.js";
 
 const COLECCION = "cancelacionesProxyVistas";
 const COLECCION_DEMORAS = "demorasProxyAvisadas";
@@ -282,10 +282,14 @@ export async function chequearLocalesFueraCronograma() {
     return { nuevos: [], texto: null, error: err.message };
   }
 
+  // Se prefiere el ítem visto en la propia estación de origen: da la hora de salida real.
+  const candidatos = barrido.todos
+    .map((item) => ({ item, c: clasificarServicio(item) }))
+    .filter((x) => x.c.fueraDeCronograma)
+    .sort((a, b) => Number(b.c.enOrigen) - Number(a.c.enOrigen));
+
   const nuevos = [];
-  for (const item of barrido.todos) {
-    const c = clasificarServicio(item);
-    if (!c.fueraDeCronograma) continue;
+  for (const { item, c } of candidatos) {
     const d = datosServicio(item);
     const dia = d.prog ? new Date(d.prog).toISOString().slice(0, 10) : "s-fecha";
     const horaProg = c.numero == null && d.prog ? `-${hora(d.prog).replace(/[^0-9]/g, "")}` : "";
@@ -315,12 +319,19 @@ export async function chequearLocalesFueraCronograma() {
         return `• #${c.numero ?? "?"} ${c.etiqueta} · prog ${hora(d.prog)} (${d.est.nombre})\n   ${c.motivos.join("; ")}`;
       })
       .join("\n") +
-    `\n\n(Aviso solo privado. Cotejo contra el cronograma base del 9/3/2026; en feriados puede dar falsos positivos.)`;
-  // Aviso corto para el grupo: solo los locales NO programados, una línea cada uno.
-  const textosGrupo = avisoGrupoLocalesActivo()
-    ? [...new Set(nuevos.filter((n) => n.c.sinProgramar).map((n) => `🚉 Se anunció la salida de una formación vacía desde ${n.c.origen} (no figura como local programado).`))]
-    : [];
-  return { nuevos: nuevos.map((n) => n.item), texto, textosGrupo };
+    `\n\n(Detalle solo privado; al grupo va una línea corta. Cotejo contra el cronograma base del 9/3/2026; en feriados puede dar falsos positivos.)`;
+  // Aviso corto para el grupo: locales no programados y locales reprogramados, una
+  // línea cada uno. Si en un mismo chequeo aparecen muchos (feriado o cambio de
+  // cronograma: el cronograma base no distingue feriados), no se inunda el grupo:
+  // se avisa solo por privado.
+  const MAX_AVISOS_GRUPO_POR_CHEQUEO = 3;
+  let textosGrupo = avisoGrupoLocalesActivo() ? [...new Set(nuevos.map((n) => textoGrupoLocal(n.c)).filter(Boolean))] : [];
+  let texto2 = texto;
+  if (textosGrupo.length > MAX_AVISOS_GRUPO_POR_CHEQUEO) {
+    texto2 += `\n\n⚠️ Son ${textosGrupo.length} avisos de una sola vez (posible feriado o cambio de cronograma): NO los publiqué en el grupo.`;
+    textosGrupo = [];
+  }
+  return { nuevos: nuevos.map((n) => n.item), texto: texto2, textosGrupo };
 }
 
 // Para el contexto del bot al responder preguntas: cancelaciones y leyendas

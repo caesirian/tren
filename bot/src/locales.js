@@ -39,7 +39,7 @@ export function clasificarServicio(item) {
     return clasificarServicioInterno(item);
   } catch (err) {
     console.error("Error clasificando servicio (local/normal):", err.message);
-    return { esLocal: false, tipo: "normal", numero: null, origen: null, cronograma: null, fueraDeCronograma: false, sinProgramar: false, motivos: [], etiqueta: null };
+    return { esLocal: false, tipo: "normal", numero: null, origen: null, cronograma: null, fueraDeCronograma: false, sinProgramar: false, reprogramado: false, enOrigen: false, horaSalida: null, horaOriginal: null, destino: null, difMin: null, estacionVista: null, motivos: [], etiqueta: null };
   }
 }
 
@@ -73,6 +73,21 @@ function clasificarServicioInterno(item) {
   }
 
   const origenMostrado = origenProxy ?? cron?.origenNombre ?? "?";
+  const sinProgramar = esLocal && (!cron || (!!origenProxyEst && origenProxyEst.id !== cron.origenId));
+  // Local programado que solo se corrió de horario (el número coincide, sale de la
+  // estación prevista y el horario programado difiere del cronograma).
+  const reprogramado = esLocal && !sinProgramar && !!cron && cron.porNumero && cron.difMin != null && Math.abs(cron.difMin) > TOLERANCIA_HORA_MIN;
+  // Hora de salida desde el origen: si el ítem se ve en la propia estación de
+  // origen es su hora programada; si se ve más adelante, se deduce del cronograma
+  // + el corrimiento; si no se puede deducir, queda null y se usa estacionVista.
+  const enOrigen = !!d.est?.nombre && norm(d.est.nombre) === norm(origenMostrado);
+  let horaSalida = null;
+  if (enOrigen) horaSalida = hora(d.prog);
+  else if (cron?.porNumero && cron.difMin != null && cron.horaOrigen) {
+    const [hh, mm] = cron.horaOrigen.split(":").map(Number);
+    const tot = (((hh * 60 + mm + cron.difMin) % 1440) + 1440) % 1440;
+    horaSalida = `${String(Math.floor(tot / 60)).padStart(2, "0")}:${String(tot % 60).padStart(2, "0")}`;
+  }
   const etiqueta = esLocal ? `🚉 LOCAL ${origenMostrado} → ${d.destino}` : null;
 
   return {
@@ -84,7 +99,14 @@ function clasificarServicioInterno(item) {
     fueraDeCronograma: esLocal && motivos.length > 0,
     // Local NO programado: no figura en el cronograma, o figura pero saliendo de
     // otra estación. (Un local programado que solo cambió de horario no cuenta.)
-    sinProgramar: esLocal && (!cron || (!!origenProxyEst && origenProxyEst.id !== cron.origenId)),
+    sinProgramar,
+    reprogramado,
+    enOrigen,
+    horaSalida,
+    horaOriginal: cron?.horaOrigen ?? null,
+    destino: d.destino,
+    difMin: cron?.difMin ?? null,
+    estacionVista: { nombre: d.est?.nombre ?? null, hora: hora(d.prog) },
     motivos,
     etiqueta,
   };
@@ -138,4 +160,18 @@ export async function reporteLocales() {
     texto += `\n\nNingún local del proxy fuera de cronograma en este momento.`;
   }
   return texto;
+}
+
+// Textos CORTOS para el grupo (una línea).
+export function textoGrupoLocal(c) {
+  if (c.sinProgramar) {
+    if (c.horaSalida) return `🚉 Se anunció la salida de una formación vacía desde ${c.origen} a las ${c.horaSalida} (no figura como local programado).`;
+    const vista = c.estacionVista?.hora ? `pasa por ${c.estacionVista.nombre} a las ${c.estacionVista.hora}; ` : "";
+    return `🚉 Se anunció la salida de una formación vacía desde ${c.origen} (${vista}no figura como local programado).`;
+  }
+  if (c.reprogramado) {
+    const nueva = c.horaSalida ?? c.estacionVista?.hora;
+    return `⏰ El local de las ${c.horaOriginal} desde ${c.origen} hacia ${c.destino} se reprogramó y sale a las ${nueva}, por única vez.`;
+  }
+  return null;
 }
