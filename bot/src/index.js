@@ -36,6 +36,7 @@ import { tableroVivoHTML } from "./tableroVivo.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, contextoProxyParaBot } from "./proxyMonitor.js";
 import { reporteLocales } from "./locales.js";
+import { evaluarEstadoAutomatico, cargarEstadoAuto, setEstadoAuto, estadoAutoActivo } from "./estadoAuto.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
@@ -723,6 +724,19 @@ bot.command("tablerogrupo", async (ctx) => {
     }
 
   }
+});
+
+bot.command("estadoauto", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  const arg = ((ctx.message.text || "").split(" ")[1] || "").toLowerCase();
+  if (arg === "on" || arg === "off") await setEstadoAuto(arg === "on", `admin ${ctx.from.id}`);
+  const actual = await getEstadoServicio().catch(() => null);
+  await bot.telegram
+    .sendMessage(
+      process.env.ADMIN_TELEGRAM_ID,
+      `🚦🤖 Semáforo automático: ${estadoAutoActivo() ? "ACTIVO" : "apagado"}${actual ? `\nSitio ahora: ${actual.etiqueta} — "${actual.mensaje}"` : ""}\n\nUso: /estadoauto on | off`
+    )
+    .catch((err) => console.error("Error en /estadoauto:", err.message));
 });
 
 bot.command("locales", async (ctx) => {
@@ -2076,6 +2090,10 @@ async function sugerirEstado({ origen, detalle, alerta }) {
     const r = await crearPropuesta({ origen, detalle, alerta });
     if (!r) return; // alerta sin severidad reconocida (ej. informativa) -> no hay nada para proponer
     const { id, propuesta } = r;
+    // Con el semáforo automático activo, las demoras/cancelaciones del proxy que
+    // solo llevarían a "con demoras" ya las cubre estadoAuto.js: no se repite
+    // la propuesta con botones. Paro y avisos de la fuente siguen igual.
+    if (estadoAutoActivo() && (origen === "proxy_cancelacion" || origen === "proxy_demora") && propuesta.estado === "modificado") return;
     let texto = `🚦 Propuesta de semáforo (${origen})\n${detalle}\n\n👉 Semáforo → ${ETIQUETAS_CONFIRMACION[propuesta.estado]}${propuesta.mensaje ? ` — "${propuesta.mensaje}"` : ""}`;
     const actual = await getEstadoServicio().catch(() => null);
     if (actual) texto += `\n📊 Ahora en el sitio: ${actual.etiqueta} — "${actual.mensaje}"`;
@@ -2189,6 +2207,16 @@ async function chequeoPeriodicoProxy(origen) {
     console.error(`Error chequeando locales fuera de cronograma (${origen}):`, err.message);
   }
 
+  try {
+    const auto = await evaluarEstadoAutomatico();
+    console.log(`Chequeo proxy (${origen}): semáforo automático → ${auto.accion}`);
+    if (auto.texto && process.env.ADMIN_TELEGRAM_ID) {
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, auto.texto).catch((err) => console.error("Error avisando cambio de semáforo automático:", err.message));
+    }
+  } catch (err) {
+    console.error(`Error en el semáforo automático (${origen}):`, err.message);
+  }
+
   if (escaneoCompletoActivo() && process.env.ADMIN_TELEGRAM_ID) {
     try {
       const texto = `⏱️ Escaneo automático completo (${origen})\n\n` + (await barridoSarmiento({ completo: true }));
@@ -2205,6 +2233,7 @@ app.listen(PORT, async () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
   await cargarSilencio(); // restaura el modo silencio si estaba activo antes de un reinicio
   await cargarEscaneoCompleto(); // restaura /apptrenes auto si estaba activo antes de un reinicio
+  await cargarEstadoAuto(); // restaura /estadoauto y la última anomalía vista
 
   // Respaldo interno: mientras el servicio esté despierto (Render free se
   // duerme sin tráfico), chequea cancelaciones del proxy cada 5 min sin

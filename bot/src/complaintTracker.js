@@ -99,3 +99,16 @@ export function getResumenUltimaHora() {
     cuentasNormalidad: usuariosPorCategoria.normalidad.size,
   };
 }
+
+// Cuentas DISTINTAS que reportaron demora o cancelación en los últimos
+// `ventanaMs` (una persona insistente cuenta una sola vez). Lo usa el semáforo
+// automático (estadoAuto.js). Es en memoria: se reinicia con el servicio.
+export function getQuejasRecientes(ventanaMs) {
+  const ahoraMs = Date.now();
+  const cuentas = new Set();
+  for (const m of mensajes) {
+    if (ahoraMs - m.ts >= ventanaMs) continue;
+    if (m.categoria === "demora" || m.categoria === "cancelacion") cuentas.add(m.userId ?? `anon-${m.ts}`);
+  }
+  return cuentas.size;
+}

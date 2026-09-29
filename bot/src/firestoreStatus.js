@@ -44,6 +44,9 @@ function ensureInit() {
   }
 }
 
+// Acceso compartido a Firestore para otros módulos (semáforo automático).
+export const firestoreDb = () => ensureInit();
+
 const ETIQUETAS_ESTADO = {
   normal: "Servicio normal",
   modificado: "Servicio con demoras",
@@ -133,6 +136,7 @@ export async function getEstadoServicio() {
       alertas: Array.isArray(d.alertas) ? d.alertas : [],
       ultimaActualizacion: d.ultimaActualizacion || null,
       actualizado: d.actualizado || null,
+      editor: d.editor || null,
       vigencia: d.vigencia || null,
       mostrarTitulares: d.mostrarTitulares === true,
     };
