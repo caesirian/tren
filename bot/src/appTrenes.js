@@ -65,10 +65,31 @@ export async function serviciosSarmiento(nombre) {
     revisadas.push(`${est.nombre} (${est.id})`);
     const data = await consultarProxy(`/arribos/estacion/${est.id}?cantidad=8`);
     for (const r of data?.results || []) {
-      if (String(r?.servicio?.gerencia?.nombre || "").toLowerCase().includes("sarmiento")) servicios.push({ est, r });
+      if (!String(r?.servicio?.gerencia?.nombre || "").toLowerCase().includes("sarmiento")) continue;
+      // Por ahora el bot informa SOLO lo que ocurre dentro del tramo Moreno–Once
+      // (pedido de Coco, 30/9): se descartan acá, en el origen, las formaciones
+      // cuyo origen o destino real queda fuera (Merlo–Las Heras, Morón–Luján,
+      // etc.). Todo lo que consume este barrido (avisos al grupo, estado
+      // automático, tableros, contexto de respuestas) hereda el filtro.
+      // Se apaga con TRAMO_SOLO_MORENO_ONCE=false.
+      if (tramoSoloMorenoOnce() && servicioFueraDelTramo({ est, r })) continue;
+      servicios.push({ est, r });
     }
   }
   return { servicios, revisadas, candidatas, crudoEstaciones: encontradas };
+}
+
+export function tramoSoloMorenoOnce() {
+  return String(process.env.TRAMO_SOLO_MORENO_ONCE ?? "true").trim().toLowerCase() !== "false";
+}
+
+// true si el origen o el destino REAL del servicio es una estación conocida que
+// no pertenece al tramo Once–Moreno (ej. Las Heras, Luján, Lobos). Si el proxy
+// no informa origen/destino no se descarta nada: ante la duda, se informa.
+export function servicioFueraDelTramo({ r }) {
+  const s = r?.servicio || {};
+  const fuera = (nombre) => !!nombre && indiceEstacionRamal(nombre) < 0;
+  return fuera(s.hasta?.estacion?.nombre) || fuera(s.desde?.estacion?.nombre);
 }
 
 // Nombre exacto del campo de andén sin confirmar todavía (la API no tiene
