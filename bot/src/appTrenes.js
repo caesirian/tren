@@ -83,13 +83,27 @@ export function tramoSoloMorenoOnce() {
   return String(process.env.TRAMO_SOLO_MORENO_ONCE ?? "true").trim().toLowerCase() !== "false";
 }
 
-// true si el origen o el destino REAL del servicio es una estación conocida que
-// no pertenece al tramo Once–Moreno (ej. Las Heras, Luján, Lobos). Si el proxy
-// no informa origen/destino no se descarta nada: ante la duda, se informa.
+// true si el servicio toca algo fuera del tramo Once–Moreno: origen/destino real
+// en una estación que no es del ramal (Las Heras, Luján, Mercedes, Lobos…) o un
+// ramal/cabecera cuyo nombre lo delata (ej. "Moreno - Mercedes", que por contener
+// "Moreno" se confundiría con una estación del tramo). Si el proxy no informa
+// nada de esto no se descarta: ante la duda, se informa.
+const PALABRAS_FUERA_TRAMO = ["mercedes", "lobos", "las heras", "lujan", "rodriguez", "marcos paz", "suipacha", "navarro", "diesel"];
 export function servicioFueraDelTramo({ r }) {
   const s = r?.servicio || {};
-  const fuera = (nombre) => !!nombre && indiceEstacionRamal(nombre) < 0;
-  return fuera(s.hasta?.estacion?.nombre) || fuera(s.desde?.estacion?.nombre);
+  const contienePalabra = (n) => {
+    const x = normNombre(n);
+    return !!x && PALABRAS_FUERA_TRAMO.some((p) => x.includes(p));
+  };
+  const estacionAjena = (n) => !!n && indiceEstacionRamal(n) < 0;
+  const hasta = s.hasta?.estacion?.nombre;
+  const desde = s.desde?.estacion?.nombre;
+  return (
+    estacionAjena(hasta) || estacionAjena(desde) ||
+    contienePalabra(hasta) || contienePalabra(desde) ||
+    contienePalabra(s.ramal?.cabeceraFinal?.nombre) || contienePalabra(s.ramal?.cabeceraInicial?.nombre) ||
+    contienePalabra(s.ramal?.nombre)
+  );
 }
 
 // Nombre exacto del campo de andén sin confirmar todavía (la API no tiene
