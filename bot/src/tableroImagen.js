@@ -51,7 +51,9 @@ function paradasDeColumna(f, paradasCompletas) {
 
 // filas: [{ anden, horaProgramada, horaEstimada, destino, estado }]
 // origenNombre: "Once" o "Moreno" (cabecera desde donde salen)
-export function generarImagenTablero(filas, origenNombre, horaActualTexto) {
+// opciones (opcional): { etiquetaHora, pie } — para el tablero HISTÓRICO, que lleva
+// otra etiqueta en la hora y otro texto en el pie para que no se confunda con el vivo.
+export function generarImagenTablero(filas, origenNombre, horaActualTexto, opciones = {}) {
   const columnas = filas.slice(0, 5); // el cartel real muestra 5 a la vez
   const origen = STATIONS.find((s) => s.name.toLowerCase() === origenNombre.toLowerCase());
   const paradas = listaParadas(origen?.id ?? 0);
@@ -81,7 +83,7 @@ export function generarImagenTablero(filas, origenNombre, horaActualTexto) {
   ctx.fillText(origenNombre.toUpperCase(), 16, yRosa + ALTO_HEADER_ROSA / 2);
   ctx.textAlign = "right";
   ctx.font = "13px sans-serif";
-  ctx.fillText("HORA ACTUAL", anchoTablero - 16, yRosa + ALTO_HEADER_ROSA / 2 - 14);
+  ctx.fillText(opciones.etiquetaHora || "HORA ACTUAL", anchoTablero - 16, yRosa + ALTO_HEADER_ROSA / 2 - 14);
   ctx.font = "bold 26px sans-serif";
   ctx.fillText(horaActualTexto, anchoTablero - 16, yRosa + ALTO_HEADER_ROSA / 2 + 12);
   ctx.textAlign = "left";
@@ -144,7 +146,7 @@ export function generarImagenTablero(filas, origenNombre, horaActualTexto) {
   ctx.fillRect(0, yTicker, anchoTablero, ALTO_PIE);
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 15px sans-serif";
-  ctx.fillText("Datos en vivo — bot Tren Sarmiento En Línea", 16, yTicker + ALTO_PIE / 2);
+  ctx.fillText(opciones.pie || "Datos en vivo — bot Tren Sarmiento En Línea", 16, yTicker + ALTO_PIE / 2);
 
   return canvas.toBuffer("image/png");
 }

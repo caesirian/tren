@@ -33,6 +33,7 @@ import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
+import { registrarSnapshot, snapshotHaceMinutos, rangoRegistrado } from "./tableroHistorial.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
@@ -711,12 +712,65 @@ bot.command("tableroestacion", async (ctx) => {
   }
 });
 
+// /tablero [estación]            → tablero de ahora (Once por defecto)
+// /tablero 10 [estación]         → cómo estaba el tablero hace 10 minutos
+// (también /tablero moreno 10). Hasta 180 min hacia atrás; el bot guarda una
+// foto cada ~5 min, así que se muestra la más cercana y se aclara su hora real.
 bot.command("tablero", async (ctx) => {
   if (!esAdminEstado(ctx)) return;
-  const estacion = (ctx.message.text || "").replace(/^\/tablero(@\w+)?\s*/i, "").trim() || "Once";
+  const partes = (ctx.message.text || "").replace(/^\/tablero(@\w+)?\s*/i, "").split(/\s+/).filter(Boolean);
+  let minutos = null;
+  const resto = [];
+  for (const p of partes) {
+    const m = /^(\d{1,3})(?:m|min|mins|minutos)?$/i.exec(p);
+    if (m && minutos == null) minutos = Number(m[1]);
+    else resto.push(p);
+  }
+  const estacion = resto.join(" ").trim() || "Once";
 
   try {
     await ctx.sendChatAction("upload_photo");
+
+    if (minutos && minutos > 0) {
+      if (minutos > 180) {
+        await ctx.reply("Guardo las fotos del tablero por 3 horas, así que puedo ir hasta /tablero 180.");
+        return;
+      }
+      const est = buscarEstacion(estacion);
+      const cabecera = est && /^(once|moreno)$/i.test(est.name) ? est.name : /^(once|moreno)$/i.test(estacion) ? estacion : null;
+      if (!cabecera) {
+        await ctx.reply("El tablero histórico existe para las cabeceras: /tablero 10 once  o  /tablero 10 moreno.");
+        return;
+      }
+      const clave = cabecera[0].toUpperCase() + cabecera.slice(1).toLowerCase();
+      const res = await snapshotHaceMinutos(minutos);
+      if (!res || !res.dentroDeTolerancia) {
+        const rango = await rangoRegistrado();
+        const h = (ts) => horaArgentinaTexto(new Date(ts));
+        await ctx.reply(
+          `No tengo una foto del tablero de hace ${minutos} min` +
+            (res ? ` (la más cercana es de las ${h(res.foto.ts)}, a ${res.diferenciaMin} min de lo que pedís).` : ".") +
+            (rango ? `\nTengo registros entre las ${h(rango.desde)} y las ${h(rango.hasta)}.` : "\nTodavía no hay registros guardados (se empiezan a guardar con el chequeo periódico, cada ~5 min).")
+        );
+        return;
+      }
+      const { foto } = res;
+      const cab = foto.cabeceras?.[clave];
+      const horaFoto = horaArgentinaTexto(new Date(foto.ts));
+      const haceReal = Math.max(0, Math.round((Date.now() - foto.ts) / 60000));
+      const limitado = foto.servicioLimitado ? `\n🚧 Había servicio limitado: solo circulaban trenes entre ${foto.servicioLimitado.desde} y ${foto.servicioLimitado.hasta}.` : "";
+      if (!cab || !cab.filas?.length) {
+        await ctx.reply(`🕒 Tablero de ${clave} a las ${horaFoto} (hace ${haceReal} min):\n${cab?.error || `Sin servicios de Sarmiento saliendo de ${clave} en ese momento.`}${limitado}`);
+        return;
+      }
+      const buffer = generarImagenTablero(cab.filas, cab.origenNombre || clave, horaFoto, {
+        etiquetaHora: "HORA DEL REGISTRO",
+        pie: `Registro de las ${horaFoto} (hace ${haceReal} min) — no es en vivo`,
+      });
+      await ctx.replyWithPhoto({ source: buffer }, { caption: `🕒 Tablero — ${clave} a las ${horaFoto} (hace ${haceReal} min)${limitado}` });
+      return;
+    }
+
     const { buffer, error, origenNombre } = await armarImagenTablero(estacion);
     if (error) {
       await ctx.reply(error);
@@ -2125,6 +2179,7 @@ app.get("/api/tablero-cabecera", async (req, res) => {
       data = await columnasCabecera(estacion);
       cacheCabecera.set(estacion, { momento: Date.now(), data });
     }
+    registrarSnapshot().catch(() => {}); // alimenta /tablero <min> (respeta el mínimo de 2 min entre fotos)
     res.json({ ...data, horaActual: hora(new Date().toISOString()), estaciones: ESTACIONES_BARRIDO, consultadoEn: new Date().toISOString() });
   } catch (err) {
     console.error("Error en /api/tablero-cabecera:", err.message);
@@ -2301,6 +2356,12 @@ async function chequeoPeriodicoProxy(origen) {
     }
   } catch (err) {
     console.error(`Error chequeando servicio limitado (${origen}):`, err.message);
+  }
+
+  try {
+    await registrarSnapshot(); // foto del tablero para /tablero <minutos>
+  } catch (err) {
+    console.error(`Error guardando foto del tablero (${origen}):`, err.message);
   }
 
   try {
