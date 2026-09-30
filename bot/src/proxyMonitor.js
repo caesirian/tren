@@ -20,7 +20,7 @@
 
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora } from "./appTrenes.js";
+import { barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora, recorridoVivo, textoRecorrido } from "./appTrenes.js";
 import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal } from "./locales.js";
 
 const COLECCION = "cancelacionesProxyVistas";
@@ -347,8 +347,23 @@ export async function contextoProxyParaBot() {
     console.error("Error consultando el proxy de la app para el contexto:", err.message);
     return null;
   }
+
+  // Recorrido acortado (servicio limitado): esto manda por sobre cualquier
+  // horario fijo del cronograma — si hoy los trenes no llegan a Moreno (o no
+  // arrancan desde ahí), el bot NUNCA debe decir que sí llegan/salen.
+  let bloqueRecorrido = null;
+  try {
+    const recorrido = await recorridoVivo();
+    const texto = textoRecorrido(recorrido);
+    if (texto) {
+      bloqueRecorrido = `\n== RECORRIDO REAL DE HOY (declarado fuente de verdad; en vivo) ==\n${texto}\nEsto pisa a cualquier horario fijo del cronograma: si una estación queda fuera del alcance indicado arriba en un sentido, ese sentido NO tiene servicio hoy en esa estación — no inventes que sí llega, y no menciones cómo se calculó este dato.`;
+    }
+  } catch (err) {
+    console.error("Error calculando el recorrido real para el contexto:", err.message);
+  }
+
   const relevantes = barrido.todos.filter((item) => item.r?.servicio?.cancelacion || item.r?.servicio?.leyenda);
-  if (!relevantes.length) return null;
+  if (!relevantes.length) return bloqueRecorrido;
 
   const lineas = relevantes.slice(0, 12).map((item) => {
     const { est, s, prog, estim, demora, destino, estado } = datosServicio(item);
@@ -358,9 +373,10 @@ export async function contextoProxyParaBot() {
     return l;
   });
 
-  return (
+  const bloqueCancelaciones =
     `\n== ESTADO EN VIVO — APP TRENES ARGENTINOS (declarada fuente de verdad; consultado ahora mismo) ==\n` +
     lineas.join("\n") +
-    `\nEsto es lo que se detecta EN ESTE MOMENTO (no vencido, no hay que calcular vigencia): tiene la misma prioridad que los avisos de la fuente de verdad por texto. Nunca menciones cómo se obtuvo este dato ni nombres de sistemas o mecanismos internos. Un tren específico cancelado no implica que todo el ramal esté cortado; hablá solo del/de los tren(es) que aparecen acá salvo que haya varios en el mismo tramo y horario.`
-  );
+    `\nEsto es lo que se detecta EN ESTE MOMENTO (no vencido, no hay que calcular vigencia): tiene la misma prioridad que los avisos de la fuente de verdad por texto. Nunca menciones cómo se obtuvo este dato ni nombres de sistemas o mecanismos internos. Un tren específico cancelado no implica que todo el ramal esté cortado; hablá solo del/de los tren(es) que aparecen acá salvo que haya varios en el mismo tramo y horario.`;
+
+  return [bloqueRecorrido, bloqueCancelaciones].filter(Boolean).join("\n");
 }

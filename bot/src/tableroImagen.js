@@ -40,6 +40,15 @@ function listaParadas(idOrigen) {
   return STATIONS.filter((s) => s.id !== idOrigen).map((s) => s.name);
 }
 
+const NOMBRE_VISIBLE = { Padua: "San Antonio de Padua" };
+
+// Paradas de UNA columna: las reales de ese servicio (recorrido acortado si
+// el servicio está limitado); si no vienen, todo el ramal como antes.
+function paradasDeColumna(f, paradasCompletas) {
+  const base = Array.isArray(f.paradas) && f.paradas.length ? f.paradas : paradasCompletas;
+  return base.map((n) => NOMBRE_VISIBLE[n] || n);
+}
+
 // filas: [{ anden, horaProgramada, horaEstimada, destino, estado }]
 // origenNombre: "Once" o "Moreno" (cabecera desde donde salen)
 export function generarImagenTablero(filas, origenNombre, horaActualTexto) {
@@ -48,7 +57,9 @@ export function generarImagenTablero(filas, origenNombre, horaActualTexto) {
   const paradas = listaParadas(origen?.id ?? 0);
 
   const anchoTablero = columnas.length * ANCHO_COL;
-  const altoParadas = paradas.length * ALTO_FILA_ESTACION;
+  const paradasPorColumna = columnas.map((f) => paradasDeColumna(f, paradas));
+  const maxParadas = Math.max(1, ...paradasPorColumna.map((p) => p.length));
+  const altoParadas = maxParadas * ALTO_FILA_ESTACION;
   const altoTotal =
     ALTO_BANNER + ALTO_HEADER_ROSA + ALTO_COL_HEADER + ALTO_ESTADO + altoParadas + ALTO_PIE;
 
@@ -109,9 +120,10 @@ export function generarImagenTablero(filas, origenNombre, horaActualTexto) {
 
     ctx.fillStyle = COLOR_TEXTO_CLARO;
     ctx.font = "13px sans-serif";
-    paradas.forEach((nombre, j) => {
+    const paradasCol = paradasPorColumna[i];
+    paradasCol.forEach((nombre, j) => {
       const y = yParadas + j * ALTO_FILA_ESTACION + ALTO_FILA_ESTACION / 2;
-      const esUltima = j === paradas.length - 1;
+      const esUltima = j === paradasCol.length - 1;
       if (esUltima) ctx.font = "bold 13px sans-serif";
       ctx.fillText(nombre.toUpperCase(), x + 12, y);
       if (esUltima) ctx.font = "13px sans-serif";
@@ -202,7 +214,7 @@ export function generarImagenProximoTren(estacionNombre, sentidoDestino, proximo
   ctx.fillText("DESTINO:", 26, yCuerpo + altoCuerpo - 30);
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 24px sans-serif";
-  ctx.fillText(sentidoDestino.toUpperCase(), 150, yCuerpo + altoCuerpo - 30);
+  ctx.fillText((proximo?.destino || sentidoDestino).toUpperCase(), 150, yCuerpo + altoCuerpo - 30);
 
   const xDer = anchoIzq + 6;
   const anchoDer = ANCHO - xDer - 6;
@@ -240,7 +252,7 @@ export function generarImagenProximoTren(estacionNombre, sentidoDestino, proximo
     ctx.fillText("DESTINO:", xDer + 20, yBox + hBox - 16);
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 20px sans-serif";
-    ctx.fillText(sentidoDestino.toUpperCase(), xDer + 130, yBox + hBox - 16);
+    ctx.fillText((p?.destino || sentidoDestino).toUpperCase(), xDer + 130, yBox + hBox - 16);
   });
 
   const yTicker = yCuerpo + altoCuerpo + 4;

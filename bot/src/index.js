@@ -30,7 +30,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
@@ -322,19 +322,39 @@ ${
   if (estacionesDetectadas.length) {
     const ahora = new Date();
     for (const estacion of estacionesDetectadas) {
-      const proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora });
       const ultimos = ultimosTrenes(ahora);
       const transporte = infoTransporteEstacion(estacion.name);
       partes.push(`
 == TRANSPORTE EN LA ZONA DE "${estacion.name}" ==
 ${transporte || "Sin datos de colectivos/subte cargados para esta estación."}`);
-      partes.push(`
+
+      // Preferimos datos EN VIVO del proxy (respetan servicio limitado /
+      // recorrido acortado, con destino real); si no hay, cae a la grilla
+      // fija del cronograma (recorrido completo).
+      let vivos = null;
+      try {
+        vivos = await arribosVivosEstacion(estacion.name);
+      } catch (err) {
+        console.error("Error trayendo arribos en vivo para", estacion.name, err.message);
+      }
+
+      if (vivos && (vivos.haciaMoreno.length || vivos.haciaOnce.length)) {
+        const fmt = (arr) => arr.map((t) => `${t.hora} → ${t.destino} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy con datos en vivo";
+        partes.push(`
+== PRÓXIMOS TRENES EN VIVO PARA "${estacion.name}" (app Trenes Argentinos, ahora mismo, hora Buenos Aires: ${horaArgentinaTexto(ahora)}) ==
+Hacia Moreno: ${fmt(vivos.haciaMoreno)}
+Hacia Once: ${fmt(vivos.haciaOnce)}
+IMPORTANTE: el destino de cada tren es el REAL de hoy (puede no llegar hasta Moreno/Once si el servicio está limitado) — decí exactamente hasta dónde llega cada uno, no asumas el recorrido completo. Esta es la fuente más precisa disponible — no derives a la app si esta sección ya responde la pregunta.`);
+      } else {
+        const proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora });
+        partes.push(`
 == HORARIOS REALES CALCULADOS AHORA PARA "${estacion.name}" (cronograma oficial, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==
 Próximos trenes hacia Moreno desde ${estacion.name}: ${proximos.haciaMoreno.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
 Próximos trenes hacia Once desde ${estacion.name}: ${proximos.haciaOnce.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
 Último tren de hoy (${ultimos.diaTipo === "lv" ? "día hábil" : ultimos.diaTipo === "sab" ? "sábado" : "domingo/feriado"}) saliendo de Once: ${ultimos.desdeOnce.ultimo} (penúltimo: ${ultimos.desdeOnce.penultimo})
 Último tren de hoy saliendo de Moreno: ${ultimos.desdeMoreno.ultimo} (penúltimo: ${ultimos.desdeMoreno.penultimo})
-Estos horarios están calculados en el momento con el cronograma base oficial vigente y son la fuente más precisa disponible — no derives a la app si esta sección ya responde la pregunta.`);
+IMPORTANTE: esto es el cronograma habitual (recorrido completo Once–Moreno) — si hay una sección "RECORRIDO REAL DE HOY" o "PRÓXIMOS TRENES EN VIVO" en otra parte del contexto, esa manda por sobre esto porque puede haber servicio limitado hoy. Estos horarios no derives a la app si esta sección ya responde la pregunta.`);
+      }
 
       // Siempre se da el cronograma COMPLETO de locales de la estación (todos los
       // horarios del día, hayan pasado o no); los próximos se marcan aparte.
@@ -640,7 +660,17 @@ bot.command("tableroestacion", async (ctx) => {
     await ctx.sendChatAction("upload_photo");
     const ahora = new Date();
     const horaTexto = horaArgentinaTexto(ahora);
-    const proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora, sentido: sentidoPedido });
+
+    // Preferimos datos EN VIVO del proxy (respetan servicio limitado/
+    // recorrido acortado); si el proxy no tiene nada, caemos a la grilla
+    // fija del cronograma (recorrido completo, como hasta ahora).
+    const vivos = await arribosVivosEstacion(estacion.name).catch(() => null);
+    let proximos;
+    if (vivos && (vivos.haciaMoreno.length || vivos.haciaOnce.length)) {
+      proximos = vivos;
+    } else {
+      proximos = proximosTrenesEnEstacion({ estacionId: estacion.id, ahora, sentido: sentidoPedido });
+    }
 
     const sentidos = [];
     if (sentidoPedido !== "once" && proximos.haciaMoreno.length) sentidos.push({ nombre: "Moreno", datos: proximos.haciaMoreno });

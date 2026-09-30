@@ -283,6 +283,7 @@ export async function filasParaTabla(nombreEstacion, cantidad = 8) {
       destino,
       estado: s.cancelacion ? "CANCELADO" : estado,
       motivoCancelacion: s.cancelacion ? textoCancelacion(s.cancelacion) : null,
+      paradas: paradasHasta(revisadas[0] || nombreEstacion, destino),
     };
   });
   return { filas, revisadas, error: null };
@@ -326,6 +327,9 @@ export async function columnasCabecera(nombreEstacion, cantidad = 5) {
       motivoCancelacion: d.s.cancelacion ? textoCancelacion(d.s.cancelacion) : null,
       origen: d.origenReal,
       origenInusual: !!d.origenReal && !ESTACIONES_ORIGEN_NORMAL.has(d.origenReal),
+      // Paradas REALES según el destino de ese servicio (si el servicio está
+      // limitado y termina en Castelar, no se listan las estaciones de después).
+      paradas: paradasHasta(candidatas[0]?.nombre || nombreEstacion, d.destino),
     };
   });
   return { estacion: candidatas[0]?.nombre || nombreEstacion, columnas };
@@ -399,4 +403,166 @@ export function posicionesEnVivo(items, ahora = new Date()) {
     });
   }
   return resultado;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// Recorrido REAL de los servicios (servicio limitado / recorrido acortado).
+// Cada servicio del proxy trae su destino real (hasta) y su origen real
+// (desde). Con eso sabemos hasta dónde llega cada tren HOY, en vez de
+// asumir siempre el recorrido completo Once–Moreno del cronograma.
+// ─────────────────────────────────────────────────────────────────────────
+
+function normNombre(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Índice (0 = Once … 15 = Moreno) de una estación del ramal, tolerando
+// variantes de nombre ("S.A. de Padua", "San Antonio de Padua", acentos).
+export function indiceEstacionRamal(nombre) {
+  const n = normNombre(nombre);
+  if (!n) return -1;
+  if (n.includes("padua")) return ESTACIONES_BARRIDO.indexOf("Padua");
+  const exacto = ESTACIONES_BARRIDO.findIndex((e) => normNombre(e) === n);
+  if (exacto >= 0) return exacto;
+  if (n.length < 4) return -1;
+  return ESTACIONES_BARRIDO.findIndex((e) => n.includes(normNombre(e)) || normNombre(e).includes(n));
+}
+
+// Paradas entre el origen (excluido) y el destino (incluido), en el orden del
+// recorrido. Si el destino no se reconoce: desde una cabecera se asume el
+// recorrido completo hacia la otra; desde una intermedia no se inventa nada.
+export function paradasHasta(origenNombre, destinoNombre) {
+  const ultimo = ESTACIONES_BARRIDO.length - 1;
+  const io = indiceEstacionRamal(origenNombre);
+  if (io < 0) return ESTACIONES_BARRIDO.slice();
+  const idd = indiceEstacionRamal(destinoNombre);
+  let fin;
+  if (idd >= 0 && idd !== io) fin = idd;
+  else if (io === 0) fin = ultimo;
+  else if (io === ultimo) fin = 0;
+  else return [];
+  const paso = fin > io ? 1 : -1;
+  const res = [];
+  for (let i = io + paso; paso > 0 ? i <= fin : i >= fin; i += paso) res.push(ESTACIONES_BARRIDO[i]);
+  return res;
+}
+
+function nombreVisibleEstacion(n) {
+  return n === "Padua" ? "San Antonio de Padua" : n;
+}
+
+// Resumen de hasta dónde llegan hoy los trenes (según el barrido en vivo,
+// que se cachea, así que llamarlo seguido no golpea el proxy).
+export async function recorridoVivo() {
+  const b = await barridoEstructurado();
+  const ultimo = ESTACIONES_BARRIDO.length - 1;
+  const trenes = new Map();
+  for (const item of b.todos) {
+    const d = datosServicio(item);
+    const num = d.s.numero;
+    if (num == null || d.s.cancelacion) continue;
+    const idDest = indiceEstacionRamal(d.destino);
+    const idEst = indiceEstacionRamal(item.est.nombre);
+    if (idDest < 0 || idEst < 0 || idDest === idEst) continue;
+    if (trenes.has(num)) continue;
+    const idOrig = d.origenReal ? indiceEstacionRamal(d.origenReal) : -1;
+    trenes.set(num, { numero: num, sentido: idDest > idEst ? "moreno" : "once", destinoIdx: idDest, origenIdx: idOrig });
+  }
+  const lista = [...trenes.values()];
+  const contar = (arr, campo) => {
+    const c = {};
+    for (const t of arr) {
+      const n = nombreVisibleEstacion(ESTACIONES_BARRIDO[t[campo]]);
+      c[n] = (c[n] || 0) + 1;
+    }
+    return c;
+  };
+
+  const haciaMoreno = lista.filter((t) => t.sentido === "moreno");
+  const haciaOnce = lista.filter((t) => t.sentido === "once");
+
+  const resMoreno = haciaMoreno.length
+    ? (() => {
+        const alcanceIdx = Math.max(...haciaMoreno.map((t) => t.destinoIdx));
+        const llegan = haciaMoreno.filter((t) => t.destinoIdx === ultimo).length;
+        return { total: haciaMoreno.length, alcanceIdx, alcance: ESTACIONES_BARRIDO[alcanceIdx], limitado: llegan === 0, mixto: llegan > 0 && llegan < haciaMoreno.length, destinos: contar(haciaMoreno, "destinoIdx") };
+      })()
+    : null;
+
+  // Hacia Once, el recorte se ve en el ORIGEN (dónde arrancan los trenes).
+  const conOrigen = haciaOnce.filter((t) => t.origenIdx >= 0);
+  const resOnce = haciaOnce.length && conOrigen.length === haciaOnce.length
+    ? (() => {
+        const alcanceIdx = Math.max(...conOrigen.map((t) => t.origenIdx));
+        const arrancanEnMoreno = conOrigen.filter((t) => t.origenIdx === ultimo).length;
+        return { total: haciaOnce.length, alcanceIdx, alcance: ESTACIONES_BARRIDO[alcanceIdx], limitado: arrancanEnMoreno === 0, mixto: arrancanEnMoreno > 0 && arrancanEnMoreno < haciaOnce.length, origenes: contar(conOrigen, "origenIdx") };
+      })()
+    : null;
+
+  return { disponible: lista.length > 0, haciaMoreno: resMoreno, haciaOnce: resOnce, momento: b.momento };
+}
+
+// ¿La estación queda FUERA del recorrido en ese sentido por servicio limitado?
+export function estacionFueraDeRecorrido(recorrido, nombreEstacion, sentido) {
+  if (!recorrido?.disponible) return false;
+  const idx = indiceEstacionRamal(nombreEstacion);
+  if (idx < 0) return false;
+  const r = sentido === "moreno" ? recorrido.haciaMoreno : recorrido.haciaOnce;
+  return !!(r && r.limitado && idx > r.alcanceIdx);
+}
+
+// Frase lista para el contexto del bot / mensajes: qué recorrido tienen hoy los trenes.
+export function textoRecorrido(recorrido) {
+  if (!recorrido?.disponible) return null;
+  const partes = [];
+  const m = recorrido.haciaMoreno;
+  if (m?.limitado) {
+    partes.push(`SERVICIO LIMITADO hacia Moreno: los trenes que figuran en el sistema en este momento NO llegan a Moreno; como máximo llegan hasta ${nombreVisibleEstacion(m.alcance)} (destinos: ${Object.entries(m.destinos).map(([k, v]) => `${k} x${v}`).join(", ")}). Las estaciones posteriores a ${nombreVisibleEstacion(m.alcance)} NO tienen tren hacia Moreno ahora.`);
+  } else if (m?.mixto) {
+    partes.push(`Recorridos mezclados hacia Moreno: algunos trenes llegan a Moreno y otros terminan antes (destinos: ${Object.entries(m.destinos).map(([k, v]) => `${k} x${v}`).join(", ")}). Cada tren llega solo hasta su destino.`);
+  }
+  const o = recorrido.haciaOnce;
+  if (o?.limitado) {
+    partes.push(`SERVICIO LIMITADO hacia Once: los trenes que figuran en el sistema arrancan como máximo desde ${nombreVisibleEstacion(o.alcance)} (no hay trenes que salgan de estaciones posteriores hacia Once ahora).`);
+  } else if (o?.mixto) {
+    partes.push(`Recorridos mezclados hacia Once: algunos trenes salen de Moreno y otros de estaciones anteriores (orígenes: ${Object.entries(o.origenes).map(([k, v]) => `${k} x${v}`).join(", ")}).`);
+  }
+  return partes.length ? partes.join("\n") : null;
+}
+
+// Próximos trenes que REALMENTE llegan a una estación (datos en vivo, con su
+// destino real), por sentido. null si la estación no se reconoce.
+export async function arribosVivosEstacion(nombreEstacion) {
+  const idx = indiceEstacionRamal(nombreEstacion);
+  if (idx < 0) return null;
+  const b = await barridoEstructurado();
+  const ahora = Date.now();
+  const out = { haciaMoreno: [], haciaOnce: [] };
+  for (const item of b.todos) {
+    if (indiceEstacionRamal(item.est.nombre) !== idx) continue;
+    const d = datosServicio(item);
+    if (d.s.cancelacion) continue;
+    const idDest = indiceEstacionRamal(d.destino);
+    if (idDest < 0 || idDest === idx) continue;
+    const t = d.estim || d.prog;
+    if (!t) continue;
+    const min = Math.round((new Date(t) - ahora) / 60000);
+    if (min < -1) continue;
+    (idDest > idx ? out.haciaMoreno : out.haciaOnce).push({
+      numero: d.s.numero ?? null,
+      destino: nombreVisibleEstacion(ESTACIONES_BARRIDO[idDest]),
+      hora: hora(t),
+      enMinutos: Math.max(0, min),
+    });
+  }
+  out.haciaMoreno.sort((a, c) => a.enMinutos - c.enMinutos);
+  out.haciaOnce.sort((a, c) => a.enMinutos - c.enMinutos);
+  return out;
 }
