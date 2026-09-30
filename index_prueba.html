@@ -326,13 +326,13 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  gap: clamp(16px, 6vw, 40px);
-  width: min(100%, 420px);
-  padding: 18px clamp(20px, 6vw, 40px);
+  gap: clamp(12px, 4.5vw, 28px);
+  width: min(100%, 300px);
+  padding: 13px clamp(16px, 5vw, 28px);
   background: linear-gradient(180deg, #1b1b1b 0%, #070707 100%);
   border: 2px solid #2a2a2a;
-  border-radius: 22px;
-  box-shadow: 0 10px 26px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+  border-radius: 18px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
   flex-shrink: 0;
 }
 /* soportes del pórtico */
@@ -343,17 +343,17 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .semaforo::before { left: 22%; }
 .semaforo::after  { right: 22%; }
 .semaforo-luz {
-  width: clamp(52px, 17vw, 78px);
+  width: clamp(40px, 12.5vw, 56px);
   aspect-ratio: 1;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #2b2b2b 0%, #0c0c0c 70%);
   border: 3px solid #000;
-  box-shadow: 0 0 0 4px #1d1d1d, inset 0 4px 10px rgba(0,0,0,.85);
+  box-shadow: 0 0 0 3px #1d1d1d, inset 0 3px 8px rgba(0,0,0,.85);
   transition: background .4s, box-shadow .4s;
 }
-.semaforo-luz.on-rojo    { background: radial-gradient(circle at 35% 30%, #ffb4b4 0%, #ef4444 45%, #b91c1c 100%); box-shadow: 0 0 0 4px #1d1d1d, 0 0 26px 8px rgba(239,68,68,.75), inset 0 2px 4px rgba(255,255,255,.35); }
-.semaforo-luz.on-amarillo{ background: radial-gradient(circle at 35% 30%, #fff0b3 0%, #f59e0b 45%, #b45309 100%); box-shadow: 0 0 0 4px #1d1d1d, 0 0 26px 8px rgba(245,158,11,.75), inset 0 2px 4px rgba(255,255,255,.35); }
-.semaforo-luz.on-verde   { background: radial-gradient(circle at 35% 30%, #b9f7cf 0%, #22c55e 45%, #15803d 100%); box-shadow: 0 0 0 4px #1d1d1d, 0 0 26px 8px rgba(34,197,94,.75), inset 0 2px 4px rgba(255,255,255,.35); }
+.semaforo-luz.on-rojo    { background: radial-gradient(circle at 35% 30%, #ffb4b4 0%, #ef4444 45%, #b91c1c 100%); box-shadow: 0 0 0 3px #1d1d1d, 0 0 20px 6px rgba(239,68,68,.75), inset 0 2px 4px rgba(255,255,255,.35); }
+.semaforo-luz.on-amarillo{ background: radial-gradient(circle at 35% 30%, #fff0b3 0%, #f59e0b 45%, #b45309 100%); box-shadow: 0 0 0 3px #1d1d1d, 0 0 20px 6px rgba(245,158,11,.75), inset 0 2px 4px rgba(255,255,255,.35); }
+.semaforo-luz.on-verde   { background: radial-gradient(circle at 35% 30%, #b9f7cf 0%, #22c55e 45%, #15803d 100%); box-shadow: 0 0 0 3px #1d1d1d, 0 0 20px 6px rgba(34,197,94,.75), inset 0 2px 4px rgba(255,255,255,.35); }
 
 /* ─── Push notification opt-in bar ───────────────────────── */
 .push-bar {
@@ -836,7 +836,7 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .status-bar {
   background: var(--green-bg);
   border-bottom: 2px solid var(--green);
-  padding: 30px 20px 20px;
+  padding: 26px 20px 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -861,8 +861,8 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .status-detail { font-size: 0.9rem; color: #374151; margin-top: 2px; }
 .hero-social { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 4px; }
 .hero-social-label { color: rgba(255,255,255,.75); font-size: .82rem; font-weight: 600; letter-spacing: .5px; }
-.hero-social .social-icons { justify-content: center; gap: 16px; margin-top: 0; }
-.hero-social .social-icon { width: 58px; height: 58px; padding: 11px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+.hero-social .social-icons { justify-content: center; gap: 10px; margin-top: 0; }
+.hero-social .social-icon { width: 48px; height: 48px; padding: 9px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 .dif-figure { margin: 18px 0 4px; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); background: linear-gradient(180deg, #d9effa 0%, #eef6fb 100%); }
 .dif-figure svg { display: block; width: 100%; height: auto; }
 .dif-figure figcaption { text-align: center; font-size: .74rem; color: var(--muted); padding: 0 12px 10px; }
@@ -2413,7 +2413,9 @@ console.log('[Firebase] Listener de estado inicializado');
           <a href="https://www.instagram.com/trensarmiento_enlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Instagram" title="Instagram"><img src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png" alt="Instagram" /></a>
           <a href="https://www.facebook.com/trensarmientoenlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Facebook" title="Facebook"><img src="https://upload.wikimedia.org/wikipedia/commons/b/b9/2023_Facebook_icon.svg" alt="Facebook" /></a>
           <a href="https://www.tiktok.com/@trensarmiento_enlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="TikTok" title="TikTok"><img src="https://upload.wikimedia.org/wikipedia/commons/3/34/Ionicons_logo-tiktok.svg" alt="TikTok" /></a>
+          <a href="https://x.com/InfoTSarmiento" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="X (@InfoTSarmiento)" title="X (@InfoTSarmiento)"><svg viewBox="0 0 24 24" role="img" aria-hidden="true" style="width:100%;height:100%;display:block"><path fill="#000" d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg></a>
           <a href="https://t.me/pasajerosdeltrensarmientoenlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Telegram" title="Telegram"><img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Telegram_2019_Logo.svg" alt="Telegram" /></a>
+          <a href="https://whatsapp.com/channel/0029Vb6HyJq4yltK9B7BaH3S" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Canal de WhatsApp" title="Canal de WhatsApp"><svg viewBox="0 0 24 24" role="img" aria-hidden="true" style="width:100%;height:100%;display:block"><path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg></a>
         </div>
       </nav>
     </div>
@@ -3147,9 +3149,11 @@ console.log('[Firebase] Listener de estado inicializado');
           <a href="https://www.tiktok.com/@trensarmiento_enlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="TikTok" title="TikTok">
             <img src="https://upload.wikimedia.org/wikipedia/commons/3/34/Ionicons_logo-tiktok.svg" alt="TikTok" />
           </a>
+          <a href="https://x.com/InfoTSarmiento" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="X (@InfoTSarmiento)" title="X (@InfoTSarmiento)"><svg viewBox="0 0 24 24" role="img" aria-hidden="true" style="width:100%;height:100%;display:block"><path fill="#000" d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg></a>
           <a href="https://t.me/pasajerosdeltrensarmientoenlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Telegram" title="Telegram">
             <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Telegram_2019_Logo.svg" alt="Telegram" />
           </a>
+          <a href="https://whatsapp.com/channel/0029Vb6HyJq4yltK9B7BaH3S" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Canal de WhatsApp" title="Canal de WhatsApp"><svg viewBox="0 0 24 24" role="img" aria-hidden="true" style="width:100%;height:100%;display:block"><path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg></a>
         </div>
       </div>
 
