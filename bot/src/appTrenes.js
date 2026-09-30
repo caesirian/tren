@@ -10,6 +10,8 @@
 // consultarProxy() sirve también para probar rutas no documentadas
 // (por ejemplo, de alertas).
 
+import { getTramoLimitado, tramoIncluye, resumenTramo } from "./servicioLimitado.js";
+
 const BASE = (process.env.TRENES_PROXY_URL || "https://ariedro.dev/api-trenes").replace(/\/$/, "");
 
 export async function consultarProxy(ruta) {
@@ -104,6 +106,39 @@ export function servicioFueraDelTramo({ r }) {
     contienePalabra(s.ramal?.cabeceraFinal?.nombre) || contienePalabra(s.ramal?.cabeceraInicial?.nombre) ||
     contienePalabra(s.ramal?.nombre)
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Servicio limitado (tramo operativo): si hay un tramo vigente (ej. solo
+// circulan trenes entre Liniers y Moreno), los servicios que el proxy sigue
+// listando como "programados" desde estaciones fuera del tramo NO están
+// circulando. Estos helpers los sacan de lo que se muestra.
+// ─────────────────────────────────────────────────────────────────────────
+function estacionFueraDelTramoVivo(nombre, tramo) {
+  const i = indiceEstacionRamal(nombre);
+  return !!tramo && i >= 0 && !tramoIncluye(tramo, i);
+}
+
+// Descarta servicios cuyo origen real (si se conoce) cae fuera del tramo: nunca
+// salieron de ahí. Si el origen no viene en el proxy se conserva (ante la duda, se muestra).
+function aplicarTramo(servicios, tramo) {
+  if (!tramo) return servicios;
+  return servicios.filter((item) => {
+    const o = indiceEstacionRamal(datosServicio(item).origenReal);
+    return o < 0 || tramoIncluye(tramo, o);
+  });
+}
+
+// Un tren cuyo destino queda fuera del tramo en realidad termina en el borde del tramo.
+function destinoEnTramo(destino, tramo) {
+  if (!tramo) return destino;
+  const i = indiceEstacionRamal(destino);
+  if (i < 0 || tramoIncluye(tramo, i)) return destino;
+  return nombreVisibleEstacion(ESTACIONES_BARRIDO[i > tramo.hastaIdx ? tramo.hastaIdx : tramo.desdeIdx]);
+}
+
+function textoSinSalidasPorTramo(nombreEstacion, tramo) {
+  return `🚧 Servicio limitado: hoy solo circulan trenes entre ${tramo.desde} y ${tramo.hasta}. Desde ${nombreEstacion} no salen trenes por ahora.`;
 }
 
 // Nombre exacto del campo de andén sin confirmar todavía (la API no tiene
@@ -226,7 +261,9 @@ export async function barridoEstructurado({ forzar = false } = {}) {
 export async function proximasSalidas(nombreEstacion, cantidad = 8) {
   const { servicios, revisadas, candidatas } = await serviciosSarmiento(nombreEstacion);
   if (!candidatas.length) return { texto: `No encontré la estación "${nombreEstacion}" en el proxy.`, items: [] };
-  const ordenados = [...servicios].sort((a, b) => (datosServicio(a).prog || "").localeCompare(datosServicio(b).prog || "")).slice(0, cantidad);
+  const tramo = await getTramoLimitado();
+  if (estacionFueraDelTramoVivo(candidatas[0]?.nombre || nombreEstacion, tramo)) return { texto: textoSinSalidasPorTramo(candidatas[0]?.nombre || nombreEstacion, tramo), items: [] };
+  const ordenados = aplicarTramo([...servicios], tramo).sort((a, b) => (datosServicio(a).prog || "").localeCompare(datosServicio(b).prog || "")).slice(0, cantidad);
   const ahora = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
   const hayAnden = ordenados.some((i) => datosServicio(i).anden);
   let texto = `🚉 Próximas salidas — ${revisadas.join(", ") || nombreEstacion} (consultado a las ${ahora})\n`;
@@ -307,7 +344,9 @@ export async function filasParaTabla(nombreEstacion, cantidad = 8) {
   const { servicios, revisadas, candidatas } = await serviciosSarmiento(nombreEstacion);
   if (!candidatas.length) return { filas: [], revisadas: [], error: `No encontré la estación "${nombreEstacion}" en el proxy.` };
 
-  const ordenados = [...servicios].sort((a, b) => (datosServicio(a).prog || "").localeCompare(datosServicio(b).prog || "")).slice(0, cantidad);
+  const tramo = await getTramoLimitado();
+  if (estacionFueraDelTramoVivo(candidatas[0]?.nombre || nombreEstacion, tramo)) return { filas: [], revisadas, error: textoSinSalidasPorTramo(candidatas[0]?.nombre || nombreEstacion, tramo) };
+  const ordenados = aplicarTramo([...servicios], tramo).sort((a, b) => (datosServicio(a).prog || "").localeCompare(datosServicio(b).prog || "")).slice(0, cantidad);
   const filas = ordenados.map((item) => {
     const { s, prog, estim, anden, destino, estado } = datosServicio(item);
     return {
@@ -315,10 +354,10 @@ export async function filasParaTabla(nombreEstacion, cantidad = 8) {
       anden: anden ?? null,
       horaProgramada: hora(prog),
       horaEstimada: estim ? hora(estim) : null,
-      destino,
+      destino: destinoEnTramo(destino, tramo),
       estado: s.cancelacion ? "CANCELADO" : estado,
       motivoCancelacion: s.cancelacion ? textoCancelacion(s.cancelacion) : null,
-      paradas: paradasHasta(revisadas[0] || nombreEstacion, destino),
+      paradas: paradasHasta(revisadas[0] || nombreEstacion, destinoEnTramo(destino, tramo)),
     };
   });
   return { filas, revisadas, error: null };
@@ -350,13 +389,19 @@ export function trenesConOrigenInusual(items) {
 export async function columnasCabecera(nombreEstacion, cantidad = 5) {
   const { servicios, candidatas } = await serviciosSarmiento(nombreEstacion);
   if (!candidatas.length) return { estacion: nombreEstacion, columnas: [] };
-  const ordenados = [...servicios].sort((a, b) => (datosServicio(a).prog || "").localeCompare(datosServicio(b).prog || "")).slice(0, cantidad);
+  const tramo = await getTramoLimitado();
+  const limitado = resumenTramo(tramo);
+  const nombreCabecera = candidatas[0]?.nombre || nombreEstacion;
+  if (estacionFueraDelTramoVivo(nombreCabecera, tramo)) {
+    return { estacion: nombreCabecera, columnas: [], servicioLimitado: { ...limitado, sinSalidas: true, textoSinSalidas: textoSinSalidasPorTramo(nombreCabecera, tramo) } };
+  }
+  const ordenados = aplicarTramo([...servicios], tramo).sort((a, b) => (datosServicio(a).prog || "").localeCompare(datosServicio(b).prog || "")).slice(0, cantidad);
   const columnas = ordenados.map((item) => {
     const d = datosServicio(item);
     return {
       anden: d.anden,
       horaSalida: hora(d.prog),
-      destino: d.destino,
+      destino: destinoEnTramo(d.destino, tramo),
       estado: d.estado,
       cancelado: !!d.s.cancelacion,
       motivoCancelacion: d.s.cancelacion ? textoCancelacion(d.s.cancelacion) : null,
@@ -364,10 +409,10 @@ export async function columnasCabecera(nombreEstacion, cantidad = 5) {
       origenInusual: !!d.origenReal && !ESTACIONES_ORIGEN_NORMAL.has(d.origenReal),
       // Paradas REALES según el destino de ese servicio (si el servicio está
       // limitado y termina en Castelar, no se listan las estaciones de después).
-      paradas: paradasHasta(candidatas[0]?.nombre || nombreEstacion, d.destino),
+      paradas: paradasHasta(nombreCabecera, destinoEnTramo(d.destino, tramo)),
     };
   });
-  return { estacion: candidatas[0]?.nombre || nombreEstacion, columnas };
+  return { estacion: nombreCabecera, columnas, servicioLimitado: limitado };
 }
 
 // ---------------------------------------------------------------------------
@@ -579,12 +624,18 @@ export async function arribosVivosEstacion(nombreEstacion) {
   if (idx < 0) return null;
   const b = await barridoEstructurado();
   const ahora = Date.now();
+  const tramo = await getTramoLimitado();
   const out = { haciaMoreno: [], haciaOnce: [] };
-  for (const item of b.todos) {
+  if (tramo) {
+    out.servicioLimitado = resumenTramo(tramo);
+    if (!tramoIncluye(tramo, idx)) { out.fueraDeTramo = true; return out; }
+  }
+  const visibles = aplicarTramo(b.todos, tramo);
+  for (const item of visibles) {
     if (indiceEstacionRamal(item.est.nombre) !== idx) continue;
     const d = datosServicio(item);
     if (d.s.cancelacion) continue;
-    const idDest = indiceEstacionRamal(d.destino);
+    const idDest = indiceEstacionRamal(destinoEnTramo(d.destino, tramo));
     if (idDest < 0 || idDest === idx) continue;
     const t = d.estim || d.prog;
     if (!t) continue;
@@ -600,4 +651,35 @@ export async function arribosVivosEstacion(nombreEstacion) {
   out.haciaMoreno.sort((a, c) => a.enMinutos - c.enMinutos);
   out.haciaOnce.sort((a, c) => a.enMinutos - c.enMinutos);
   return out;
+}
+
+// Detección automática de servicio limitado desde el proxy: si los trenes que
+// figuran hoy no arrancan en Once ni llegan a Once (o no arrancan/llegan a
+// Moreno), el servicio está recortado en esa punta. Devuelve el tramo
+// observado { desdeIdx, hastaIdx } o null si se ve el recorrido completo o si
+// hay muy pocos trenes para concluir algo (ej. de madrugada o a la noche, donde
+// el recorte sería un falso positivo).
+export async function detectarTramoProxy({ minimoPorSentido = 3 } = {}) {
+  const b = await barridoEstructurado();
+  const ultimo = ESTACIONES_BARRIDO.length - 1;
+  const vistos = new Set();
+  const haciaMoreno = [];
+  const haciaOnce = [];
+  for (const item of b.todos) {
+    const d = datosServicio(item);
+    const num = d.s.numero;
+    if (num == null || d.s.cancelacion || vistos.has(num)) continue;
+    const idDest = indiceEstacionRamal(d.destino);
+    const idEst = indiceEstacionRamal(item.est.nombre);
+    const idOrig = d.origenReal ? indiceEstacionRamal(d.origenReal) : -1;
+    if (idDest < 0 || idEst < 0 || idOrig < 0 || idDest === idEst) continue;
+    vistos.add(num);
+    (idDest > idEst ? haciaMoreno : haciaOnce).push({ idOrig, idDest });
+  }
+  if (haciaMoreno.length < minimoPorSentido || haciaOnce.length < minimoPorSentido) return null;
+  const desdeIdx = Math.min(Math.min(...haciaMoreno.map((t) => t.idOrig)), Math.min(...haciaOnce.map((t) => t.idDest)));
+  const hastaIdx = Math.max(Math.max(...haciaMoreno.map((t) => t.idDest)), Math.max(...haciaOnce.map((t) => t.idOrig)));
+  if (desdeIdx <= 0 && hastaIdx >= ultimo) return null;
+  if (hastaIdx - desdeIdx < 2) return null;
+  return { desdeIdx, hastaIdx, trenes: haciaMoreno.length + haciaOnce.length };
 }

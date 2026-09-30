@@ -34,7 +34,8 @@ import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
-import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, contextoProxyParaBot } from "./proxyMonitor.js";
+import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
+import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
 import { reporteLocales } from "./locales.js";
 import { evaluarEstadoAutomatico, cargarEstadoAuto, setEstadoAuto, estadoAutoActivo } from "./estadoAuto.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
@@ -221,6 +222,11 @@ async function armarContexto(pregunta) {
   const avisos = await avisosVigentes();
   if (avisos.length) partes.push(textoAvisosParaContexto(avisos));
 
+  // Servicio limitado vigente (tramo donde SÍ circulan trenes): manda sobre el
+  // cronograma y sobre los trenes "programados" que el proxy siga listando.
+  const tramoLimitado = await getTramoLimitado().catch(() => null);
+  if (tramoLimitado) partes.push(textoTramoParaContexto(tramoLimitado));
+
   // App de Trenes Argentinos (proxy), declarada fuente de verdad: cancelaciones
   // y leyendas que el proxy devuelve AHORA. Si el proxy está caído o tarda,
   // no debe voltear la respuesta al usuario.
@@ -328,6 +334,16 @@ ${
 == TRANSPORTE EN LA ZONA DE "${estacion.name}" ==
 ${transporte || "Sin datos de colectivos/subte cargados para esta estación."}`);
 
+      // Servicio limitado vigente: una estación fuera del tramo no tiene trenes
+      // ahora; no se le da ningún horario del cronograma.
+      const idxEstLimitado = idxEstacion(estacion.name);
+      if (tramoLimitado && idxEstLimitado >= 0 && !tramoIncluye(tramoLimitado, idxEstLimitado)) {
+        partes.push(`
+== ${estacion.name.toUpperCase()}: SIN SERVICIO AHORA (servicio limitado) ==
+Por el servicio limitado solo circulan trenes entre ${tramoLimitado.desde} y ${tramoLimitado.hasta}. Desde/hacia ${estacion.name} NO circulan trenes ahora. No des ningún horario del cronograma para esta estación ni digas que salen trenes; explicá que está sin servicio hasta que se normalice.`);
+        continue;
+      }
+
       // Preferimos datos EN VIVO del proxy (respetan servicio limitado /
       // recorrido acortado, con destino real); si no hay, cae a la grilla
       // fija del cronograma (recorrido completo).
@@ -353,7 +369,7 @@ Próximos trenes hacia Moreno desde ${estacion.name}: ${proximos.haciaMoreno.map
 Próximos trenes hacia Once desde ${estacion.name}: ${proximos.haciaOnce.map((t) => `${t.hora} (en ${t.enMinutos} min)`).join(", ") || "no quedan más hoy"}
 Último tren de hoy (${ultimos.diaTipo === "lv" ? "día hábil" : ultimos.diaTipo === "sab" ? "sábado" : "domingo/feriado"}) saliendo de Once: ${ultimos.desdeOnce.ultimo} (penúltimo: ${ultimos.desdeOnce.penultimo})
 Último tren de hoy saliendo de Moreno: ${ultimos.desdeMoreno.ultimo} (penúltimo: ${ultimos.desdeMoreno.penultimo})
-IMPORTANTE: esto es el cronograma habitual (recorrido completo Once–Moreno) — si hay una sección "RECORRIDO REAL DE HOY" o "PRÓXIMOS TRENES EN VIVO" en otra parte del contexto, esa manda por sobre esto porque puede haber servicio limitado hoy. Estos horarios no derives a la app si esta sección ya responde la pregunta.`);
+${tramoLimitado ? `ATENCIÓN: HAY SERVICIO LIMITADO VIGENTE (solo circulan trenes entre ${tramoLimitado.desde} y ${tramoLimitado.hasta}). Los horarios de arriba son del cronograma normal y NO valen para hoy: no los des como si los trenes salieran; decí que el servicio está limitado y hasta dónde llegan los trenes.\n` : ""}IMPORTANTE: esto es el cronograma habitual (recorrido completo Once–Moreno) — si hay una sección "RECORRIDO REAL DE HOY" o "PRÓXIMOS TRENES EN VIVO" en otra parte del contexto, esa manda por sobre esto porque puede haber servicio limitado hoy. Estos horarios no derives a la app si esta sección ya responde la pregunta.`);
       }
 
       // Siempre se da el cronograma COMPLETO de locales de la estación (todos los
@@ -665,6 +681,10 @@ bot.command("tableroestacion", async (ctx) => {
     // recorrido acortado); si el proxy no tiene nada, caemos a la grilla
     // fija del cronograma (recorrido completo, como hasta ahora).
     const vivos = await arribosVivosEstacion(estacion.name).catch(() => null);
+    if (vivos?.fueraDeTramo) {
+      await ctx.reply(`🚧 Servicio limitado: hoy solo circulan trenes entre ${vivos.servicioLimitado.desde} y ${vivos.servicioLimitado.hasta}. En ${estacion.name} no hay trenes por ahora.`);
+      return;
+    }
     let proximos;
     if (vivos && (vivos.haciaMoreno.length || vivos.haciaOnce.length)) {
       proximos = vivos;
@@ -839,6 +859,62 @@ bot.command("apptrenes", async (ctx) => {
   } catch (err) {
     console.error("Error en /apptrenes:", err.message);
     await enviar(`⚠️ No pude consultar el proxy de la app: ${err.message}`);
+  }
+});
+
+// Servicio limitado a mano. El bot y el tablero dejan de mostrar trenes fuera
+// del tramo. Uso:
+//   /limitado Liniers Moreno [minutos] [motivo...]   → solo circulan trenes entre esas dos estaciones
+//   /limitado                                        → ver el estado actual
+//   /limitado off                                    → cerrarlo (la detección automática no lo reactiva por 1 hora)
+bot.command("limitado", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  const args = (ctx.message.text || "").replace(/^\/limitado(@\w+)?\s*/i, "").trim();
+  try {
+    if (/^(off|fin|normal|normalizado|cerrar|apagar)\b/i.test(args)) {
+      await limpiarTramoLimitado({ suprimirProxy: true });
+      olvidarTema("estado");
+      await ctx.reply("✅ Servicio limitado cerrado. El bot y el tablero vuelven al recorrido completo (la detección automática no lo reactiva por 1 hora).");
+      return;
+    }
+    if (!args) {
+      const t = await getTramoLimitado();
+      await ctx.reply(
+        t
+          ? `🚧 Servicio limitado vigente: solo circulan trenes entre ${t.desde} y ${t.hasta}.\nOrigen: ${t.origen}${t.quien ? ` (${t.quien})` : ""}${t.motivo ? `\nMotivo: ${t.motivo}` : ""}\nVence: ${new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(t.venceEn))}${t.vigenciaEstimada ? " (estimado)" : ""}\n\n/limitado off para cerrarlo.`
+          : "No hay servicio limitado vigente.\nUso: /limitado Liniers Moreno [minutos] [motivo]"
+      );
+      return;
+    }
+    const estaciones = extraerEstaciones(args);
+    if (estaciones.length < 2 || estaciones[0] === estaciones[1]) {
+      await ctx.reply("Necesito las dos estaciones entre las que SÍ circulan trenes. Ej: /limitado Liniers Moreno 120 accidente en Flores");
+      return;
+    }
+    // minutos: primer número suelto que no sea parte de un nombre de estación
+    const mMin = /(?:^|\s)(\d{1,3})(?=\s|$)/.exec(args);
+    const duracionMin = mMin ? Number(mMin[1]) : null;
+    // motivo: lo que queda después de sacar las dos primeras estaciones, los minutos y conectores sueltos
+    let sacadas = 0;
+    const motivo = args
+      .replace(/san antonio de padua|san antonio|paso del rey|villa luro|ramos mej[ií]a|once|caballito|flores|floresta|liniers|ciudadela|haedo|mor[oó]n|castelar|ituzaing[oó]|padua|merlo|moreno/gi, (m) => (++sacadas <= 2 ? " " : m))
+      .replace(/(?:^|\s)\d{1,3}(?=\s|$)/, " ")
+      .replace(/^\s*(entre|y|e|solo|s[oó]lo|hasta)\b/i, " ")
+      .replace(/\s(entre|y|e|solo|s[oó]lo|hasta)\s/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const quien = ctx.from?.username ? `@${ctx.from.username}` : ctx.from?.first_name || `ID ${ctx.from?.id}`;
+    const t = await setTramoLimitado({ estA: estaciones[0], estB: estaciones[1], motivo, duracionMin, origen: "manual", quien });
+    if (!t) {
+      await ctx.reply("No pude cargar el servicio limitado con esas estaciones.");
+      return;
+    }
+    olvidarTema("estado");
+    const vence = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(t.venceEn));
+    await ctx.reply(`🚧 Servicio limitado cargado: solo circulan trenes entre ${t.desde} y ${t.hasta}, hasta las ${vence}${t.vigenciaEstimada ? " (estimado: no indicaste minutos, son 2 h)" : ""}.\nEl bot y el tablero ya lo respetan. /limitado off para cerrarlo.`);
+  } catch (err) {
+    console.error("Error en /limitado:", err.message);
+    await ctx.reply("No pude gestionar el servicio limitado: " + err.message);
   }
 });
 
@@ -2098,7 +2174,7 @@ app.get("/api/tablero-vivo", async (req, res) => {
         motivoCancelacion: d.s.cancelacion ? textoCancelacion(d.s.cancelacion) : null,
       }));
 
-    res.json({ consultadoEn: new Date().toISOString(), servicios, erroresProxy: barrido.errores });
+    res.json({ consultadoEn: new Date().toISOString(), servicios, servicioLimitado: resumenTramo(await getTramoLimitado().catch(() => null)), erroresProxy: barrido.errores });
   } catch (err) {
     console.error("Error en /api/tablero-vivo:", err.message);
     res.status(502).json({ error: err.message });
@@ -2215,6 +2291,16 @@ async function chequeoPeriodicoProxy(origen) {
     }
   } catch (err) {
     console.error(`Error chequeando demoras del proxy (${origen}):`, err.message);
+  }
+
+  try {
+    const tramoProxy = await chequearTramoLimitadoProxy();
+    if (tramoProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
+      olvidarTema("estado");
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, tramoProxy.texto).catch((err) => console.error("Error avisando servicio limitado del proxy:", err.message));
+    }
+  } catch (err) {
+    console.error(`Error chequeando servicio limitado (${origen}):`, err.message);
   }
 
   try {

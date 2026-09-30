@@ -20,8 +20,9 @@
 
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora, recorridoVivo, textoRecorrido } from "./appTrenes.js";
+import { detectarTramoProxy, barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora, recorridoVivo, textoRecorrido } from "./appTrenes.js";
 import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal } from "./locales.js";
+import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado } from "./servicioLimitado.js";
 
 const COLECCION = "cancelacionesProxyVistas";
 const COLECCION_DEMORAS = "demorasProxyAvisadas";
@@ -379,4 +380,51 @@ export async function contextoProxyParaBot() {
     `\nEsto es lo que se detecta EN ESTE MOMENTO (no vencido, no hay que calcular vigencia): tiene la misma prioridad que los avisos de la fuente de verdad por texto. Nunca menciones cómo se obtuvo este dato ni nombres de sistemas o mecanismos internos. Un tren específico cancelado no implica que todo el ramal esté cortado; hablá solo del/de los tren(es) que aparecen acá salvo que haya varios en el mismo tramo y horario.`;
 
   return [bloqueRecorrido, bloqueCancelaciones].filter(Boolean).join("\n");
+}
+
+// Servicio limitado detectado por el proxy (recorte en Once o en Moreno).
+// Para no activarlo por un dato suelto (o a la noche, con pocos trenes), tiene
+// que verse en 2 chequeos seguidos; se renueva mientras siga viéndose y se
+// apaga solo cuando vuelve el recorrido completo. No pisa uno cargado a mano
+// ni por la fuente de verdad. Solo avisa al admin por privado.
+// Interruptor: TRAMO_LIMITADO_AUTO=false.
+let deteccionesSeguidas = 0;
+export async function chequearTramoLimitadoProxy() {
+  if (!monitorProxyActivo() || String(process.env.TRAMO_LIMITADO_AUTO ?? "true").trim().toLowerCase() === "false") return { texto: null, desactivado: true };
+  let det;
+  try {
+    det = await detectarTramoProxy();
+  } catch (err) {
+    console.error("Error detectando servicio limitado desde el proxy:", err.message);
+    return { texto: null, error: err.message };
+  }
+  const actual = await getTramoLimitado();
+
+  if (!det) {
+    deteccionesSeguidas = 0;
+    if (actual?.origen === "proxy") {
+      await limpiarTramoLimitado();
+      return { texto: "✅ El proxy volvió a mostrar el recorrido completo Once–Moreno: di de baja el servicio limitado que había detectado solo." };
+    }
+    return { texto: null };
+  }
+
+  deteccionesSeguidas += 1;
+  if (deteccionesSeguidas < 2) return { texto: null };
+  if (actual && actual.origen !== "proxy") return { texto: null }; // manda el manual / la fuente de verdad
+
+  const yaActivo = actual?.origen === "proxy" && actual.desdeIdx === det.desdeIdx && actual.hastaIdx === det.hastaIdx;
+  const tramo = await setTramoLimitado({
+    estA: det.desdeIdx,
+    estB: det.hastaIdx,
+    motivo: "detectado por los trenes que figuran hoy en el sistema",
+    duracionMin: 15,
+    origen: "proxy",
+  });
+  if (!tramo || yaActivo) return { texto: null };
+  return {
+    texto:
+      `🚧 Detecté servicio limitado por el proxy: los trenes de hoy solo circulan entre ${tramo.desde} y ${tramo.hasta} (${det.trenes} trenes vistos). ` +
+      `Ya lo estoy aplicando en el bot y en el tablero. Si es un falso positivo: /limitado off (no vuelve a activarse solo por 1 hora). Si querés fijarlo con otro tramo o duración: /limitado <estación> <estación> [minutos] [motivo].`,
+  };
 }

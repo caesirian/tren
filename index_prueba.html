@@ -3953,9 +3953,10 @@ renderStations();
 
     var n = cuantasColumnas();
     var cols = (data.columnas || []).slice(0, n);
+    var lim = data.servicioLimitado || null;
     if (!cols.length) {
       board.style.display = "none";
-      vacio.textContent = "No hay próximas salidas para mostrar en este momento.";
+      vacio.textContent = lim && lim.textoSinSalidas ? lim.textoSinSalidas : "No hay próximas salidas para mostrar en este momento.";
       vacio.style.display = "block";
       return;
     }
@@ -3963,8 +3964,10 @@ renderStations();
     vacio.style.display = "none";
     columnas.style.gridTemplateColumns = "repeat(" + n + ", minmax(0, 1fr))";
 
-    var lista = paradas.map(function (e) { return "<li>" + esc(NOMBRES_CORTOS[e] || e) + "</li>"; }).join("");
+    function liParadas(arr) { return arr.map(function (e) { return "<li>" + esc(NOMBRES_CORTOS[e] || e) + "</li>"; }).join(""); }
     columnas.innerHTML = cols.map(function (c) {
+      // Paradas reales del tren (si el servicio está limitado termina antes); si el bot no las manda, el listado completo.
+      var lista = liParadas(c.paradas && c.paradas.length ? c.paradas : paradas);
       var clase = c.cancelado ? "cancelado" : /en\s*and[eé]n|confirmado|parti[oó]/i.test(c.estado || "") ? "confirmado" : "programado";
       var estadoTxt = c.cancelado ? "Cancelado" : c.estado || "Programado";
       return '<div class="tv-col">' +
@@ -3980,9 +3983,9 @@ renderStations();
     }).join("");
 
     var motivos = cols.filter(function (c) { return c.cancelado && c.motivoCancelacion; }).map(function (c) { return c.motivoCancelacion; });
-    if (motivos.length) {
+    if (lim || motivos.length) {
       banner.className = "tv-banner alerta";
-      banner.textContent = "⚠️ " + motivos.join(" · ");
+      banner.textContent = "⚠️ " + (lim ? [lim.texto].concat(motivos) : motivos).join(" · ");
     } else {
       banner.className = "tv-banner tip";
       banner.textContent = TIP_DEFAULT;

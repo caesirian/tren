@@ -109,8 +109,10 @@ export function tableroVivoHTML() {
 
   function render(data) {
     const cols = data.columnas || [];
+    const lim = data.servicioLimitado || null;
     board.style.display = cols.length ? "block" : "none";
     vacio.style.display = cols.length ? "none" : "block";
+    vacio.textContent = lim && lim.textoSinSalidas ? "🚧 " + lim.textoSinSalidas.replace("🚧 ", "") : "Sin próximas salidas para mostrar en este momento.";
     boardEst.textContent = (data.estacion || "").toUpperCase();
     boardHora.textContent = data.horaActual || "--:--";
 
@@ -118,7 +120,8 @@ export function tableroVivoHTML() {
       .map((c) => {
         const estadoClase = c.cancelado ? "cancelado" : /en\\s*and[eé]n|confirmado|parti[oó]/i.test(c.estado || "") ? "confirmado" : "programado";
         const estadoTxt = c.cancelado ? "Cancelado" : c.estado || "Programado";
-        const paradas = (data.estaciones || []).map((e) => "<li>" + e + "</li>").join("");
+        const listaParadas = c.paradas && c.paradas.length ? c.paradas : (data.estaciones || []);
+        const paradas = listaParadas.map((e) => "<li>" + e + "</li>").join("");
         return '<div class="col">' +
           '<div class="col-head"><div><div class="lbl">Andén</div><div class="val">' + (c.anden || "–") + '</div></div>' +
           '<div><div class="lbl">Hora salida</div><div class="val">' + (c.horaSalida || "--:--") + '</div></div></div>' +
@@ -131,9 +134,9 @@ export function tableroVivoHTML() {
       .join("");
 
     const motivos = cols.filter((c) => c.cancelado && c.motivoCancelacion).map((c) => c.motivoCancelacion);
-    if (motivos.length) {
+    if (lim || motivos.length) {
       banner.className = "banner alerta";
-      banner.textContent = "⚠️ " + motivos.join("   •   ");
+      banner.textContent = "⚠️ " + (lim ? [lim.texto].concat(motivos) : motivos).join("   •   ");
     } else {
       banner.className = "banner tip";
       banner.textContent = TIP_DEFAULT;

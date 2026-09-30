@@ -17,6 +17,7 @@ import { GoogleGenAI } from "@google/genai";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { similitud } from "./imageIntel.js";
+import { extraerEstaciones, setTramoLimitado, limpiarTramoLimitado } from "./servicioLimitado.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const MODEL = "gemini-3.5-flash-lite";
@@ -84,7 +85,9 @@ Devolvé SOLO un JSON (sin markdown ni texto extra) con esta forma exacta:
   "tipo": "accidente" | "servicio_limitado" | "demora" | "interrumpido" | "normalizacion" | "otro_relevante" | "ninguno",
   "resumen": "1 oración en español rioplatense con lo que informa, sin inventar nada",
   "duracionMin": número de minutos que dice que va a durar, o null si no lo dice,
-  "venceHora": "HH:MM" (24hs, hora de Buenos Aires) si dice hasta qué hora dura, o null
+  "venceHora": "HH:MM" (24hs, hora de Buenos Aires) si dice hasta qué hora dura, o null,
+  "tramoDesde": nombre de una estación, o null,
+  "tramoHasta": nombre de la otra estación, o null
 }
 
 Criterios:
@@ -96,6 +99,7 @@ Criterios:
 - "otro_relevante": otro dato operativo útil para pasajeros (obra, desvío, cambio de andén).
 - Si es charla común, una pregunta, un saludo, un comentario sin dato del servicio: esAviso=false, tipo="ninguno".
 - No inventes duraciones: si no las dice, null.
+- tramoDesde / tramoHasta: SOLO si el mensaje dice entre qué dos estaciones circula el servicio limitado (ej. "servicio limitado entre Moreno y Liniers" → tramoDesde "Liniers", tramoHasta "Moreno"; "solo circulan trenes Haedo–Moreno" → "Haedo" y "Moreno"). Son las dos puntas del tramo donde los trenes SÍ circulan. Si el mensaje solo nombra el lugar de un accidente o una estación suelta, o no habla de tramo: null en ambos.
 `.trim();
 
   const response = await ai.models.generateContent({ model: MODEL, contents: prompt });
@@ -140,6 +144,7 @@ export function calcularVencimiento({ tipo, duracionMin, venceHora }, ahora = ne
 }
 
 async function cerrarAvisosAbiertos(ahora) {
+  await limpiarTramoLimitado().catch(() => {}); // si se normalizó, también se cierra el servicio limitado
   const iso = ahora.toISOString();
   enMemoria = enMemoria.map((a) => (a.venceEn > iso ? { ...a, cerrado: true } : a));
   const firestore = ensureInit();
@@ -150,6 +155,26 @@ async function cerrarAvisosAbiertos(ahora) {
     await Promise.all(abiertos.map((d) => d.ref.update({ cerrado: true, cerradoEn: iso })));
   } catch (err) {
     console.error("Error cerrando avisos:", err.message);
+  }
+}
+
+// Si el aviso dice entre qué estaciones circula el servicio limitado, se carga
+// como tramo operativo (lo respetan el bot y el tablero) con el mismo
+// vencimiento del aviso. Usa lo que extrajo el clasificador y, si no vino,
+// busca "entre X y Y" en el texto.
+async function aplicarTramoDelAviso(clasif, textoOriginal, venceEn, quien, resumen) {
+  if (clasif.tipo !== "servicio_limitado" && clasif.tipo !== "accidente") return null;
+  let estaciones = extraerEstaciones(`${clasif.tramoDesde || ""} ${clasif.tramoHasta || ""}`);
+  if (estaciones.length < 2) {
+    const m = /\bentre\b([\s\S]+)/i.exec(textoOriginal || "");
+    estaciones = m ? extraerEstaciones(m[1]) : [];
+  }
+  if (estaciones.length < 2 || estaciones[0] === estaciones[1]) return null;
+  try {
+    return await setTramoLimitado({ estA: estaciones[0], estB: estaciones[1], motivo: resumen, venceEn: venceEn.toISOString(), origen: "vivi", quien });
+  } catch (err) {
+    console.error("Error cargando el tramo del servicio limitado:", err.message);
+    return null;
   }
 }
 
@@ -193,6 +218,7 @@ export async function procesarMensajeFuente({ texto, quien, userId, origen = "te
     } else {
       enMemoria = enMemoria.map((a) => (a.id === igual.id ? { ...a, ...cambios } : a));
     }
+    await aplicarTramoDelAviso(clasif, limpio, new Date(nuevoVence), quien, resumenNuevo);
     return { ...igual, ...cambios, renovado: true };
   }
 
@@ -220,6 +246,7 @@ export async function procesarMensajeFuente({ texto, quien, userId, origen = "te
     }
   }
   if (!id) enMemoria.push({ id: `mem-${Date.now()}`, ...aviso });
+  await aplicarTramoDelAviso(clasif, limpio, venceEn, quien, resumenNuevo);
   return aviso;
 }
 
