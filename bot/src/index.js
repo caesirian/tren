@@ -1518,9 +1518,10 @@ bot.command("push", async (ctx) => {
   try {
     let res = await intentar();
     // Render (plan free) duerme el servicio: la primera llamada puede dar 502/503/504 mientras despierta.
-    if ([502, 503, 504].includes(res.r.status)) {
-      await ctx.reply("⏳ El proxy estaba dormido, reintento en unos segundos…");
-      await new Promise((ok) => setTimeout(ok, 15000));
+    if ([429, 502, 503, 504].includes(res.r.status)) {
+      const espera = Math.min(Math.max(Number(res.r.headers.get("retry-after")) || 15, 5), 40);
+      await ctx.reply(`⏳ El proxy respondió ${res.r.status} (dormido o limitado), reintento en ${espera}s…`);
+      await new Promise((ok) => setTimeout(ok, espera * 1000));
       res = await intentar();
     }
     const { r, data, texto } = res;
