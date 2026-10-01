@@ -1454,6 +1454,37 @@ bot.command("noticia", async (ctx) => {
   }
 });
 
+// Manda una notificación push a los suscriptores del sitio (OneSignal), usando
+// el mismo proxy que el panel admin: POST {PUSH_PROXY_URL}/notif/enviar.
+// Uso: /push Título | Mensaje | url opcional
+bot.command("push", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+
+  const textoCrudo = (ctx.message.text || "").split(" ").slice(1).join(" ").trim();
+  const [titulo, mensaje, url] = textoCrudo.split("|").map((s) => s.trim());
+
+  if (!titulo || !mensaje) {
+    await ctx.reply("Uso: /push Título | Mensaje | url (opcional)\n\nEj: /push Servicio limitado | Moreno–Liniers por accidente en Flores. Más info en el sitio.");
+    return;
+  }
+
+  const base = (process.env.PUSH_PROXY_URL || "https://tren-webs.onrender.com").replace(/\/$/, "");
+  try {
+    const r = await fetch(`${base}/notif/enviar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titulo, mensaje, url: url || "https://trensarmientoenlinea.com.ar" }),
+      signal: AbortSignal.timeout(30000),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(JSON.stringify(data.error || data) || `HTTP ${r.status}`);
+    await ctx.reply(`✅ Push enviada a ${data.recipients ?? "?"} suscriptores:\n"${titulo}"\n${mensaje}`);
+  } catch (err) {
+    console.error("Error en /push:", err.message);
+    await ctx.reply("No pude mandar la push: " + err.message);
+  }
+});
+
 bot.on("photo", async (ctx) => {
   const esColab = esColaboradorImagenes(ctx);
   let resultadoComunicado;
