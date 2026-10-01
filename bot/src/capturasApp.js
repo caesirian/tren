@@ -6,8 +6,9 @@
 // Todo en silencio: al grupo no se publica nada; el resultado le llega solo
 // al admin por privado.
 //
-// Las capturas NO son fuente de verdad del bot (las sube cualquiera): sirven
-// para medir cuánto coincide la app con lo que devuelve el proxy.
+// Solo se procesan las capturas que sube el ADMIN (las de cualquier otro
+// usuario se ignoran, no se leen ni se guardan). Las capturas de nuestro propio
+// sitio (trensarmientoenlinea.com.ar) tampoco cuentan: esa info ya la tenemos.
 
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
@@ -68,10 +69,11 @@ export function recordarCaptura({ imagenHash, fileUniqueId }) {
 }
 
 const PROMPT = `
-Esta imagen puede ser: (a) una CAPTURA DE PANTALLA de la app (o del sitio) de Trenes Argentinos / SOFSE (arribos de una estación, buscador de recorrido, estado del servicio, alertas), o (b) una FOTO de la CARTELERA FÍSICA/LED de una estación (el panel que cuelga arriba del andén, tipo el de la estación Once, con filas ANDÉN / destino / hora / estado PROGRAMADO o CONFIRMADO, y a veces un cartel o cinta con un aviso al pie).
+Esta imagen puede ser: (a) una CAPTURA DE PANTALLA de la app oficial de Trenes Argentinos / SOFSE (arribos de una estación, buscador de recorrido, estado del servicio, alertas), o (b) una FOTO de la CARTELERA FÍSICA/LED de una estación (el panel que cuelga arriba del andén, tipo el de la estación Once, con filas ANDÉN / destino / hora / estado PROGRAMADO o CONFIRMADO, y a veces un cartel o cinta con un aviso al pie).
 Devolvé SOLO un JSON (sin markdown) con esta forma exacta:
 {
   "esCapturaAppTrenes": true o false,
+  "esSitioPropio": true si la imagen es una captura de NUESTRO sitio trensarmientoenlinea.com.ar (ver regla), o false,
   "tipo": "arribos" | "recorrido" | "alerta" | "estado_servicio" | "cartelera_fisica" | "otro",
   "estacion": "estación que se está viendo (pantalla de arribos)" o null,
   "ramal": "ramal o línea" o null,
@@ -98,7 +100,8 @@ Devolvé SOLO un JSON (sin markdown) con esta forma exacta:
   "textoDetectado": "todo el texto relevante que se lee, resumido"
 }
 Reglas:
-- esCapturaAppTrenes=false si es una foto común, meme, publicidad, comunicado gráfico, captura de otra app o cualquier cosa que no sea la app/sitio de Trenes Argentinos. No inventes datos: si algo no se ve, null.
+- NUESTRO SITIO (esSitioPropio=true y esCapturaAppTrenes=false): si la captura es de trensarmientoenlinea.com.ar / "Tren Sarmiento En Línea" (no es la app de Trenes Argentinos), marcá esSitioPropio=true. Se reconoce por: la dirección trensarmientoenlinea.com.ar, el nombre "Tren Sarmiento En Línea" o "Tren Sarmiento" en grande, el semáforo negro con luces de colores, el tablero de próximas salidas ("Próximas Salidas", "Hora"), el recuadro "PUBLICIDAD" / "Publicite aquí", el botón "Últimos Trenes", la leyenda "Verificado: dd/mm/aa hh:mm", los íconos de redes sociales o el menú del sitio. Esa información ya la tenemos: no es un dato nuevo ni una captura de la app.
+- esCapturaAppTrenes=false si es una foto común, meme, publicidad, comunicado gráfico, captura de otra app, captura de nuestro sitio o cualquier cosa que no sea la app oficial de Trenes Argentinos. No inventes datos: si algo no se ve, null.
 - Alertas: "operativa" = afecta la circulación (demoras, cancelaciones, interrupciones, colisiones, obras, paros, servicio normalizado tras un evento). "informativa" = beneficios, tarifas, campañas, recomendaciones (ej. CUD gratuito con SUBE). Listá cada bloque por separado.
 - estado "normalizado" = el aviso dice que el servicio se normalizó/restableció (evento ya cerrado). "demorado" = circula con demoras. No confundas uno con otro.
 - Ignorá marcas hechas a mano sobre la imagen (círculos, flechas, subrayados, tachones). Si un texto queda cortado o tapado, transcribí solo lo legible, marcá truncado=true y no lo completes.
@@ -133,8 +136,14 @@ export function normalizarLectura(datos) {
       return out;
     });
   const operativas = alertas.filter((a) => a.tipo === "operativa");
+  // Red de seguridad: si el texto leído nombra nuestro sitio, no es la app, aunque el modelo no lo haya marcado.
+  const esSitioPropio = datos.esSitioPropio === true || /trensarmientoenlinea|tren sarmiento en l[ií]nea/i.test(`${datos.textoDetectado || ""} ${datos.estacion || ""}`);
+  if (esSitioPropio) {
+    return { ...datos, esSitioPropio: true, esCapturaAppTrenes: false, alertas: [], servicios: [], alertaTexto: null, horaOrigen: null };
+  }
   return {
     ...datos,
+    esSitioPropio: false,
     alertas,
     alertaTexto: operativas.length ? operativas.map((a) => (a.seccion ? `${a.seccion}: ` : "") + a.texto).join(" | ") : null,
     horaOrigen: HORA_ORIGENES.includes(datos.horaOrigen) ? datos.horaOrigen : null,

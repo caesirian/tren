@@ -1462,10 +1462,12 @@ bot.on("photo", async (ctx) => {
   } else {
     await reenviarMediaAlAdmin(ctx, "imagen");
   }
-  // Capturas de la app de Trenes Argentinos: las puede subir cualquier
-  // usuario del grupo. (Un colaborador cuya imagen SÍ era comunicado no pasa
-  // por acá.) Todo en silencio: solo se le informa al admin.
-  if (ctx.chat?.type !== "private" && esChatAutorizado(ctx) && (!esColab || resultadoComunicado === "no_relevante")) {
+  // Capturas de la app de Trenes Argentinos: SOLO las del admin. La imagen de
+  // cualquier otro usuario no se lee, no se guarda en Firestore ni genera
+  // alertas (30/9: un usuario subió una captura de nuestro propio sitio y el
+  // bot la guardó como si fuera de la app). Todo en silencio: solo se le
+  // informa al admin.
+  if (ctx.chat?.type !== "private" && esChatAutorizado(ctx) && esAdminEstado(ctx) && (!esColab || resultadoComunicado === "no_relevante")) {
     procesarCapturaAppEnCola(ctx).catch((err) => console.error("Error en captura de la app:", err.message));
   }
 });
@@ -1491,6 +1493,7 @@ async function procesarCapturaApp(ctx) {
   };
   const from = ctx.from || {};
   const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
+  if (!esAdminEstado(ctx)) return; // doble seguro: capturas de la app solo del admin
   try {
     const foto = ctx.message.photo[ctx.message.photo.length - 1];
     const fileUrl = await bot.telegram.getFileLink(foto.file_id);
@@ -1507,6 +1510,11 @@ async function procesarCapturaApp(ctx) {
 
     const datos = await analizarCapturaApp(buffer.toString("base64"));
     recordarCaptura({ imagenHash, fileUniqueId }); // recién ahora: si Gemini falló, se puede reintentar
+    if (datos.esSitioPropio) {
+      console.log(`Imagen de ${quien}: es una captura de nuestro propio sitio, no se guarda ni se toma como dato`);
+      await avisar("ℹ️ La imagen que subiste es una captura de nuestro propio sitio (trensarmientoenlinea.com.ar), no de la app de Trenes Argentinos. Esa información ya la tenemos: no la guardé ni la tomé como dato.");
+      return;
+    }
     if (!datos.esCapturaAppTrenes) {
       console.log(`Imagen de ${quien}: no es captura de la app de Trenes Argentinos, se ignora`);
       return;
