@@ -71,6 +71,7 @@ Reglas:
   · Tarifas / precio del boleto → https://trensarmientoenlinea.com.ar/#tarifas
   · Servicio Diferencial → https://trensarmientoenlinea.com.ar/#diferencial
   · Estado del servicio / demoras → https://trensarmientoenlinea.com.ar/#estado
+  · Cómo están saliendo los trenes de Once / tablero de próximas salidas → https://trensarmientoenlinea.com.ar/#tablero
   · Objetos perdidos y encontrados → https://trensarmientoenlinea.com.ar/#objetos-perdidos
   · Colectivos/subte por estación → https://trensarmientoenlinea.com.ar/#estaciones
   Si la respuesta mezcla dos temas, poné el link de la sección más relevante

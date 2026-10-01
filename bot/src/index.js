@@ -36,6 +36,7 @@ import { tableroVivoHTML } from "./tableroVivo.js";
 import { registrarSnapshot, snapshotHaceMinutos, rangoRegistrado } from "./tableroHistorial.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
+import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
 import { reporteLocales } from "./locales.js";
 import { evaluarEstadoAutomatico, cargarEstadoAuto, setEstadoAuto, estadoAutoActivo } from "./estadoAuto.js";
@@ -647,6 +648,36 @@ async function armarImagenTablero(estacion) {
   const origenNombre = revisadas[0] || estacion;
   const buffer = generarImagenTablero(filas, origenNombre, horaArgentinaTexto(new Date()));
   return { buffer, error: null, origenNombre };
+}
+
+// Respuesta automática a "¿cómo están saliendo los trenes de Once?": comparte
+// el tablero de Once (imagen con datos reales) y deja el ancla del tablero en
+// vivo del sitio. Devuelve true si respondió, false si no pudo (en ese caso el
+// flujo normal con Gemini contesta como siempre).
+async function responderConTableroOnce(ctx) {
+  try {
+    const tramo = await getTramoLimitado().catch(() => null);
+    const nota = tramo ? `\n🚧 Servicio limitado: solo circulan trenes entre ${tramo.desde} y ${tramo.hasta}.` : "";
+    const cierre = `\n\n📲 Tablero en vivo, se actualiza solo: ${LINK_TABLERO}`;
+    await ctx.sendChatAction("upload_photo").catch(() => {});
+    const { buffer, error } = await armarImagenTablero("Once");
+    if (buffer) {
+      await ctx.replyWithPhoto(
+        { source: buffer },
+        { caption: `🚉 Así están saliendo los trenes de Once (${horaArgentinaTexto(new Date())}).${nota}${cierre}`, ...opcionesRespuesta(ctx) }
+      );
+      return true;
+    }
+    // Sin salidas (p. ej. servicio limitado que no incluye Once): eso ES la respuesta.
+    if (error && /servicio limitado|sin servicio|no salen|sin servicios/i.test(error)) {
+      await ctx.reply(`${error}${cierre}`, opcionesRespuesta(ctx));
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("Error en respuesta automática con tablero de Once:", err.message);
+    return false;
+  }
 }
 
 // Tablero de estación INTERMEDIA (Morón, Castelar, etc.) estilo "PRÓXIMO
@@ -1939,6 +1970,32 @@ bot.on("text", async (ctx) => {
       console.log(
         `Al aire omitida (${esReplyAOtraPersona ? "es reply a otra persona" : `tema repetido: ${temaDeLaPregunta}`}) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`
       );
+    }
+
+    // "¿Cómo están saliendo los trenes de Once?" → tablero de Once + ancla del
+    // tablero en vivo. Al aire respeta lo de siempre: no se mete en charlas
+    // entre usuarios (reply a otra persona), no repite el mismo tema en poco
+    // tiempo y respeta el límite de uso. Si lo mencionan, siempre contesta.
+    if (esConsultaSalidasOnce(textoOriginal) && !esReplyAOtraPersona) {
+      if (!fueEtiquetado && esGrupo && yaRespondidoRecientemente("tablero_once")) {
+        console.log(`Al aire omitida (tablero de Once ya compartido hace poco) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`);
+        return;
+      }
+      if (excedioLimite(ctx.from?.id)) {
+        if (fueEtiquetado || esChatPrivado) {
+          await ctx.reply("Che, me preguntaste bastante seguido 😅 esperá unos minutos y probá de nuevo.", opcionesRespuesta(ctx));
+        }
+        return;
+      }
+      if (await responderConTableroOnce(ctx)) {
+        const pregunta = limpiarMencion(textoOriginal) || textoOriginal;
+        const resumen = `[Tablero de Once compartido] ${LINK_TABLERO}`;
+        if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: resumen });
+        if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: resumen });
+        if (esGrupo && !fueEtiquetado) registrarRespuestaAlAire("tablero_once");
+        return;
+      }
+      // Si no se pudo armar el tablero, sigue el flujo normal (Gemini).
     }
 
     if (!fueEtiquetado && !esPreguntaAlAire) return;
