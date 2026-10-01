@@ -54,7 +54,7 @@ export function mapaVivoHTML() {
   <span><i style="background:transparent;border:2px solid #4338CA"></i> origen inusual</span>
 </div>
 <div class="mapa-wrap"><div class="track" id="track"></div></div>
-<footer class="credito">Fuente: proxy no oficial de la app de Trenes Argentinos (ariedro/api-trenes) — no es un dato oficial garantizado. Once queda a la izquierda, Moreno a la derecha.</footer>
+<footer class="credito">Datos estimados por horarios — no es un dato oficial garantizado. Once queda a la izquierda, Moreno a la derecha.</footer>
 <script>
 (function () {
   const params = new URLSearchParams(location.search);

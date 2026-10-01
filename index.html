@@ -319,29 +319,41 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   opacity: .8;
 }
 
-/* ─── Semáforo de estado ──────────────────────────────────── */
+/* ─── Semáforo de estado (tipo largada de Fórmula 1, horizontal) ─── */
 .semaforo {
+  position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  justify-content: center;
   align-items: center;
-  gap: 5px;
-  background: #0a0a0a;
-  border-radius: 20px;
-  padding: 8px 6px;
-  border: 2px solid #1a1a1a;
-  box-shadow: 0 2px 8px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+  gap: clamp(12px, 4.5vw, 28px);
+  width: min(100%, 300px);
+  padding: 13px clamp(16px, 5vw, 28px);
+  background: linear-gradient(180deg, #1b1b1b 0%, #070707 100%);
+  border: 2px solid #2a2a2a;
+  border-radius: 18px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
   flex-shrink: 0;
 }
+/* soportes del pórtico */
+.semaforo::before, .semaforo::after {
+  content: ""; position: absolute; top: -14px; width: 12px; height: 14px;
+  background: #2a2a2a; border-radius: 3px 3px 0 0;
+}
+.semaforo::before { left: 22%; }
+.semaforo::after  { right: 22%; }
 .semaforo-luz {
-  width: 16px; height: 16px;
+  width: clamp(40px, 12.5vw, 56px);
+  aspect-ratio: 1;
   border-radius: 50%;
-  background: #1a1a1a;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,.5);
+  background: radial-gradient(circle at 35% 30%, #2b2b2b 0%, #0c0c0c 70%);
+  border: 3px solid #000;
+  box-shadow: 0 0 0 3px #1d1d1d, inset 0 3px 8px rgba(0,0,0,.85);
   transition: background .4s, box-shadow .4s;
 }
-.semaforo-luz.on-rojo   { background: #ef4444; box-shadow: 0 0 8px 2px rgba(239,68,68,.7), inset 0 1px 2px rgba(255,255,255,.2); }
-.semaforo-luz.on-amarillo { background: #f59e0b; box-shadow: 0 0 8px 2px rgba(245,158,11,.7), inset 0 1px 2px rgba(255,255,255,.2); }
-.semaforo-luz.on-verde  { background: #22c55e; box-shadow: 0 0 8px 2px rgba(34,197,94,.7), inset 0 1px 2px rgba(255,255,255,.2); }
+.semaforo-luz.on-rojo    { background: radial-gradient(circle at 35% 30%, #ffb4b4 0%, #ef4444 45%, #b91c1c 100%); box-shadow: 0 0 0 3px #1d1d1d, 0 0 20px 6px rgba(239,68,68,.75), inset 0 2px 4px rgba(255,255,255,.35); }
+.semaforo-luz.on-amarillo{ background: radial-gradient(circle at 35% 30%, #fff0b3 0%, #f59e0b 45%, #b45309 100%); box-shadow: 0 0 0 3px #1d1d1d, 0 0 20px 6px rgba(245,158,11,.75), inset 0 2px 4px rgba(255,255,255,.35); }
+.semaforo-luz.on-verde   { background: radial-gradient(circle at 35% 30%, #b9f7cf 0%, #22c55e 45%, #15803d 100%); box-shadow: 0 0 0 3px #1d1d1d, 0 0 20px 6px rgba(34,197,94,.75), inset 0 2px 4px rgba(255,255,255,.35); }
 
 /* ─── Push notification opt-in bar ───────────────────────── */
 .push-bar {
@@ -824,12 +836,13 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .status-bar {
   background: var(--green-bg);
   border-bottom: 2px solid var(--green);
-  padding: 13px 20px;
+  padding: 26px 20px 18px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
+  justify-content: center;
+  text-align: center;
+  gap: 14px;
 }
 .status-bar.yellow { background: var(--yellow-bg); border-color: var(--yellow); }
 .status-bar.red    { background: var(--red-bg);    border-color: var(--red); }
@@ -844,9 +857,15 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .status-bar.yellow .status-dot { background: var(--yellow); }
 .status-bar.red    .status-dot { background: var(--red); }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-.status-text { font-weight: 700; font-size: 0.95rem; }
-.status-detail { font-size: 0.84rem; color: #374151; }
-.status-source a { font-size: 0.78rem; color: var(--blue); font-weight: 600; }
+.status-text { font-weight: 800; font-size: 1.2rem; }
+.status-detail { font-size: 0.9rem; color: #374151; margin-top: 2px; }
+.hero-social { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 4px; }
+.hero-social-label { color: rgba(255,255,255,.75); font-size: .82rem; font-weight: 600; letter-spacing: .5px; }
+.hero-social .social-icons { justify-content: center; gap: 10px; margin-top: 0; }
+.hero-social .social-icon { width: 48px; height: 48px; padding: 9px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+.dif-figure { margin: 18px 0 4px; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); background: linear-gradient(180deg, #d9effa 0%, #eef6fb 100%); }
+.dif-figure svg { display: block; width: 100%; height: auto; }
+.dif-figure figcaption { text-align: center; font-size: .74rem; color: var(--muted); padding: 0 12px 10px; }
 
 /* ─── Layout ──────────────────────────────────────────────── */
 .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
@@ -2302,35 +2321,35 @@ console.log('[Firebase] Listener de estado inicializado');
       <div class="hero-date" id="heroDate" aria-live="polite">📅 …</div>
       <h1 id="hero-title">Tren <span>Sarmiento</span></h1>
       <p class="hero-sub">Horarios, tarifas y estado del servicio. Ramal Once – Moreno.</p>
-      <nav aria-label="Accesos rápidos" class="hero-pills">
-        <a class="hero-pill" href="#proximo">🔍 ¿Cuándo sale tu próximo tren?</a>
-        <a class="hero-pill" href="#estado">📡 Estado hoy</a>
-        <a class="hero-pill" href="#horarios">🕐 Ver todos los horarios</a>
-        <a class="hero-pill" href="#estaciones">🚌 Colectivos alternativos</a>
-        <a class="hero-pill" href="https://t.me/pasajerosdeltrensarmientoenlinea" target="_blank" rel="noopener noreferrer" style="background:rgba(0,149,212,.35);border-color:var(--celeste);">✈️ Comunidad Telegram</a>
+      <nav aria-label="Redes sociales" class="hero-social">
+        <span class="hero-social-label">Seguinos en nuestras redes</span>
+        <div class="social-icons">
+          <a href="https://www.instagram.com/trensarmiento_enlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Instagram" title="Instagram"><img src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png" alt="Instagram" /></a>
+          <a href="https://www.facebook.com/trensarmientoenlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Facebook" title="Facebook"><img src="https://upload.wikimedia.org/wikipedia/commons/b/b9/2023_Facebook_icon.svg" alt="Facebook" /></a>
+          <a href="https://www.tiktok.com/@trensarmiento_enlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="TikTok" title="TikTok"><img src="https://upload.wikimedia.org/wikipedia/commons/3/34/Ionicons_logo-tiktok.svg" alt="TikTok" /></a>
+          <a href="https://x.com/trensarmientoffcc" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="X (@trensarmientoffcc)" title="X (@trensarmientoffcc)"><svg viewBox="0 0 24 24" role="img" aria-hidden="true" style="width:100%;height:100%;display:block"><path fill="#000" d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg></a>
+          <a href="https://t.me/pasajerosdeltrensarmientoenlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Telegram" title="Telegram"><img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Telegram_2019_Logo.svg" alt="Telegram" /></a>
+          <a href="https://whatsapp.com/channel/0029Vb6HyJq4yltK9B7BaH3S" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Canal de WhatsApp" title="Canal de WhatsApp"><svg viewBox="0 0 24 24" role="img" aria-hidden="true" style="width:100%;height:100%;display:block"><path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg></a>
+        </div>
       </nav>
     </div>
   </section>
 
   <!-- STATUS BAR -->
   <div class="status-bar yellow" id="statusBar" role="status" aria-live="polite" aria-label="Estado del servicio">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div class="semaforo" id="semaforo" aria-hidden="true" title="Semáforo de estado del servicio">
-        <div class="semaforo-luz" id="luzRoja"></div>
-        <div class="semaforo-luz" id="luzAmarilla"></div>
-        <div class="semaforo-luz" id="luzVerde"></div>
-      </div>
-        <div>
-            <span class="status-dot" aria-hidden="true"></span>
+    <div class="semaforo" id="semaforo" aria-hidden="true" title="Semáforo de estado del servicio">
+      <div class="semaforo-luz" id="luzRoja"></div>
+      <div class="semaforo-luz" id="luzAmarilla"></div>
+      <div class="semaforo-luz" id="luzVerde"></div>
+    </div>
+    <div>
+      <div>
+        <span class="status-dot" aria-hidden="true"></span>
         <span id="statusTexto" class="status-text">⚠️ Servicio con modificaciones</span>
-
-        <div id="statusDetail" class="status-detail">El servicio opera con normalidad.</div>
       </div>
+      <div id="statusDetail" class="status-detail">El servicio opera con normalidad.</div>
     </div>
-    <div class="status-source" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-      <a href="https://www.instagram.com/trensarmiento_enlinea" target="_blank" rel="noopener noreferrer">📸 @trensarmiento_enlinea</a>
-      <span class="last-update-badge" id="lastUpdateBadge" title="Última verificación manual del estado">🕐 Verificado: —</span>
-    </div>
+    <span class="last-update-badge" id="lastUpdateBadge" title="Última verificación manual del estado">🕐 Verificado: —</span>
   </div>
 
   <!-- CTA campana: solo visible cuando hay paro o modificaciones -->
@@ -2484,24 +2503,43 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-leyenda { display: flex; gap: 16px; flex-wrap: wrap; font-size: .78rem; color: var(--muted); margin-bottom: 10px; }
     #mapa-vivo .mv-leyenda span { display: inline-flex; align-items: center; gap: 5px; }
     #mapa-vivo .mv-leyenda i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-    #mapa-vivo .mv-wrap { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 40px 20px 56px; overflow-x: auto; }
-    #mapa-vivo .mv-track { position: relative; min-width: 1000px; height: 6px; background: var(--border); border-radius: 4px; margin: 0 26px; }
-    #mapa-vivo .mv-estacion { position: absolute; top: -5px; width: 15px; height: 15px; border-radius: 50%; background: var(--card); border: 3px solid var(--celeste); transform: translateX(-50%); }
-    #mapa-vivo .mv-estacion .mv-nombre { position: absolute; top: 17px; left: 50%; transform: translateX(-50%) rotate(45deg); transform-origin: top left; font-size: .62rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
-    #mapa-vivo .mv-tren { position: absolute; top: -12px; width: 22px; height: 22px; border-radius: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; font-size: .62rem; font-weight: 800; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,43,92,.25); transition: left 1s linear; }
+    #mapa-vivo .mv-wrap { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px 20px 90px; overflow-x: auto; }
+    #mapa-vivo .mv-stage { position: relative; min-width: 1000px; height: 130px; margin: 0 100px 0 30px; }
+    #mapa-vivo .mv-via { position: absolute; left: -12px; right: -12px; height: 12px; border-radius: 6px; background-repeat: repeat-x; background-position: 0 center; }
+    #mapa-vivo .mv-via.ida { top: 30px; background-color: var(--celeste); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='12'%3E%3Cpath d='M8 2.5l3.5 3.5L8 9.5' fill='none' stroke='%23ffffff' stroke-opacity='.85' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+    #mapa-vivo .mv-via.vuelta { top: 90px; background-color: var(--navy); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='12'%3E%3Cpath d='M14 2.5L10.5 6l3.5 3.5' fill='none' stroke='%23ffffff' stroke-opacity='.85' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+    #mapa-vivo .mv-etiqueta { position: absolute; left: -12px; padding: 3px 10px; border-radius: 999px; font-size: .7rem; font-weight: 800; color: #fff; letter-spacing: .2px; white-space: nowrap; }
+    #mapa-vivo .mv-etiqueta.ida { top: 2px; background: var(--celeste); }
+    #mapa-vivo .mv-etiqueta.vuelta { top: 62px; background: var(--navy); }
+    #mapa-vivo .mv-estacion { position: absolute; top: 0; width: 0; height: 130px; }
+    #mapa-vivo .mv-estacion .mv-linea { position: absolute; left: -1px; top: 40px; width: 2px; height: 50px; background: var(--border); }
+    #mapa-vivo .mv-estacion .mv-punto { position: absolute; left: -8px; width: 16px; height: 16px; border-radius: 50%; background: var(--card); border: 3px solid var(--blue); box-sizing: border-box; }
+    #mapa-vivo .mv-estacion .mv-punto.ida { top: 28px; }
+    #mapa-vivo .mv-estacion .mv-punto.vuelta { top: 88px; }
+    #mapa-vivo .mv-estacion .mv-nombre { position: absolute; top: 112px; left: 0; transform-origin: top left; transform: rotate(45deg); font-size: .62rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
+    #mapa-vivo .mv-estacion.cabecera .mv-nombre { color: var(--navy); font-weight: 800; font-size: .7rem; }
+    #mapa-vivo .mv-tren { position: absolute; min-width: 36px; height: 24px; padding: 0 6px; box-sizing: border-box; transform: translateX(-50%); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: .6rem; font-weight: 800; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,43,92,.3); transition: left 1s linear; z-index: 2; }
+    #mapa-vivo .mv-tren.ida { top: 24px; }
+    #mapa-vivo .mv-tren.vuelta { top: 84px; }
+    #mapa-vivo .mv-tren::after { content: ""; position: absolute; top: 50%; margin-top: -5px; border: 5px solid transparent; }
+    #mapa-vivo .mv-tren.ida::after { right: -13px; border-left: 8px solid var(--navy); border-right: 0; }
+    #mapa-vivo .mv-tren.vuelta::after { left: -13px; border-right: 8px solid #fff; border-left: 0; }
     #mapa-vivo .mv-tren.ok { background: var(--green); }
     #mapa-vivo .mv-tren.demorado { background: var(--yellow); }
     #mapa-vivo .mv-tren.muy-demorado { background: var(--red); }
     #mapa-vivo .mv-tren.cancelado { background: #9CA3AF; }
     #mapa-vivo .mv-tren.origen-inusual { outline: 3px solid #4338CA; outline-offset: 1px; }
-    #mapa-vivo .mv-tren .mv-tip { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 5px 9px; border-radius: 8px; font-size: .68rem; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
-    #mapa-vivo .mv-tren:hover .mv-tip { display: block; }
+    #mapa-vivo .mv-tren .mv-tip { position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 5px 9px; border-radius: 8px; font-size: .68rem; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
+    #mapa-vivo .mv-tren:hover .mv-tip, #mapa-vivo .mv-tren:focus .mv-tip { display: block; }
+    #mapa-vivo .mv-vacio { position: absolute; left: 0; right: 0; text-align: center; font-size: .78rem; color: var(--muted); font-weight: 600; }
+    #mapa-vivo .mv-vacio.ida { top: 48px; }
+    #mapa-vivo .mv-vacio.vuelta { top: 108px; }
   </style>
   <section class="section section-cel" id="mapa-vivo" aria-labelledby="mapa-vivo-title">
     <div class="container">
       <span class="section-label">🗺️ En vivo</span>
       <h2 class="section-title" id="mapa-vivo-title">Mapa esquemático del ramal</h2>
-      <p class="section-sub">Once a la izquierda, Moreno a la derecha. <span class="last-update-badge" id="mapaVivoEstado">🕐 conectando…</span></p>
+      <p class="section-sub">Dos vías: la de arriba va <strong>hacia Moreno ▶</strong> y la de abajo <strong>hacia Once ◀</strong>. La flecha de cada tren indica para dónde va. <span class="last-update-badge" id="mapaVivoEstado">🕐 conectando…</span></p>
       <p class="mv-aviso">⚠️ Posición ESTIMADA por horarios, no es GPS real: se calcula entre la última estación confirmada y la siguiente. Puede estar corrida, sobre todo con demoras grandes.</p>
       <div class="mv-leyenda">
         <span><i style="background:var(--green)"></i> en horario</span>
@@ -2510,7 +2548,16 @@ console.log('[Firebase] Listener de estado inicializado');
         <span><i style="background:#9CA3AF"></i> cancelado</span>
         <span><i style="background:transparent;border:2px solid #4338CA"></i> origen inusual</span>
       </div>
-      <div class="mv-wrap"><div class="mv-track" id="mapaVivoTrack"></div></div>
+      <div class="mv-wrap">
+        <div class="mv-stage" id="mapaVivoTrack">
+          <div class="mv-via ida"></div>
+          <div class="mv-via vuelta"></div>
+          <span class="mv-etiqueta ida">▶ Hacia Moreno</span>
+          <span class="mv-etiqueta vuelta">◀ Hacia Once</span>
+          <div class="mv-vacio ida" id="mapaVivoVacioIda" style="display:none;">Sin formaciones hacia Moreno en este momento</div>
+          <div class="mv-vacio vuelta" id="mapaVivoVacioVuelta" style="display:none;">Sin formaciones hacia Once en este momento</div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -2726,6 +2773,43 @@ console.log('[Firebase] Listener de estado inicializado');
       <span class="section-label">⭐ Servicio especial</span>
       <h2 class="section-title" id="diferencial-title">Servicio Diferencial</h2>
       <p class="section-sub">Once – Haedo – Moreno · Lunes a viernes · Compra anticipada obligatoria</p>
+
+      <figure class="dif-figure">
+        <svg viewBox="0 0 760 210" role="img" aria-label="Ilustración del tren del Servicio Diferencial Once – Moreno" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="dfVid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e3f4fd"/><stop offset="1" stop-color="#9fd3ee"/></linearGradient>
+            <linearGradient id="dfCuerpo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a4a94"/><stop offset="1" stop-color="#002B5C"/></linearGradient>
+            <g id="dfCoche">
+              <rect x="0" y="0" width="236" height="92" rx="14" fill="url(#dfCuerpo)"/>
+              <rect x="10" y="5" width="216" height="4" rx="2" fill="#3f86c9" opacity=".6"/>
+              <rect x="14" y="14" width="32" height="30" rx="5" fill="url(#dfVid)"/><rect x="56" y="14" width="32" height="30" rx="5" fill="url(#dfVid)"/><rect x="100" y="12" width="28" height="48" rx="4" fill="#0a3d7a" stroke="#7fc4e6" stroke-width="1.5"/><line x1="114" y1="12" x2="114" y2="60" stroke="#7fc4e6" stroke-width="1.5"/><rect x="140" y="14" width="32" height="30" rx="5" fill="url(#dfVid)"/><rect x="182" y="14" width="32" height="30" rx="5" fill="url(#dfVid)"/>
+              <rect x="0" y="66" width="236" height="9" fill="#0095D4"/>
+              <text x="118" y="87" text-anchor="middle" fill="#fff" font-family="Inter,Arial,sans-serif" font-size="9.5" font-weight="700" letter-spacing="3">DIFERENCIAL</text>
+              <rect x="12" y="92" width="212" height="8" rx="2" fill="#111"/>
+              <circle cx="40" cy="106" r="9" fill="#222"/><circle cx="64" cy="106" r="9" fill="#222"/>
+              <circle cx="172" cy="106" r="9" fill="#222"/><circle cx="196" cy="106" r="9" fill="#222"/>
+            </g>
+          </defs>
+          <rect x="0" y="176" width="760" height="34" fill="#cfdde8"/>
+          <rect x="0" y="172" width="760" height="5" fill="#8a97a3"/>
+          <g fill="#a7b3be"><rect x="6" y="177" width="16" height="5"/><rect x="40" y="177" width="16" height="5"/><rect x="74" y="177" width="16" height="5"/><rect x="108" y="177" width="16" height="5"/><rect x="142" y="177" width="16" height="5"/><rect x="176" y="177" width="16" height="5"/><rect x="210" y="177" width="16" height="5"/><rect x="244" y="177" width="16" height="5"/><rect x="278" y="177" width="16" height="5"/><rect x="312" y="177" width="16" height="5"/><rect x="346" y="177" width="16" height="5"/><rect x="380" y="177" width="16" height="5"/><rect x="414" y="177" width="16" height="5"/><rect x="448" y="177" width="16" height="5"/><rect x="482" y="177" width="16" height="5"/><rect x="516" y="177" width="16" height="5"/><rect x="550" y="177" width="16" height="5"/><rect x="584" y="177" width="16" height="5"/><rect x="618" y="177" width="16" height="5"/><rect x="652" y="177" width="16" height="5"/><rect x="686" y="177" width="16" height="5"/><rect x="720" y="177" width="16" height="5"/><rect x="754" y="177" width="16" height="5"/></g>
+          <g transform="translate(20,64)"><use href="#dfCoche"/></g>
+          <g transform="translate(262,64)"><use href="#dfCoche"/></g>
+          <g transform="translate(504,64)">
+            <path d="M14,0 H188 C220,0 236,28 236,62 V92 H14 Q0,92 0,78 V14 Q0,0 14,0 Z" fill="url(#dfCuerpo)"/>
+            <rect x="10" y="5" width="170" height="4" rx="2" fill="#3f86c9" opacity=".6"/>
+            <rect x="14" y="14" width="32" height="30" rx="5" fill="url(#dfVid)"/><rect x="56" y="14" width="32" height="30" rx="5" fill="url(#dfVid)"/><rect x="100" y="12" width="28" height="48" rx="4" fill="#0a3d7a" stroke="#7fc4e6" stroke-width="1.5"/><line x1="114" y1="12" x2="114" y2="60" stroke="#7fc4e6" stroke-width="1.5"/><rect x="140" y="14" width="32" height="30" rx="5" fill="url(#dfVid)"/>
+            <path d="M184,12 C206,12 222,30 226,58 H184 Z" fill="url(#dfVid)"/>
+            <rect x="0" y="66" width="236" height="9" fill="#0095D4"/>
+            <text x="100" y="87" text-anchor="middle" fill="#fff" font-family="Inter,Arial,sans-serif" font-size="9.5" font-weight="700" letter-spacing="3">DIFERENCIAL</text>
+            <circle cx="228" cy="80" r="4" fill="#fde68a"/>
+            <rect x="12" y="92" width="212" height="8" rx="2" fill="#111"/>
+            <circle cx="40" cy="106" r="9" fill="#222"/><circle cx="64" cy="106" r="9" fill="#222"/>
+            <circle cx="172" cy="106" r="9" fill="#222"/><circle cx="196" cy="106" r="9" fill="#222"/>
+          </g>
+        </svg>
+        <figcaption>Ilustración del Servicio Diferencial</figcaption>
+      </figure>
 
       <div class="row" style="gap:16px;margin-top:16px;">
 
@@ -3008,9 +3092,11 @@ console.log('[Firebase] Listener de estado inicializado');
           <a href="https://www.tiktok.com/@trensarmiento_enlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="TikTok" title="TikTok">
             <img src="https://upload.wikimedia.org/wikipedia/commons/3/34/Ionicons_logo-tiktok.svg" alt="TikTok" />
           </a>
+          <a href="https://x.com/trensarmientoffcc" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="X (@trensarmientoffcc)" title="X (@trensarmientoffcc)"><svg viewBox="0 0 24 24" role="img" aria-hidden="true" style="width:100%;height:100%;display:block"><path fill="#000" d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg></a>
           <a href="https://t.me/pasajerosdeltrensarmientoenlinea" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Telegram" title="Telegram">
             <img src="https://upload.wikimedia.org/wikipedia/commons/8/83/Telegram_2019_Logo.svg" alt="Telegram" />
           </a>
+          <a href="https://whatsapp.com/channel/0029Vb6HyJq4yltK9B7BaH3S" target="_blank" rel="noopener noreferrer" class="social-icon" aria-label="Canal de WhatsApp" title="Canal de WhatsApp"><svg viewBox="0 0 24 24" role="img" aria-hidden="true" style="width:100%;height:100%;display:block"><path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg></a>
         </div>
       </div>
 
@@ -4462,13 +4548,15 @@ renderStations();
 })();
 </script>
 <script>
-// Mapa esquemático en vivo — pide los datos al bot (trenbot.onrender.com).
+// Mapa esquemático en vivo (dos vías) — pide los datos al bot (trenbot.onrender.com).
 // Posición interpolada por horario, no GPS real (ver aviso en la sección).
 (function () {
   const API = "https://trenbot.onrender.com/api/tablero-mapa";
-  const track = document.getElementById("mapaVivoTrack");
+  const stage = document.getElementById("mapaVivoTrack");
   const estadoEl = document.getElementById("mapaVivoEstado");
-  if (!track) return;
+  const vacioIda = document.getElementById("mapaVivoVacioIda");
+  const vacioVuelta = document.getElementById("mapaVivoVacioVuelta");
+  if (!stage) return;
 
   function claseDemora(t) {
     if (t.cancelado) return "cancelado";
@@ -4477,35 +4565,56 @@ renderStations();
     return "ok";
   }
 
+  // "ida" = hacia Moreno (vía de arriba, de izquierda a derecha); "vuelta" = hacia Once (vía de abajo).
+  function viaDe(t) {
+    const d = (t.destino || "").toLowerCase();
+    if (d.indexOf("once") !== -1) return "vuelta";
+    if (d.indexOf("moreno") !== -1) return "ida";
+    return t.sentido === "Moreno-Once" ? "vuelta" : "ida";
+  }
+
   let dibujadas = false;
   function dibujarEstaciones(nombres) {
-    track.querySelectorAll(".mv-estacion").forEach((n) => n.remove());
+    stage.querySelectorAll(".mv-estacion").forEach((n) => n.remove());
     const n = nombres.length;
     nombres.forEach((nombre, i) => {
       const div = document.createElement("div");
-      div.className = "mv-estacion";
+      div.className = "mv-estacion" + (i === 0 || i === n - 1 ? " cabecera" : "");
       div.style.left = (i / (n - 1)) * 100 + "%";
-      div.innerHTML = '<span class="mv-nombre">' + nombre + '</span>';
-      track.appendChild(div);
+      div.innerHTML = '<span class="mv-linea"></span><span class="mv-punto ida"></span><span class="mv-punto vuelta"></span><span class="mv-nombre"></span>';
+      div.querySelector(".mv-nombre").textContent = nombre;
+      stage.appendChild(div);
     });
     dibujadas = true;
   }
 
   function render(data) {
-    if (!dibujadas) dibujarEstaciones(data.estaciones || []);
-    const n = (data.estaciones || []).length;
-    track.querySelectorAll(".mv-tren").forEach((n) => n.remove());
+    const estaciones = data.estaciones || [];
+    if (!dibujadas && estaciones.length > 1) dibujarEstaciones(estaciones);
+    const n = estaciones.length;
+    stage.querySelectorAll(".mv-tren").forEach((x) => x.remove());
+    let hacia = { ida: 0, vuelta: 0 };
     (data.trenes || []).forEach((t) => {
+      if (n < 2) return;
+      const via = viaDe(t);
+      hacia[via]++;
       const div = document.createElement("div");
-      div.className = "mv-tren " + claseDemora(t) + (t.origenInusual ? " origen-inusual" : "");
+      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.origenInusual ? " origen-inusual" : "");
+      div.tabIndex = 0;
       div.style.left = (t.posicion / (n - 1)) * 100 + "%";
       div.textContent = t.numero ?? "";
       const dem = t.cancelado ? "Cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
       const inusual = t.origenInusual ? " · ⚠ origen inusual" : "";
-      div.innerHTML += '<span class="mv-tip">#' + (t.numero ?? "?") + " → " + t.destino + " · " + dem + inusual + '</span>';
-      track.appendChild(div);
+      const tip = document.createElement("span");
+      tip.className = "mv-tip";
+      tip.textContent = "#" + (t.numero ?? "?") + " → " + t.destino + " · " + dem + inusual;
+      div.appendChild(tip);
+      stage.appendChild(div);
     });
-    estadoEl.textContent = "🕐 " + (data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "") + " · " + (data.trenes || []).length + " formaciones";
+    vacioIda.style.display = hacia.ida ? "none" : "block";
+    vacioVuelta.style.display = hacia.vuelta ? "none" : "block";
+    const hora = data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "";
+    estadoEl.textContent = "🕐 " + hora + " · " + hacia.ida + " hacia Moreno · " + hacia.vuelta + " hacia Once";
   }
 
   let ultimoOk = 0;

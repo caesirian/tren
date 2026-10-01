@@ -446,7 +446,13 @@ export function posicionesEnVivo(items, ahora = new Date()) {
     // el de índice de estación: en sentido Moreno→Once el índice de
     // estación va bajando a medida que pasa el tiempo.
     const porHora = [...conTiempo].sort((a, b) => new Date(a.tiempo) - new Date(b.tiempo));
-    const sentido = porHora.length > 1 && porHora[0].idx > porHora[porHora.length - 1].idx ? "Moreno-Once" : "Once-Moreno";
+    // Con 2+ cruces el sentido sale del orden cronológico; con uno solo se deduce del destino.
+    const idxDestino = orden.get(tren.destino);
+    const sentido = porHora.length > 1
+      ? (porHora[0].idx > porHora[porHora.length - 1].idx ? "Moreno-Once" : "Once-Moreno")
+      : idxDestino != null && idxDestino !== porHora[0].idx
+        ? (idxDestino < porHora[0].idx ? "Moreno-Once" : "Once-Moreno")
+        : /once/i.test(tren.destino || "") ? "Moreno-Once" : "Once-Moreno";
 
     // Si el índice de estación no es monótono a lo largo del tiempo (no
     // sube ni baja siempre), el dato es inconsistente — se descarta ese tren
