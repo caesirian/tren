@@ -2641,6 +2641,14 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-mio-res { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: .85rem; font-weight: 600; background: var(--cel-bg); color: var(--navy); }
     #mapa-vivo .mv-mio-res.ok { background: var(--green-bg); color: var(--green); }
     #mapa-vivo .mv-mio-res.nada { background: var(--yellow-bg); color: var(--yellow); }
+    #mapa-vivo .mv-val { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 4px 12px 4px 6px; border: 1.5px solid var(--blue); border-radius: 999px; background: #fff; color: var(--blue); font: inherit; font-weight: 700; font-size: .78rem; cursor: pointer; }
+    #mapa-vivo .mv-val:focus-visible { outline: 3px solid var(--celeste); outline-offset: 2px; }
+    #mapa-vivo .mv-val-ico { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--cel-bg); font-size: .8rem; font-weight: 800; line-height: 1; }
+    #mapa-vivo .mv-val.cargando { cursor: progress; opacity: .8; }
+    #mapa-vivo .mv-val.ok { border-color: var(--green); color: var(--green); background: var(--green-bg); cursor: default; }
+    #mapa-vivo .mv-val.ok .mv-val-ico { background: var(--green); color: #fff; font-size: .95rem; }
+    #mapa-vivo .mv-val.fail { border-color: var(--yellow); color: var(--yellow); background: var(--yellow-bg); }
+    #mapa-vivo .mv-val.fail .mv-val-ico { background: var(--yellow); color: #fff; font-size: .95rem; }
     #mapa-vivo .mv-stage.con-mio .mv-tren:not(.mio) { opacity: .3; }
     #mapa-vivo .mv-tren.mio { width: 34px; height: 34px; margin-left: -17px; z-index: 4; font-size: .72rem; box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); }
     #mapa-vivo .mv-tren.mio.ida { top: 19px; }
@@ -2687,6 +2695,7 @@ console.log('[Firebase] Listener de estado inicializado');
         </div>
         <div class="mv-mio-pie">
           <label class="mv-mio-todos"><input type="checkbox" id="mvMioTodos"> Mostrar todos los horarios del día</label>
+          <button type="button" class="mv-val" id="mvVal" style="display:none;"><span class="mv-val-ico" id="mvValIco" aria-hidden="true">📡</span><span id="mvValTxt">Validación de Usuario</span></button>
           <button type="button" class="mv-mio-quitar" id="mvMioQuitar" style="display:none;">Dejar de seguir mi tren</button>
         </div>
         <div class="mv-mio-res" id="mvMioRes" role="status" aria-live="polite" style="display:none;"></div>
@@ -4201,7 +4210,7 @@ renderStations();
         div.classList.add("mio");
         const tag = document.createElement("span");
         tag.className = "mv-mio-tag";
-        tag.textContent = "📍 Tu tren";
+        tag.textContent = "📍 Tu tren" + (validacionOk(mio.tren) ? " ✔" : "");
         div.appendChild(tag);
       }
       stage.appendChild(div);
@@ -4241,6 +4250,9 @@ renderStations();
   const selEst = document.getElementById("mvMioEst");
   const selHora = document.getElementById("mvMioHora");
   const chkTodos = document.getElementById("mvMioTodos");
+  const btnVal = document.getElementById("mvVal");
+  const btnValIco = document.getElementById("mvValIco");
+  const btnValTxt = document.getElementById("mvValTxt");
   const botonesVia = panelMio ? Array.prototype.slice.call(panelMio.querySelectorAll(".mv-mio-sentido button")) : [];
   const FMT_BA = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const LS_MIO = "mvMioSel";
@@ -4248,6 +4260,9 @@ renderStations();
   let sel = null;          // { via, est, dep }  dep = salida programada desde la cabecera, en minutos del día
   let viaElegida = null;
   let irAlTren = false;    // centrar el mapa en el tren apenas aparece tras elegir/restaurar
+  let validacion = null;   // { estado: "ok" | "fail", numero } — resultado de "Validación de Usuario" para la selección actual
+  let validando = false;
+  let miTrenActual = null; // tren que hoy coincide con la selección (lo actualiza actualizarMio)
 
   const dosDig = (n) => String(n).padStart(2, "0");
   function minutosBA(fecha) {
@@ -4304,6 +4319,7 @@ renderStations();
 
   function cambiarSeleccion(nueva) {
     sel = nueva;
+    validacion = null;
     irAlTren = !!nueva;
     try {
       if (nueva) localStorage.setItem(LS_MIO, JSON.stringify({ via: nueva.via, est: nueva.est, dep: nueva.dep, t: Date.now() }));
@@ -4373,7 +4389,86 @@ renderStations();
     return g + "\n" + e + dif;
   }
 
+  // ── Validación de Usuario ───────────────────────────────────────────────
+  // Compara el GPS del celular con la posición del tren elegido. Todo se hace en el dispositivo:
+  // la ubicación del usuario no se envía a ningún servidor. Es una confirmación informal, no segura.
+  const MAX_DIST_EJE_VAL_M = 1000;   // más lejos que esto de las vías = no está en el ramal
+  const MAX_PRECISION_VAL_M = 1500;  // GPS demasiado impreciso para validar
+  const TOL_EST_GPS = 0.5;           // estaciones de diferencia aceptadas si el tren tiene GPS real
+  const TOL_EST_ESTIMADA = 1.0;      // idem si su posición es estimada por horarios (menos precisa)
+
+  function validacionOk(t) { return !!(validacion && validacion.estado === "ok" && t && validacion.numero === (t.numero ?? null)); }
+
+  function proyectarRamal(lat, lng) {
+    const kx = 111320 * Math.cos((-34.64 * Math.PI) / 180), ky = 110540;
+    const px = lng * kx, py = lat * ky;
+    let mejor = null;
+    for (let i = 0; i < STATIONS.length - 1; i++) {
+      const ax = STATIONS[i].lng * kx, ay = STATIONS[i].lat * ky;
+      const bx = STATIONS[i + 1].lng * kx, by = STATIONS[i + 1].lat * ky;
+      const dx = bx - ax, dy = by - ay;
+      const k = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+      const distM = Math.hypot(px - (ax + k * dx), py - (ay + k * dy));
+      if (!mejor || distM < mejor.distM) mejor = { posicion: i + k, distM: distM };
+    }
+    return mejor;
+  }
+
+  function coincideConTren(pos, t) {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude, prec = pos.coords.accuracy;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !t) return false;
+    if (Number.isFinite(prec) && prec > MAX_PRECISION_VAL_M) return false;
+    const p = proyectarRamal(lat, lng);
+    if (p.distM > MAX_DIST_EJE_VAL_M) return false;
+    const tol = t.fuente === "gps" ? TOL_EST_GPS : TOL_EST_ESTIMADA;
+    return Math.abs(p.posicion - t.posicion) <= tol;
+  }
+
+  function pintarBotonVal() {
+    if (!btnVal) return;
+    const t = miTrenActual;
+    if (!sel || !t || t.cancelado) { btnVal.style.display = "none"; return; }
+    btnVal.style.display = "";
+    btnVal.classList.remove("ok", "fail", "cargando");
+    btnVal.removeAttribute("aria-disabled");
+    if (validando) {
+      btnVal.classList.add("cargando");
+      btnVal.setAttribute("aria-disabled", "true");
+      btnValIco.textContent = "…"; btnValTxt.textContent = "Validando posición…";
+    } else if (validacionOk(t)) {
+      btnVal.classList.add("ok");
+      btnVal.setAttribute("aria-disabled", "true");
+      btnValIco.textContent = "✔"; btnValTxt.textContent = "Posición validada";
+    } else if (validacion && validacion.estado === "fail") {
+      btnVal.classList.add("fail");
+      btnValIco.textContent = "?"; btnValTxt.textContent = "No se pudo validar posición";
+    } else {
+      btnValIco.textContent = "📡"; btnValTxt.textContent = "Validación de Usuario";
+    }
+  }
+
+  function terminarValidacion(ok) {
+    validando = false;
+    validacion = { estado: ok ? "ok" : "fail", numero: miTrenActual ? (miTrenActual.numero ?? null) : null };
+    if (ultimaData) render(ultimaData); else pintarBotonVal();
+  }
+
+  function pedirValidacion() {
+    if (validando || !miTrenActual || validacionOk(miTrenActual)) return;
+    if (!navigator.geolocation) { terminarValidacion(false); return; }
+    validando = true;
+    pintarBotonVal();
+    navigator.geolocation.getCurrentPosition(
+      (pos) => terminarValidacion(coincideConTren(pos, miTrenActual)),
+      () => terminarValidacion(false), // permiso rechazado, sin señal o tiempo agotado
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    );
+  }
+
   function actualizarMio(mio, data) {
+    miTrenActual = mio ? mio.tren : null;
+    if (validacion && validacion.estado === "ok" && !validacionOk(miTrenActual)) validacion = null; // cambió el tren que coincide: se vuelve a validar
+    pintarBotonVal();
     if (!sel) { resMio.style.display = "none"; return; }
     if (!data) { mostrarRes("", "Esperando los datos del mapa…"); return; }
     if (!mio) {
@@ -4409,6 +4504,7 @@ renderStations();
     });
     chkTodos.addEventListener("change", poblarHoras);
     quitarMio.addEventListener("click", () => { cambiarSeleccion(null); poblarHoras(); });
+    if (btnVal) btnVal.addEventListener("click", pedirValidacion);
 
     // Si recarga la página mientras viaja, se retoma su tren (válido unas horas y solo si el horario sigue existiendo hoy).
     try {
