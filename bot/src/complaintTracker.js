@@ -11,7 +11,8 @@
 // cual está bien para este propósito — es señal de corto plazo, no
 // histórico.
 
-const VENTANA_SENAL_MS = 3 * 60 * 60 * 1000; // 3 horas, para responder preguntas de estado
+const VENTANA_SENAL_MS = 3 * 60 * 60 * 1000; // retención en memoria (la usa el semáforo automático, hasta 90 min)
+const VENTANA_RESPUESTA_MS = 60 * 60 * 1000; // 1 hora: lo único que cuenta para contestar preguntas de estado
 const VENTANA_RESUMEN_MS = 60 * 60 * 1000; // 1 hora, para el resumen del /informe
 const MIN_MENSAJES_PARA_OPINAR = 5; // solo aplica para decir "viene todo bien"
 
@@ -56,13 +57,22 @@ export function registrarMensajeGrupo(texto, userId) {
   mensajes.push({ ts: ahoraMs, userId: userId ?? null, categoria: categorizar(texto) });
 }
 
-// Devuelve la señal actual (ventana de 3hs), o null si no hay nada útil
-// para opinar. Usada para contestar preguntas de estado del servicio.
+// Devuelve la señal actual (ventana de 1 hora), o null si no hay nada útil
+// para opinar. Usada para contestar preguntas de estado del servicio. Los
+// reclamos más viejos que la ventana NO cuentan (aunque sigan en memoria para
+// el semáforo automático). Las quejas se cuentan por cuentas distintas.
 export function getSenalComunidad() {
-  limpiarVentana(Date.now());
-  const total = mensajes.length;
-  const quejas = mensajes.filter((m) => m.categoria === "demora" || m.categoria === "cancelacion").length;
-  const minutos = Math.round(VENTANA_SENAL_MS / 60000);
+  const ahoraMs = Date.now();
+  limpiarVentana(ahoraMs);
+  const ventana = mensajes.filter((m) => ahoraMs - m.ts < VENTANA_RESPUESTA_MS);
+  const total = ventana.length;
+  const cuentasQueja = new Set(
+    ventana
+      .filter((m) => m.categoria === "demora" || m.categoria === "cancelacion")
+      .map((m) => m.userId ?? `anon-${m.ts}`)
+  );
+  const quejas = cuentasQueja.size;
+  const minutos = Math.round(VENTANA_RESPUESTA_MS / 60000);
 
   if (quejas === 0 && total < MIN_MENSAJES_PARA_OPINAR) return null;
 
@@ -70,9 +80,9 @@ export function getSenalComunidad() {
   if (quejas === 0) {
     interpretacion = `Nadie mencionó demoras, esperas, paros ni problemas en los últimos ${minutos} minutos (${total} mensajes en el grupo) — indicio informal de que viene funcionando con normalidad, pero NO es una confirmación oficial.`;
   } else if (quejas === 1) {
-    interpretacion = `Hubo 1 mensaje en los últimos ${minutos} minutos que podría sugerir un problema puntual, entre ${total} mensajes totales — no es concluyente, puede ser una queja aislada.`;
+    interpretacion = `1 persona mencionó algo que podría sugerir un problema puntual en los últimos ${minutos} minutos, entre ${total} mensajes totales — no es concluyente, puede ser una queja aislada. NO lo menciones como "reportes de demoras en el grupo" si el estado oficial es normal.`;
   } else {
-    interpretacion = `Hubo ${quejas} mensajes en los últimos ${minutos} minutos que suenan a quejas de demoras, esperas o cancelaciones, entre ${total} mensajes totales — señal de que podría haber inconvenientes. Si preguntan por el estado del servicio, MENCIONÁ esto explícitamente (aclarando que es una señal informal del grupo, no una confirmación oficial), no lo omitas.`;
+    interpretacion = `${quejas} personas distintas escribieron en los últimos ${minutos} minutos mensajes que suenan a quejas de demoras, esperas o cancelaciones, entre ${total} mensajes totales — señal de que podría haber inconvenientes. Si preguntan por el estado del servicio, mencioná esto (aclarando que es una señal informal del grupo, no una confirmación oficial). Nunca digas que "se reportan demoras" por hechos anteriores a esos ${minutos} minutos.`;
   }
 
   return { total, quejas, minutos, interpretacion };
