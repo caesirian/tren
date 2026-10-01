@@ -1480,7 +1480,7 @@ bot.command("push", async (ctx) => {
         headers: { "Content-Type": "application/json", Authorization: `${keyV2 ? "Key" : "Basic"} ${keyDirecta}` },
         body: JSON.stringify({
           app_id: "114f6665-eede-42d0-90ad-4d6480f10c76",
-          included_segments: [keyV2 ? "Subscribed Users" : "All"],
+          included_segments: [keyV2 ? "Total Subscriptions" : "All"],
           headings: { es: titulo, en: titulo },
           contents: { es: mensaje, en: mensaje },
           url: url || "https://trensarmientoenlinea.com.ar",
