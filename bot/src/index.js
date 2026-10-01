@@ -1469,15 +1469,31 @@ bot.command("push", async (ctx) => {
   }
 
   const base = (process.env.PUSH_PROXY_URL || "https://tren-webs.onrender.com").replace(/\/$/, "");
-  try {
+  const intentar = async () => {
     const r = await fetch(`${base}/notif/enviar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ titulo, mensaje, url: url || "https://trensarmientoenlinea.com.ar" }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(45000),
     });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.ok) throw new Error(JSON.stringify(data.error || data) || `HTTP ${r.status}`);
+    const texto = await r.text();
+    let data = null;
+    try { data = JSON.parse(texto); } catch {}
+    return { r, data, texto };
+  };
+  try {
+    let res = await intentar();
+    // Render (plan free) duerme el servicio: la primera llamada puede dar 502/503/504 mientras despierta.
+    if ([502, 503, 504].includes(res.r.status)) {
+      await ctx.reply("⏳ El proxy estaba dormido, reintento en unos segundos…");
+      await new Promise((ok) => setTimeout(ok, 15000));
+      res = await intentar();
+    }
+    const { r, data, texto } = res;
+    if (!r.ok || !data?.ok) {
+      const detalle = data ? JSON.stringify(data.error || data) : texto.replace(/\s+/g, " ").slice(0, 200);
+      throw new Error(`HTTP ${r.status} — ${detalle}`);
+    }
     await ctx.reply(`✅ Push enviada a ${data.recipients ?? "?"} suscriptores:\n"${titulo}"\n${mensaje}`);
   } catch (err) {
     console.error("Error en /push:", err.message);
