@@ -418,14 +418,69 @@ export async function columnasCabecera(nombreEstacion, cantidad = 5) {
 // ---------------------------------------------------------------------------
 // Mapa esquemático: posición interpolada de cada tren entre estaciones
 // ---------------------------------------------------------------------------
-// No hay GPS real en el proxy (no confirmado, ver notas). La posición se
-// ESTIMA por tiempo: cada tren aparece varias veces en el barrido (una por
+// Si el proxy trae GPS real del tren (servicio.location) se usa ese; si no, la posición se
+// ESTIMA por tiempo (respaldo): cada tren aparece varias veces en el barrido (una por
 // estación que todavía tiene por delante); se ordenan esas apariciones según
 // el ORDEN REAL de las 16 estaciones del ramal (no por hora, para no
 // depender de que el reloj esté bien), y de ahí sale el sentido. Con eso se
 // ubica al tren entre las dos estaciones cuya hora (estimada si hay, si no
 // programada) engloba el momento actual. Es una aproximación: si el tren
 // viene muy demorado, la posición estimada se corre para el mismo lado.
+// ---------------------------------------------------------------------------
+// GPS REAL: el proxy trae `servicio.location = { lat, long }` para los trenes que ya partieron
+// (null mientras no salieron). Se proyecta sobre el eje del ramal (poligonal que une las 16
+// estaciones) para obtener la misma coordenada fraccionaria 0..15 que usa la interpolación por
+// horarios. Si no hay GPS, o cae lejos del ramal, se sigue usando la estimación por horarios.
+// Las coordenadas de las estaciones son las de STATIONS en index.html (misma fuente).
+// ---------------------------------------------------------------------------
+const COORDS_ESTACIONES = [
+  [-34.6083, -58.4103], // 0 Once,
+  [-34.6187, -58.4417], // 1 Caballito,
+  [-34.6273, -58.4613], // 2 Flores,
+  [-34.6307, -58.4807], // 3 Floresta,
+  [-34.6313, -58.5003], // 4 Villa Luro,
+  [-34.6367, -58.5213], // 5 Liniers,
+  [-34.6397, -58.5380], // 6 Ciudadela,
+  [-34.6433, -58.5617], // 7 Ramos Mejía,
+  [-34.6448, -58.5830], // 8 Haedo,
+  [-34.6487, -58.6183], // 9 Morón,
+  [-34.6513, -58.6487], // 10 Castelar,
+  [-34.6583, -58.6717], // 11 Ituzaingó,
+  [-34.6647, -58.7030], // 12 San A. de Padua,
+  [-34.6700, -58.7283], // 13 Merlo,
+  [-34.6637, -58.7567], // 14 Paso del Rey,
+  [-34.6503, -58.7917], // 15 Moreno
+];
+const MAX_DIST_EJE_M = 1500; // más lejos que esto del eje = GPS dudoso (cochera, otro ramal, dato viejo)
+
+export function gpsValido(loc) {
+  if (!loc) return null;
+  const lat = Number(loc.lat);
+  const long = Number(loc.long ?? loc.lng ?? loc.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(long)) return null;
+  if (lat === 0 && long === 0) return null;
+  if (lat < -35.2 || lat > -34.2 || long < -59.2 || long > -58.0) return null; // fuera del área metropolitana oeste
+  return { lat, long };
+}
+
+// Devuelve { posicion: 0..15 (fraccionario), distM } del punto proyectado sobre el ramal.
+export function proyectarEnRamal(lat, long) {
+  const LAT0 = -34.64;
+  const kx = 111320 * Math.cos((LAT0 * Math.PI) / 180);
+  const ky = 110540;
+  const px = long * kx, py = lat * ky;
+  let mejor = null;
+  for (let i = 0; i < COORDS_ESTACIONES.length - 1; i++) {
+    const ax = COORDS_ESTACIONES[i][1] * kx, ay = COORDS_ESTACIONES[i][0] * ky;
+    const bx = COORDS_ESTACIONES[i + 1][1] * kx, by = COORDS_ESTACIONES[i + 1][0] * ky;
+    const dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+    const distM = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    if (!mejor || distM < mejor.distM) mejor = { posicion: i + t, distM };
+  }
+  return mejor;
+}
+
 export function posicionesEnVivo(items, ahora = new Date()) {
   const orden = new Map(ESTACIONES_BARRIDO.map((n, i) => [n, i]));
   const porTren = new Map();
@@ -436,6 +491,7 @@ export function posicionesEnVivo(items, ahora = new Date()) {
     const num = d.s.numero ?? `s-${Math.random()}`;
     if (!porTren.has(num)) porTren.set(num, { numero: d.s.numero ?? null, destino: d.destino, cancelado: !!d.s.cancelacion, origen: d.origenReal, cruces: [] });
     porTren.get(num).cruces.push({ idx, nombre: item.est.nombre, prog: d.prog, tiempo: d.estim || d.prog, demora: d.demora });
+    if (!porTren.get(num).gps) porTren.get(num).gps = gpsValido(d.s.location);
   }
 
   const resultado = [];
@@ -462,11 +518,11 @@ export function posicionesEnVivo(items, ahora = new Date()) {
     if (!consistente) continue;
 
     const t = ahora.getTime();
-    let posicion;
+    let posEstimada;
     if (t <= new Date(porHora[0].tiempo).getTime()) {
-      posicion = porHora[0].idx; // todavía no llega a la primera estación que tenemos de él
+      posEstimada = porHora[0].idx; // todavía no llega a la primera estación que tenemos de él
     } else if (t >= new Date(porHora[porHora.length - 1].tiempo).getTime()) {
-      posicion = porHora[porHora.length - 1].idx; // ya pasó la última que tenemos (puede estar por llegar a destino)
+      posEstimada = porHora[porHora.length - 1].idx; // ya pasó la última que tenemos (puede estar por llegar a destino)
     } else {
       let i = 0;
       while (i < porHora.length - 1 && !(t >= new Date(porHora[i].tiempo).getTime() && t <= new Date(porHora[i + 1].tiempo).getTime())) i++;
@@ -474,18 +530,26 @@ export function posicionesEnVivo(items, ahora = new Date()) {
       const b = porHora[i + 1];
       const total = new Date(b.tiempo).getTime() - new Date(a.tiempo).getTime();
       const frac = total > 0 ? (t - new Date(a.tiempo).getTime()) / total : 0;
-      posicion = a.idx + (b.idx - a.idx) * frac;
+      posEstimada = a.idx + (b.idx - a.idx) * frac;
     }
 
+    const proy = tren.gps ? proyectarEnRamal(tren.gps.lat, tren.gps.long) : null;
+    const gpsOk = !!proy && proy.distM <= MAX_DIST_EJE_M;
     resultado.push({
       numero: tren.numero,
       destino: tren.destino,
       cancelado: tren.cancelado,
       origenInusual: !!tren.origen && !ESTACIONES_ORIGEN_NORMAL.has(tren.origen),
       sentido,
-      posicion, // 0..15, fraccionario
+      posicion: gpsOk ? proy.posicion : posEstimada, // 0..15, fraccionario: GPS real si es usable, si no la estimada
+      posicionEstimada: posEstimada,
+      fuente: gpsOk ? "gps" : "estimada",
+      gps: tren.gps ? { lat: tren.gps.lat, long: tren.gps.long, posicion: proy.posicion, distEjeM: Math.round(proy.distM), usable: gpsOk } : null,
       demoraMax: Math.max(0, ...porHora.map((c) => c.demora ?? 0)),
       proximaEstacion: porHora[0].nombre,
+      // Horario PROGRAMADO en cada estación que todavía tiene por delante. La web lo usa para
+      // reconocer "su" tren a partir del horario del cronograma (ver "¿Dónde está mi tren?").
+      paradas: porHora.filter((c) => c.prog).map((c) => ({ idx: c.idx, prog: c.prog })),
     });
   }
   return resultado;

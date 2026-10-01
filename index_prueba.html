@@ -2614,27 +2614,84 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-tren.demorado { background: var(--yellow); }
     #mapa-vivo .mv-tren.muy-demorado { background: var(--red); }
     #mapa-vivo .mv-tren.cancelado { background: #9CA3AF; }
+    #mapa-vivo .mv-tren.est { border-style: dashed; }
+    #mapa-vivo .mv-mio-debug { display: block; white-space: pre-line; margin-top: 6px; font-weight: 500; font-size: .74rem; font-family: ui-monospace, Menlo, Consolas, monospace; opacity: .9; word-break: break-word; }
     #mapa-vivo .mv-tren.origen-inusual { outline: 3px solid #4338CA; outline-offset: 1px; }
     #mapa-vivo .mv-tren .mv-tip { position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 5px 9px; border-radius: 8px; font-size: .68rem; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
     #mapa-vivo .mv-tren:hover .mv-tip, #mapa-vivo .mv-tren:focus .mv-tip { display: block; }
     #mapa-vivo .mv-vacio { position: absolute; left: 0; right: 0; text-align: center; font-size: .78rem; color: var(--muted); font-weight: 600; }
     #mapa-vivo .mv-vacio.ida { top: 48px; }
     #mapa-vivo .mv-vacio.vuelta { top: 108px; }
+
+    /* ¿Dónde está mi tren? */
+    #mapa-vivo .mv-mio-panel { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; margin: 0 0 14px; }
+    #mapa-vivo .mv-mio-titulo { margin: 0 0 4px; font-weight: 800; color: var(--navy); font-size: .95rem; }
+    #mapa-vivo .mv-mio-sub { margin: 0 0 12px; font-size: .78rem; color: var(--muted); }
+    #mapa-vivo .mv-mio-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 12px; align-items: end; }
+    #mapa-vivo .mv-mio-campo label { display: block; margin-bottom: 5px; font-size: .7rem; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); }
+    #mapa-vivo .mv-mio-campo select { width: 100%; min-height: 44px; padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); font: inherit; font-size: .9rem; }
+    #mapa-vivo .mv-mio-campo select:disabled { background: var(--cel-bg); color: var(--muted); }
+    #mapa-vivo .mv-mio-sentido { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--cel-bg); }
+    #mapa-vivo .mv-mio-sentido button { flex: 1; min-height: 38px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--navy); font: inherit; font-weight: 700; font-size: .82rem; cursor: pointer; }
+    #mapa-vivo .mv-mio-sentido button[aria-pressed="true"] { background: var(--navy); color: #fff; }
+    #mapa-vivo .mv-mio-sentido button:focus-visible, #mapa-vivo .mv-mio-campo select:focus-visible { outline: 3px solid var(--celeste); outline-offset: 2px; }
+    #mapa-vivo .mv-mio-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin-top: 10px; }
+    #mapa-vivo .mv-mio-todos { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--muted); }
+    #mapa-vivo .mv-mio-quitar { border: 0; background: transparent; color: var(--blue); font: inherit; font-weight: 700; font-size: .8rem; text-decoration: underline; cursor: pointer; padding: 6px 2px; }
+    #mapa-vivo .mv-mio-res { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: .85rem; font-weight: 600; background: var(--cel-bg); color: var(--navy); }
+    #mapa-vivo .mv-mio-res.ok { background: var(--green-bg); color: var(--green); }
+    #mapa-vivo .mv-mio-res.nada { background: var(--yellow-bg); color: var(--yellow); }
+    #mapa-vivo .mv-stage.con-mio .mv-tren:not(.mio) { opacity: .3; }
+    #mapa-vivo .mv-tren.mio { width: 34px; height: 34px; margin-left: -17px; z-index: 4; font-size: .72rem; box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); }
+    #mapa-vivo .mv-tren.mio.ida { top: 19px; }
+    #mapa-vivo .mv-tren.mio.vuelta { top: 79px; }
+    #mapa-vivo .mv-mio-tag { position: absolute; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; background: var(--celeste); color: #fff; font-size: .62rem; font-weight: 800; white-space: nowrap; pointer-events: none; }
+    #mapa-vivo .mv-tren.mio.ida .mv-mio-tag { top: 40px; }
+    #mapa-vivo .mv-tren.mio.vuelta .mv-mio-tag { top: -26px; }
+    @media (prefers-reduced-motion: no-preference) { #mapa-vivo .mv-tren.mio { animation: mvMioPulso 1.8s ease-in-out infinite; } }
+    @keyframes mvMioPulso { 0%, 100% { box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); } 50% { box-shadow: 0 0 0 4px #fff, 0 0 0 11px rgba(0,149,212,.35), 0 4px 14px rgba(0,43,92,.45); } }
   </style>
   <section class="section section-cel" id="mapa-vivo" aria-labelledby="mapa-vivo-title">
     <div class="container">
       <span class="section-label">🗺️ En vivo</span>
       <h2 class="section-title" id="mapa-vivo-title">Mapa esquemático del ramal</h2>
       <p class="section-sub">Dos vías: la de arriba va <strong>hacia Moreno ▶</strong> y la de abajo <strong>hacia Once ◀</strong>. La flecha de cada tren indica para dónde va. <span class="last-update-badge" id="mapaVivoEstado">🕐 conectando…</span></p>
-      <p class="mv-aviso">⚠️ Posición ESTIMADA por horarios, no es GPS real: se calcula entre la última estación confirmada y la siguiente. Puede estar corrida, sobre todo con demoras grandes.</p>
+      <p class="mv-aviso">📡 La posición sale del GPS de la formación cuando está disponible. Si no, se ESTIMA por horarios entre la última estación confirmada y la siguiente (círculo con borde punteado) y puede estar corrida, sobre todo con demoras grandes.</p>
       <div class="mv-leyenda">
         <span><i style="background:var(--green)"></i> en horario</span>
         <span><i style="background:var(--yellow)"></i> demorado</span>
         <span><i style="background:var(--red)"></i> muy demorado</span>
         <span><i style="background:#9CA3AF"></i> cancelado</span>
         <span><i style="background:transparent;border:2px solid #4338CA"></i> origen inusual</span>
+        <span><i style="background:var(--green);border:2px dashed #fff;box-shadow:0 0 0 1px var(--muted)"></i> posición estimada (sin GPS)</span>
       </div>
-      <div class="mv-wrap">
+      <div class="mv-mio-panel" id="mvMio">
+        <p class="mv-mio-titulo">📍 ¿Dónde está mi tren?</p>
+        <p class="mv-mio-sub">Elegí el sentido en el que viajás, dónde lo tomaste y a qué hora: te marcamos tu formación en el mapa.</p>
+        <div class="mv-mio-grid">
+          <div class="mv-mio-campo">
+            <label id="mvMioSentidoLbl">Sentido</label>
+            <div class="mv-mio-sentido" role="group" aria-labelledby="mvMioSentidoLbl">
+              <button type="button" data-via="ida" aria-pressed="false">▶ Hacia Moreno</button>
+              <button type="button" data-via="vuelta" aria-pressed="false">◀ Hacia Once</button>
+            </div>
+          </div>
+          <div class="mv-mio-campo">
+            <label for="mvMioEst">Dónde lo tomaste</label>
+            <select id="mvMioEst" disabled><option value="">Elegí primero el sentido</option></select>
+          </div>
+          <div class="mv-mio-campo">
+            <label for="mvMioHora">Horario</label>
+            <select id="mvMioHora" disabled><option value="">—</option></select>
+          </div>
+        </div>
+        <div class="mv-mio-pie">
+          <label class="mv-mio-todos"><input type="checkbox" id="mvMioTodos"> Mostrar todos los horarios del día</label>
+          <button type="button" class="mv-mio-quitar" id="mvMioQuitar" style="display:none;">Dejar de seguir mi tren</button>
+        </div>
+        <div class="mv-mio-res" id="mvMioRes" role="status" aria-live="polite" style="display:none;"></div>
+      </div>
+      <div class="mv-wrap" id="mapaVivoWrap">
         <div class="mv-stage" id="mapaVivoTrack">
           <div class="mv-via ida"></div>
           <div class="mv-via vuelta"></div>
@@ -4116,18 +4173,21 @@ renderStations();
     dibujadas = true;
   }
 
+  let ultimaData = null;
   function render(data) {
+    ultimaData = data;
     const estaciones = data.estaciones || [];
     if (!dibujadas && estaciones.length > 1) dibujarEstaciones(estaciones);
     const n = estaciones.length;
     stage.querySelectorAll(".mv-tren").forEach((x) => x.remove());
     let hacia = { ida: 0, vuelta: 0 };
+    const mio = buscarMiTren(data.trenes || []);
     (data.trenes || []).forEach((t) => {
       if (n < 2) return;
       const via = viaDe(t);
       hacia[via]++;
       const div = document.createElement("div");
-      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.origenInusual ? " origen-inusual" : "");
+      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "");
       div.tabIndex = 0;
       div.style.left = (t.posicion / (n - 1)) * 100 + "%";
       div.textContent = t.numero ?? "";
@@ -4135,10 +4195,19 @@ renderStations();
       const inusual = t.origenInusual ? " · ⚠ origen inusual" : "";
       const tip = document.createElement("span");
       tip.className = "mv-tip";
-      tip.textContent = "#" + (t.numero ?? "?") + " → " + t.destino + " · " + dem + inusual;
+      tip.textContent = "#" + (t.numero ?? "?") + " → " + t.destino + " · " + dem + inusual + (t.fuente === "gps" ? " · 📡 GPS" : t.fuente === "estimada" ? " · ≈ estimada" : "");
       div.appendChild(tip);
+      if (mio && mio.tren === t) {
+        div.classList.add("mio");
+        const tag = document.createElement("span");
+        tag.className = "mv-mio-tag";
+        tag.textContent = "📍 Tu tren";
+        div.appendChild(tag);
+      }
       stage.appendChild(div);
     });
+    stage.classList.toggle("con-mio", !!mio);
+    actualizarMio(mio, data);
     vacioIda.style.display = hacia.ida ? "none" : "block";
     vacioVuelta.style.display = hacia.vuelta ? "none" : "block";
     const hora = data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -4158,6 +4227,209 @@ renderStations();
       estadoEl.textContent = seg ? "🕐 sin conexión hace " + seg + "s" : "🕐 no se pudo conectar";
     }
   }
+
+  // ── ¿Dónde está mi tren? ────────────────────────────────────────────────
+  // El pasajero indica sentido, estación y horario en que subió. Con eso se calcula la salida
+  // programada desde la cabecera (horario en la estación − OFFSET) y se la compara con la de cada
+  // tren en circulación: el bot manda en `paradas` el horario programado de cada estación que le
+  // queda por delante, y de cualquiera de ellas se deduce su salida de cabecera. Los horarios
+  // y OFFSET son los del cronograma del sitio (S / OFFSET, más arriba en la página).
+  const panelMio = document.getElementById("mvMio");
+  const wrapMapa = document.getElementById("mapaVivoWrap");
+  const resMio = document.getElementById("mvMioRes");
+  const quitarMio = document.getElementById("mvMioQuitar");
+  const selEst = document.getElementById("mvMioEst");
+  const selHora = document.getElementById("mvMioHora");
+  const chkTodos = document.getElementById("mvMioTodos");
+  const botonesVia = panelMio ? Array.prototype.slice.call(panelMio.querySelectorAll(".mv-mio-sentido button")) : [];
+  const FMT_BA = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const LS_MIO = "mvMioSel";
+  const TOLERANCIA_MIN = 4;
+  let sel = null;          // { via, est, dep }  dep = salida programada desde la cabecera, en minutos del día
+  let viaElegida = null;
+  let irAlTren = false;    // centrar el mapa en el tren apenas aparece tras elegir/restaurar
+
+  const dosDig = (n) => String(n).padStart(2, "0");
+  function minutosBA(fecha) {
+    if (isNaN(fecha)) return NaN;
+    const p = FMT_BA.formatToParts(fecha);
+    return Number(p.find((x) => x.type === "hour").value) * 60 + Number(p.find((x) => x.type === "minute").value);
+  }
+  function difMin(a, b) { // a − b en minutos, tomando el camino corto alrededor de la medianoche
+    let d = (a - b) % 1440;
+    if (d > 720) d -= 1440;
+    if (d < -720) d += 1440;
+    return d;
+  }
+  const offsetEst = (via, i) => (via === "ida" ? OFFSET[i] : 71 - OFFSET[i]); // minutos desde la cabecera hasta la estación i
+  const hhmm = (min) => { const m = ((min % 1440) + 1440) % 1440; return dosDig(Math.floor(m / 60)) + ":" + dosDig(m % 60); };
+  const horariosCabecera = (via) => S[getDayType()][via === "ida" ? "once" : "moreno"];
+  const hayDatosHorarios = () => typeof S !== "undefined" && typeof OFFSET !== "undefined" && typeof STATIONS !== "undefined" && typeof getDayType === "function";
+
+  function opcion(valor, texto) {
+    const o = document.createElement("option");
+    o.value = valor;
+    o.textContent = texto;
+    return o;
+  }
+
+  function poblarEstaciones(via, estSel) {
+    selEst.innerHTML = "";
+    const idxs = [];
+    if (via === "ida") { for (let i = 0; i <= 14; i++) idxs.push(i); } else { for (let i = 15; i >= 1; i--) idxs.push(i); }
+    idxs.forEach((i) => selEst.appendChild(opcion(String(i), STATIONS[i].name)));
+    selEst.value = String(estSel != null ? estSel : idxs[0]);
+    selEst.disabled = false;
+  }
+
+  function poblarHoras() {
+    selHora.innerHTML = "";
+    const ahora = minutosBA(new Date());
+    const off = offsetEst(viaElegida, Number(selEst.value));
+    const lista = horariosCabecera(viaElegida).map((x) => {
+      const dep = x[0] * 60 + x[1];
+      return { dep: dep, en: dep + off, d: difMin(ahora, dep + off) };
+    });
+    const reciente = (x) => x.d >= -5 && x.d <= 120;
+    const visibles = lista.filter((x) => chkTodos.checked || reciente(x) || (sel && x.dep === sel.dep));
+    if (!chkTodos.checked) visibles.sort((a, b) => a.d - b.d); // los más recientes primero
+    selHora.appendChild(opcion("", visibles.length ? "Elegí tu horario" : "Sin salidas en las últimas 2 h"));
+    visibles.forEach((x) => {
+      const rel = !reciente(x) ? "" : x.d > 1 ? " · hace " + x.d + " min" : x.d < -1 ? " · en " + -x.d + " min" : " · ahora";
+      selHora.appendChild(opcion(String(x.dep), hhmm(x.en) + rel));
+    });
+    selHora.disabled = !visibles.length;
+    selHora.value = sel ? String(sel.dep) : "";
+  }
+
+  function cambiarSeleccion(nueva) {
+    sel = nueva;
+    irAlTren = !!nueva;
+    try {
+      if (nueva) localStorage.setItem(LS_MIO, JSON.stringify({ via: nueva.via, est: nueva.est, dep: nueva.dep, t: Date.now() }));
+      else localStorage.removeItem(LS_MIO);
+    } catch (e) { /* sin storage: la selección vive solo en esta visita */ }
+    quitarMio.style.display = nueva ? "" : "none";
+    if (ultimaData) render(ultimaData); else actualizarMio(null, null);
+  }
+
+  function marcarVia(via) {
+    botonesVia.forEach((b) => b.setAttribute("aria-pressed", b.getAttribute("data-via") === via ? "true" : "false"));
+  }
+
+  // Salida de cabecera de cada tren en circulación vs. la elegida: gana el de menor diferencia (≤ tolerancia).
+  function buscarMiTren(trenes) {
+    if (!sel) return null;
+    let mejor = null;
+    trenes.forEach((t) => {
+      if (viaDe(t) !== sel.via || !Array.isArray(t.paradas)) return;
+      const errs = t.paradas
+        .filter((p) => p && p.prog)
+        .map((p) => Math.abs(difMin(minutosBA(new Date(p.prog)) - offsetEst(sel.via, p.idx), sel.dep)))
+        .filter(Number.isFinite)
+        .sort((a, b) => a - b);
+      if (!errs.length) return;
+      const err = errs[Math.floor(errs.length / 2)]; // mediana: aguanta una parada con dato raro
+      if (err <= TOLERANCIA_MIN && (!mejor || err < mejor.err)) mejor = { tren: t, err: err };
+    });
+    return mejor;
+  }
+
+  function ubicacion(t, nombres) {
+    const n = nombres.length;
+    if (n < 2) return "";
+    const p = Math.min(Math.max(t.posicion, 0), n - 1);
+    const i = Math.floor(p), f = p - i;
+    const a = nombres[i], b = nombres[Math.min(i + 1, n - 1)];
+    if (f < 0.12) return "cerca de " + a;
+    if (f > 0.88) return "cerca de " + b;
+    return viaDe(t) === "ida" ? "entre " + a + " y " + b : "entre " + b + " y " + a;
+  }
+
+  const MODO_DEBUG = new URLSearchParams(location.search).has("debug"); // index_prueba.html?debug=1 → muestra los datos crudos
+  function mostrarRes(clase, texto, debug) {
+    resMio.className = "mv-mio-res " + clase;
+    resMio.textContent = texto;
+    if (MODO_DEBUG && debug) {
+      const d = document.createElement("small");
+      d.className = "mv-mio-debug";
+      d.textContent = debug;
+      resMio.appendChild(d);
+    }
+    resMio.style.display = "";
+  }
+
+  function textoFuente(t) {
+    return t.fuente === "gps" ? " · 📡 ubicación por GPS" : t.fuente === "estimada" ? " · ≈ ubicación estimada por horarios" : "";
+  }
+
+  function textoDebug(t, nombres) {
+    const nom = (p) => (nombres[Math.round(p)] || "?") + " (" + p.toFixed(2) + ")";
+    const g = t.gps
+      ? "GPS " + t.gps.lat.toFixed(5) + ", " + t.gps.long.toFixed(5) + " · a " + t.gps.distEjeM + " m del eje · " + (t.gps.usable ? "usado" : "DESCARTADO (lejos del ramal)") + " → " + nom(t.gps.posicion)
+      : "GPS: el proxy no mandó location para este tren";
+    const e = typeof t.posicionEstimada === "number" ? "Estimada por horarios → " + nom(t.posicionEstimada) : "Estimada: sin dato";
+    const dif = t.gps && typeof t.posicionEstimada === "number" ? " · diferencia GPS vs estimada: " + Math.abs(t.gps.posicion - t.posicionEstimada).toFixed(2) + " estaciones" : "";
+    return g + "\n" + e + dif;
+  }
+
+  function actualizarMio(mio, data) {
+    if (!sel) { resMio.style.display = "none"; return; }
+    if (!data) { mostrarRes("", "Esperando los datos del mapa…"); return; }
+    if (!mio) {
+      mostrarRes("nada", "No encontramos en circulación un tren con ese horario. Puede que todavía no haya salido, que ya haya llegado o que esté circulando con otro horario.");
+      return;
+    }
+    const t = mio.tren;
+    const dem = t.cancelado ? "cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
+    const prox = !t.cancelado && t.proximaEstacion ? " · próxima: " + t.proximaEstacion : "";
+    mostrarRes(t.cancelado ? "nada" : "ok", "📍 Tu formación: #" + (t.numero ?? "?") + " → " + t.destino + " · " + dem + " · " + ubicacion(t, data.estaciones || []) + prox + textoFuente(t), textoDebug(t, data.estaciones || []));
+    if (irAlTren) {
+      irAlTren = false;
+      const el = stage.querySelector(".mv-tren.mio");
+      if (el && wrapMapa) {
+        const r = el.getBoundingClientRect(), w = wrapMapa.getBoundingClientRect();
+        const suave = !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+        wrapMapa.scrollBy({ left: r.left - w.left - (w.width - r.width) / 2, behavior: suave ? "smooth" : "auto" });
+      }
+    }
+  }
+
+  function iniciarPanelMio() {
+    botonesVia.forEach((b) => b.addEventListener("click", () => {
+      viaElegida = b.getAttribute("data-via");
+      marcarVia(viaElegida);
+      poblarEstaciones(viaElegida);
+      cambiarSeleccion(null);
+      poblarHoras();
+    }));
+    selEst.addEventListener("change", () => { cambiarSeleccion(null); poblarHoras(); });
+    selHora.addEventListener("change", () => {
+      cambiarSeleccion(selHora.value ? { via: viaElegida, est: Number(selEst.value), dep: Number(selHora.value) } : null);
+    });
+    chkTodos.addEventListener("change", poblarHoras);
+    quitarMio.addEventListener("click", () => { cambiarSeleccion(null); poblarHoras(); });
+
+    // Si recarga la página mientras viaja, se retoma su tren (válido unas horas y solo si el horario sigue existiendo hoy).
+    try {
+      const g = JSON.parse(localStorage.getItem(LS_MIO) || "null");
+      const estOk = g && (g.via === "ida" ? g.est >= 0 && g.est <= 14 : g.est >= 1 && g.est <= 15);
+      if (g && (g.via === "ida" || g.via === "vuelta") && Number.isInteger(g.est) && estOk && Number.isFinite(g.dep) &&
+          Date.now() - g.t < 3 * 3600 * 1000 && horariosCabecera(g.via).some((x) => x[0] * 60 + x[1] === g.dep)) {
+        viaElegida = g.via;
+        sel = { via: g.via, est: g.est, dep: g.dep };
+        irAlTren = true;
+        marcarVia(g.via);
+        poblarEstaciones(g.via, g.est);
+        poblarHoras();
+        quitarMio.style.display = "";
+        mostrarRes("", "Esperando los datos del mapa…");
+      }
+    } catch (e) { /* sin storage o dato inválido: se ignora */ }
+  }
+
+  if (panelMio && hayDatosHorarios()) iniciarPanelMio();
+  else if (panelMio) panelMio.style.display = "none";
 
   actualizar();
   setInterval(actualizar, 15000);
