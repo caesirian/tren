@@ -1473,12 +1473,14 @@ bot.command("push", async (ctx) => {
   const keyDirecta = process.env.ONESIGNAL_REST_API_KEY;
   if (keyDirecta) {
     try {
-      const r = await fetch("https://onesignal.com/api/v1/notifications", {
+      // Las keys nuevas (os_v2_...) usan esquema "Key" y la API v2; las viejas, "Basic" y la v1.
+      const keyV2 = keyDirecta.startsWith("os_v2_");
+      const r = await fetch(keyV2 ? "https://api.onesignal.com/notifications?c=push" : "https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Basic ${keyDirecta}` },
+        headers: { "Content-Type": "application/json", Authorization: `${keyV2 ? "Key" : "Basic"} ${keyDirecta}` },
         body: JSON.stringify({
           app_id: "114f6665-eede-42d0-90ad-4d6480f10c76",
-          included_segments: ["All"],
+          included_segments: [keyV2 ? "Subscribed Users" : "All"],
           headings: { es: titulo, en: titulo },
           contents: { es: mensaje, en: mensaje },
           url: url || "https://trensarmientoenlinea.com.ar",
