@@ -1454,6 +1454,40 @@ bot.command("noticia", async (ctx) => {
   }
 });
 
+let ultimaPushId = null;
+
+// Muestra cuántos dispositivos recibieron / fallaron en una push. Uso: /pushestado [id]
+bot.command("pushestado", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  const key = process.env.ONESIGNAL_REST_API_KEY;
+  const id = (ctx.message.text || "").split(" ")[1]?.trim() || ultimaPushId;
+  if (!key) { await ctx.reply("Falta ONESIGNAL_REST_API_KEY en el bot."); return; }
+  if (!id) { await ctx.reply("Uso: /pushestado <id> (o mandá una /push primero)."); return; }
+  try {
+    const keyV2 = key.startsWith("os_v2_");
+    const appId = "114f6665-eede-42d0-90ad-4d6480f10c76";
+    const r = await fetch(
+      keyV2
+        ? `https://api.onesignal.com/notifications/${id}?app_id=${appId}`
+        : `https://onesignal.com/api/v1/notifications/${id}?app_id=${appId}`,
+      { headers: { Authorization: `${keyV2 ? "Key" : "Basic"} ${key}` }, signal: AbortSignal.timeout(30000) }
+    );
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(`HTTP ${r.status} — ${JSON.stringify(d.errors || d)}`);
+    const cola = d.queued_at ? new Date(d.queued_at * 1000).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }) : "?";
+    await ctx.reply(
+      `📊 Push ${id}\n` +
+        `Entregadas: ${d.successful ?? "?"} · Fallidas: ${d.failed ?? "?"} · Con error: ${d.errored ?? "?"}\n` +
+        `Clics: ${d.converted ?? 0} · Pendientes: ${d.remaining ?? 0}\n` +
+        `Encolada: ${cola}` +
+        (d.platform_delivery_stats ? `\nPor plataforma: ${JSON.stringify(d.platform_delivery_stats)}` : "")
+    );
+  } catch (err) {
+    console.error("Error en /pushestado:", err.message);
+    await ctx.reply("No pude consultar el estado: " + err.message);
+  }
+});
+
 // Manda una notificación push a los suscriptores del sitio (OneSignal), usando
 // el mismo proxy que el panel admin: POST {PUSH_PROXY_URL}/notif/enviar.
 // Uso: /push Título | Mensaje | url opcional
@@ -1496,7 +1530,8 @@ bot.command("push", async (ctx) => {
         const detalle = data ? JSON.stringify(data.errors || data) : texto.replace(/\s+/g, " ").slice(0, 200);
         throw new Error(`OneSignal HTTP ${r.status} — ${detalle}`);
       }
-      await ctx.reply(`✅ Push enviada a ${data.recipients ?? "?"} suscriptores:\n"${titulo}"\n${mensaje}`);
+      ultimaPushId = data.id;
+      await ctx.reply(`✅ Push aceptada por OneSignal${data.recipients != null ? ` (${data.recipients} destinatarios)` : ""}:\n"${titulo}"\n${mensaje}\n\nID: ${data.id}\nVer entrega: /pushestado`);
     } catch (err) {
       console.error("Error en /push (directo):", err.message);
       await ctx.reply("No pude mandar la push: " + err.message);
