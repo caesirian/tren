@@ -44,6 +44,16 @@ function ensureInit() {
   }
 }
 
+// Observadores (ej. push automática): se avisan DESPUÉS de escribir, sin bloquear
+// ni romper la escritura si fallan.
+const alCambiarEstadoFns = [];
+const alAgregarAlertaFns = [];
+export const alCambiarEstado = (fn) => alCambiarEstadoFns.push(fn);
+export const alAgregarAlerta = (fn) => alAgregarAlertaFns.push(fn);
+const notificar = (fns, payload) => {
+  for (const fn of fns) Promise.resolve().then(() => fn(payload)).catch((err) => console.error("Error en observador de estado:", err.message));
+};
+
 // Acceso compartido a Firestore para otros módulos (semáforo automático).
 export const firestoreDb = () => ensureInit();
 
@@ -66,7 +76,7 @@ const UMBRAL_SIMILITUD_ALERTA = 0.55;
 // es un complemento, no un reemplazo. Antes de sumar, chequea si ya hay un
 // aviso activo parecido (por similitud de texto, no solo string exacto) y
 // si lo hay, no vuelve a grabarlo. Devuelve { agregado: boolean, similar? }.
-export async function agregarAlertaComplementaria(texto) {
+export async function agregarAlertaComplementaria(texto, opts = {}) {
   const firestore = ensureInit();
   if (!firestore) throw new Error("Firestore no está configurado (faltan credenciales).");
   const ref = firestore.collection("estadoServicio").doc("actual");
@@ -75,6 +85,8 @@ export async function agregarAlertaComplementaria(texto) {
   const parecido = actuales.find((a) => similitud(a, texto) >= UMBRAL_SIMILITUD_ALERTA);
   if (parecido) return { agregado: false, similar: parecido };
   await ref.set({ alertas: FieldValue.arrayUnion(texto) }, { merge: true });
+  // opts.push = { titulo, mensaje, origen } -> el observador decide si manda push.
+  if (opts.push) notificar(alAgregarAlertaFns, { texto, ...opts.push });
   return { agregado: true };
 }
 
@@ -117,7 +129,11 @@ export async function actualizarEstadoServicio({ estado, mensaje, editor }) {
   // merge:true a propósito — el panel de Admin usa setDoc sin merge y
   // pisa todo el documento; acá lo evitamos para no borrar mostrarTitulares
   // ni otros campos que no tocamos desde el bot.
-  await firestore.collection("estadoServicio").doc("actual").set(datos, { merge: true });
+  const ref = firestore.collection("estadoServicio").doc("actual");
+  let anterior = null;
+  try { anterior = (await ref.get()).data()?.estado || "normal"; } catch {}
+  await ref.set(datos, { merge: true });
+  notificar(alCambiarEstadoFns, { anterior, estado, mensaje: datos.mensaje || "", editor });
 }
 
 export async function getEstadoServicio() {

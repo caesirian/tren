@@ -22,7 +22,8 @@ import { Telegraf, Markup } from "telegraf";
 import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
-import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria, listarAlertasComplementarias, quitarAlertaComplementaria, limpiarAlertasComplementarias } from "./firestoreStatus.js";
+import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria, listarAlertasComplementarias, quitarAlertaComplementaria, limpiarAlertasComplementarias, alCambiarEstado, alAgregarAlerta } from "./firestoreStatus.js";
+import { enviarPush, ultimaPushId, pushAutoActivo, setPushAuto, cargarPushAuto, iniciarPushAuto, pushPorCambioEstado, pushPorAlerta } from "./pushAuto.js";
 import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
@@ -1380,7 +1381,7 @@ bot.command("alerta", async (ctx) => {
     return;
   }
   try {
-    const r = await agregarAlertaComplementaria(texto);
+    const r = await agregarAlertaComplementaria(texto, { push: { titulo: "📢 Aviso de servicio", mensaje: texto, origen: "/alerta" } });
     if (!r.agregado) {
       await ctx.reply(`⚠️ No la sumé: ya hay una alerta activa muy parecida:\n"${r.similar}"\n\nSi igual querés forzarla, primero sacá la vieja con /alertas.`);
     } else {
@@ -1454,13 +1455,28 @@ bot.command("noticia", async (ctx) => {
   }
 });
 
-let ultimaPushId = null;
+// Enciende/apaga las push automáticas (cambios del semáforo y alertas). Uso: /pushauto [on|off]
+bot.command("pushauto", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  const arg = (ctx.message.text || "").split(" ")[1]?.toLowerCase();
+  if (arg === "on" || arg === "off") {
+    await setPushAuto(arg === "on", ctx.from?.username || String(ctx.from?.id || ""));
+    await ctx.reply(arg === "on" ? "✅ Push automáticas ACTIVADAS." : "⏸ Push automáticas APAGADAS. /push manual sigue andando.");
+    return;
+  }
+  await ctx.reply(
+    `📣 Push automáticas: ${pushAutoActivo() ? "ACTIVAS" : "apagadas"}\n\n` +
+      "Salen solas cuando: cambia el semáforo (demoras / paro / normalizado), o se suma una alerta (obra programada, cese de servicio, aviso).\n" +
+      "El semáforo automático solo avisa si hay cancelaciones.\n\n" +
+      "Uso: /pushauto on | /pushauto off"
+  );
+});
 
 // Muestra cuántos dispositivos recibieron / fallaron en una push. Uso: /pushestado [id]
 bot.command("pushestado", async (ctx) => {
   if (!esAdminEstado(ctx)) return;
   const key = process.env.ONESIGNAL_REST_API_KEY;
-  const id = (ctx.message.text || "").split(" ")[1]?.trim() || ultimaPushId;
+  const id = (ctx.message.text || "").split(" ")[1]?.trim() || ultimaPushId();
   if (!key) { await ctx.reply("Falta ONESIGNAL_REST_API_KEY en el bot."); return; }
   if (!id) { await ctx.reply("Uso: /pushestado <id> (o mandá una /push primero)."); return; }
   try {
@@ -1503,35 +1519,11 @@ bot.command("push", async (ctx) => {
   }
 
   // Camino directo: si trenbot tiene ONESIGNAL_REST_API_KEY, le pega a OneSignal sin pasar
-  // por el proxy tren-webs (misma llamada que hace el proxy).
-  const keyDirecta = process.env.ONESIGNAL_REST_API_KEY;
-  if (keyDirecta) {
+  // por el proxy tren-webs.
+  if (process.env.ONESIGNAL_REST_API_KEY) {
     try {
-      // Las keys nuevas (os_v2_...) usan esquema "Key" y la API v2; las viejas, "Basic" y la v1.
-      const keyV2 = keyDirecta.startsWith("os_v2_");
-      const r = await fetch(keyV2 ? "https://api.onesignal.com/notifications?c=push" : "https://onesignal.com/api/v1/notifications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `${keyV2 ? "Key" : "Basic"} ${keyDirecta}` },
-        body: JSON.stringify({
-          app_id: "114f6665-eede-42d0-90ad-4d6480f10c76",
-          included_segments: [keyV2 ? "Total Subscriptions" : "All"],
-          headings: { es: titulo, en: titulo },
-          contents: { es: mensaje, en: mensaje },
-          url: url || "https://trensarmientoenlinea.com.ar",
-          chrome_web_icon: "https://trensarmientoenlinea.com.ar/logo.png",
-          firefox_icon: "https://trensarmientoenlinea.com.ar/logo.png",
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
-      const texto = await r.text();
-      let data = null;
-      try { data = JSON.parse(texto); } catch {}
-      if (!r.ok || !data?.id) {
-        const detalle = data ? JSON.stringify(data.errors || data) : texto.replace(/\s+/g, " ").slice(0, 200);
-        throw new Error(`OneSignal HTTP ${r.status} — ${detalle}`);
-      }
-      ultimaPushId = data.id;
-      await ctx.reply(`✅ Push aceptada por OneSignal${data.recipients != null ? ` (${data.recipients} destinatarios)` : ""}:\n"${titulo}"\n${mensaje}\n\nID: ${data.id}\nVer entrega: /pushestado`);
+      const data = await enviarPush({ titulo, mensaje, url });
+      await ctx.reply(`✅ Push aceptada por OneSignal:\n"${titulo}"\n${mensaje}\n\nID: ${data.id}\nVer entrega: /pushestado`);
     } catch (err) {
       console.error("Error en /push (directo):", err.message);
       await ctx.reply("No pude mandar la push: " + err.message);
@@ -1842,7 +1834,12 @@ async function procesarComunicadoDeImagenSerial(ctx) {
     try {
       const tituloTipo = { paro: "Paro", demora: "Demoras", normalizacion: "Normalización del servicio", obra: "Obra programada", "aviso general": "Aviso", otro: "Aviso" }[datos.tipo] || "Aviso";
       const textoAlerta = `${tituloTipo}${datos.fecha ? ` (${datos.fecha})` : ""}: ${datos.resumen}${datos.horario ? ` Horario: ${datos.horario}.` : ""}`;
-      const r = await agregarAlertaComplementaria(textoAlerta);
+      // Obra, paro, demora o normalización => además sale push automática.
+      const mensajePush = `${datos.fecha ? `${datos.fecha}: ` : ""}${datos.resumen}${datos.horario ? ` Horario: ${datos.horario}.` : ""}`;
+      const r = await agregarAlertaComplementaria(
+        textoAlerta,
+        ["obra", "paro", "demora", "normalizacion"].includes(datos.tipo) ? { push: { titulo: `📢 ${tituloTipo}`, mensaje: mensajePush, origen: `comunicado (${datos.tipo})` } } : {}
+      );
       estadoSitio = r.agregado ? "agregado" : "ya_habia";
     } catch (err) {
       estadoSitio = "error";
@@ -2596,6 +2593,10 @@ app.listen(PORT, async () => {
   await cargarSilencio(); // restaura el modo silencio si estaba activo antes de un reinicio
   await cargarEscaneoCompleto(); // restaura /apptrenes auto si estaba activo antes de un reinicio
   await cargarEstadoAuto(); // restaura /estadoauto y la última anomalía vista
+  await cargarPushAuto(); // restaura /pushauto y el anti-spam de las push automáticas
+  iniciarPushAuto({ notificarAdmin: (t) => (process.env.ADMIN_TELEGRAM_ID ? bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, t).catch((e) => console.error("Error avisando push al admin:", e.message)) : null) });
+  alCambiarEstado((e) => pushPorCambioEstado(e));
+  alAgregarAlerta((a) => pushPorAlerta(a));
 
   // Respaldo interno: mientras el servicio esté despierto (Render free se
   // duerme sin tráfico), chequea cancelaciones del proxy cada 5 min sin
