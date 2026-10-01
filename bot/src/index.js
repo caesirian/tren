@@ -1468,6 +1468,40 @@ bot.command("push", async (ctx) => {
     return;
   }
 
+  // Camino directo: si trenbot tiene ONESIGNAL_REST_API_KEY, le pega a OneSignal sin pasar
+  // por el proxy tren-webs (misma llamada que hace el proxy).
+  const keyDirecta = process.env.ONESIGNAL_REST_API_KEY;
+  if (keyDirecta) {
+    try {
+      const r = await fetch("https://onesignal.com/api/v1/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Basic ${keyDirecta}` },
+        body: JSON.stringify({
+          app_id: "114f6665-eede-42d0-90ad-4d6480f10c76",
+          included_segments: ["All"],
+          headings: { es: titulo, en: titulo },
+          contents: { es: mensaje, en: mensaje },
+          url: url || "https://trensarmientoenlinea.com.ar",
+          chrome_web_icon: "https://trensarmientoenlinea.com.ar/logo.png",
+          firefox_icon: "https://trensarmientoenlinea.com.ar/logo.png",
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+      const texto = await r.text();
+      let data = null;
+      try { data = JSON.parse(texto); } catch {}
+      if (!r.ok || !data?.id) {
+        const detalle = data ? JSON.stringify(data.errors || data) : texto.replace(/\s+/g, " ").slice(0, 200);
+        throw new Error(`OneSignal HTTP ${r.status} — ${detalle}`);
+      }
+      await ctx.reply(`✅ Push enviada a ${data.recipients ?? "?"} suscriptores:\n"${titulo}"\n${mensaje}`);
+    } catch (err) {
+      console.error("Error en /push (directo):", err.message);
+      await ctx.reply("No pude mandar la push: " + err.message);
+    }
+    return;
+  }
+
   const base = (process.env.PUSH_PROXY_URL || "https://tren-webs.onrender.com").replace(/\/$/, "");
   const intentar = async () => {
     const r = await fetch(`${base}/notif/enviar`, {
