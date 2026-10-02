@@ -41,7 +41,8 @@ TARIFAS SUBE VIGENTES (servicio común, septiembre 2026 — Resolución 27/2026)
 
 SERVICIO DIFERENCIAL (opcional, más caro, no es el servicio común):
 - Circula de lunes a viernes (se amplió desde agosto 2026; antes era solo lunes/miércoles/viernes), una sola vuelta por día.
-- Solo para en Once, Haedo y Moreno.
+- Solo para en Once, Haedo, Merlo y Moreno (Merlo se sumó con el cronograma vigente desde el 1/10/2026).
+- Horarios: Once→Moreno sale Once 18:35, Haedo 19:20, Merlo 19:45, llega Moreno 19:55. Moreno→Once sale Moreno 6:39, Merlo 6:51, Haedo 7:17, llega Once 8:00.
 - Boleto: $2.600, tarifa única (no varía con la sección ni tiene descuento social).
 - Incluye asientos reclinables, aire acondicionado, baños a bordo y kiosco (son los coches del tren de larga distancia a Bragado).
 - Se compra antes de subir (plataforma oficial online o boletería de larga distancia), no se vende a bordo.

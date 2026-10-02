@@ -775,14 +775,15 @@ export function precioPorKm(km) {
 }
 
 // Servicio Diferencial: una sola vuelta por día, lunes a viernes, solo para
-// en Once, Haedo y Moreno. Ampliado a L-V desde agosto 2026 (antes era
-// lunes/miércoles/viernes). Verificar periódicamente que siga vigente.
+// en Once, Haedo, Merlo y Moreno. Ampliado a L-V desde agosto 2026 (antes era
+// lunes/miércoles/viernes). Merlo se sumó con el cronograma vigente desde el
+// 1/10/2026 (folleto oficial de Larga Distancia). Verificar periódicamente.
 export const DIFERENCIAL = {
   dias: "lunes a viernes",
   precio: 2600,
-  paradas: ["Once", "Haedo", "Moreno"],
-  haciaMoreno: { Once: "18:35", Haedo_llega: "19:16", Haedo_sale: "19:21", Moreno: "19:53" },
-  haciaOnce: { Moreno: "6:29", Haedo_llega: "7:01", Haedo_sale: "7:05", Once: "7:50" },
+  paradas: ["Once", "Haedo", "Merlo", "Moreno"],
+  haciaMoreno: { Once: "18:35", Haedo: "19:20", Merlo: "19:45", Moreno: "19:55" },
+  haciaOnce: { Moreno: "6:39", Merlo: "6:51", Haedo: "7:17", Once: "8:00" },
 };
 
 export function proximoDiferencial(ahora = new Date()) {

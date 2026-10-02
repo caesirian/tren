@@ -300,7 +300,7 @@ async function armarContexto(pregunta) {
   if (/diferencial|preferencial/i.test(pregunta)) {
     const ahora = new Date();
     const dif = proximoDiferencial(ahora);
-    let texto = `\n== SERVICIO DIFERENCIAL (calculado ahora, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==\nCircula ${DIFERENCIAL.dias}, una sola vuelta por día, parando solo en ${DIFERENCIAL.paradas.join(", ")}. Precio: $${DIFERENCIAL.precio} (tarifa única, sin descuento social).\nHorario Once→Moreno: sale Once ${DIFERENCIAL.haciaMoreno.Once}, Haedo ${DIFERENCIAL.haciaMoreno.Haedo_llega}/${DIFERENCIAL.haciaMoreno.Haedo_sale}, llega Moreno ${DIFERENCIAL.haciaMoreno.Moreno}.\nHorario Moreno→Once: sale Moreno ${DIFERENCIAL.haciaOnce.Moreno}, Haedo ${DIFERENCIAL.haciaOnce.Haedo_llega}/${DIFERENCIAL.haciaOnce.Haedo_sale}, llega Once ${DIFERENCIAL.haciaOnce.Once}.\n`;
+    let texto = `\n== SERVICIO DIFERENCIAL (calculado ahora, hora actual en Buenos Aires: ${horaArgentinaTexto(ahora)}) ==\nCircula ${DIFERENCIAL.dias}, una sola vuelta por día, parando solo en ${DIFERENCIAL.paradas.join(", ")}. Precio: $${DIFERENCIAL.precio} (tarifa única, sin descuento social).\nHorario Once→Moreno: sale Once ${DIFERENCIAL.haciaMoreno.Once}, Haedo ${DIFERENCIAL.haciaMoreno.Haedo}, Merlo ${DIFERENCIAL.haciaMoreno.Merlo}, llega Moreno ${DIFERENCIAL.haciaMoreno.Moreno}.\nHorario Moreno→Once: sale Moreno ${DIFERENCIAL.haciaOnce.Moreno}, Merlo ${DIFERENCIAL.haciaOnce.Merlo}, Haedo ${DIFERENCIAL.haciaOnce.Haedo}, llega Once ${DIFERENCIAL.haciaOnce.Once}.\n`;
     if (!dif.circulaHoy) {
       texto += `Hoy no circula: ${dif.motivo}.`;
     } else if (!dif.hora) {
