@@ -977,3 +977,112 @@ export function localesConNumero(dia) {
   }
   return out.sort((a, b) => a.hora.localeCompare(b.hora));
 }
+
+// ─── Emparejamiento llegada → salida en las cabeceras ────────────────────────
+// El cronograma no trae identificador de formación: un servicio llega a Once/Moreno
+// con un número y la misma formación sale después con otro. Se las empareja por
+// cercanía: cada salida toma la llegada anterior más cercana que ya haya cumplido la
+// vuelta mínima en cabecera (VUELTA_MIN), sin cruzar pares (la 1ª llegada va con la 1ª
+// salida, etc.). Si la espera programada superaría MAX_ESPERA_MIN se asume que la
+// formación sale de cocheras y no se la empareja. Es un emparejamiento ESTIMADO por
+// cronograma, no un dato de la app. Las llegadas sin salida y las salidas sin llegada
+// quedan aparte (formaciones que van a cocheras o salen de ellas).
+const VUELTA_MIN = 5;
+const MAX_ESPERA_MIN = 60;
+const paresCache = new Map();
+const idCabecera = (nombre) => (String(nombre).toLowerCase().includes("moreno") ? 15 : 0);
+
+// → { pares: [{ llega: {n, min, origenId}, sale: {n, min}, esperaMin }],
+//     salidasSinArribo: [{n, min}], arribosSinSalida: [{n, min, origenId}] }
+// Los minutos son del día de servicio (> 1440 = pasada la medianoche).
+export function paresCabecera(dia, cabeceraNombre) {
+  const cab = idCabecera(cabeceraNombre);
+  const key = `${dia}|${cab}`;
+  if (paresCache.has(key)) return paresCache.get(key);
+
+  const sentLlega = cab === 0 ? "o" : "m";
+  const sentSale = cab === 0 ? "m" : "o";
+  const llegadas = TRENES[dia][sentLlega]
+    .filter((tr) => tr.t[cab] != null)
+    .map((tr) => ({ n: tr.n, min: tr.t[cab], origenId: tr.first }))
+    .sort((a, b) => a.min - b.min);
+  const salidas = TRENES[dia][sentSale]
+    .filter((tr) => tr.first === cab)
+    .map((tr) => ({ n: tr.n, min: tr.t[cab] }))
+    .sort((a, b) => a.min - b.min);
+
+  // De la última salida hacia atrás: cada una toma la llegada más reciente que le sirve.
+  const pares = [];
+  const salidasSinArribo = [];
+  const usadas = new Set();
+  let j = llegadas.length - 1;
+  for (let k = salidas.length - 1; k >= 0; k--) {
+    const s = salidas[k];
+    while (j >= 0 && llegadas[j].min + VUELTA_MIN > s.min) j--;
+    if (j >= 0 && s.min - llegadas[j].min <= MAX_ESPERA_MIN) {
+      pares.push({ llega: llegadas[j], sale: s, esperaMin: s.min - llegadas[j].min });
+      usadas.add(llegadas[j]);
+      j--;
+    } else {
+      salidasSinArribo.push(s);
+    }
+  }
+  pares.sort((a, b) => a.sale.min - b.sale.min);
+  salidasSinArribo.sort((a, b) => a.min - b.min);
+  const arribosSinSalida = llegadas.filter((l) => !usadas.has(l));
+
+  const res = { pares, salidasSinArribo, arribosSinSalida };
+  paresCache.set(key, res);
+  return res;
+}
+
+// Locales (formaciones que arrancan en una estación intermedia) cuya salida programada
+// cae entre `antesMin` minutos antes y `despuesMin` minutos después de `ahora`. Sirve para
+// vigilar las estaciones intermedias solo cuando hace falta (cada consulta al proxy pasa
+// directo a SOFSE). Contempla los que salen pasada la medianoche del día de servicio anterior.
+// → [{ n, estacion, estacionId, min, hora, direccion: "moreno" | "once" }]
+export function localesActivos(ahora = new Date(), antesMin = 40, despuesMin = 40) {
+  const ahoraMin = minutoDelDia(ahora);
+  const out = [];
+  for (const { dia, offset } of [{ dia: getDayType(ahora), offset: 0 }, { dia: getPrevDayType(ahora), offset: -1440 }]) {
+    for (const dir of ["m", "o"]) {
+      const terminal = dir === "m" ? 0 : 15;
+      for (const tr of TRENES[dia][dir]) {
+        if (tr.first === terminal) continue;
+        const min = tr.t[tr.first] + offset;
+        if (ahoraMin >= min - antesMin && ahoraMin <= min + despuesMin) {
+          out.push({ n: tr.n, estacion: STATIONS[tr.first].name, estacionId: tr.first, min, hora: minAHora(tr.t[tr.first]), direccion: dir === "m" ? "moreno" : "once" });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// Minuto del día en hora de Buenos Aires de una fecha/ISO (0–1439).
+export function minutoDelDia(fecha) {
+  const { hour, minute } = horaArgentina(new Date(fecha));
+  return toMins(hour, minute);
+}
+
+// Servicio Diferencial: no figura en el cronograma de TRENES, así que se lo reconoce por
+// su horario (DIFERENCIAL) en la cabecera, lunes a viernes, con ±5 min de tolerancia.
+// Si el número del servicio SÍ figura en el cronograma, es un tren común aunque coincida
+// la hora. (No distingue feriados, igual que el resto del cronograma.)
+export function esServicioDiferencial({ cabecera, sale, prog, numero = null }) {
+  if (!prog) return false;
+  const fecha = new Date(prog);
+  if (Number.isNaN(fecha.getTime()) || getDayType(fecha) !== "lv") return false;
+  const cab = idCabecera(cabecera) === 0 ? "Once" : "Moreno";
+  const esperado = sale
+    ? (cab === "Once" ? DIFERENCIAL.haciaMoreno.Once : DIFERENCIAL.haciaOnce.Moreno)
+    : (cab === "Once" ? DIFERENCIAL.haciaOnce.Once : DIFERENCIAL.haciaMoreno.Moreno);
+  const [h, m] = esperado.split(":").map(Number);
+  if (Math.abs(minutoDelDia(fecha) - toMins(h, m)) > 5) return false;
+  if (numero != null) {
+    const dia = getDayType(fecha);
+    const enCron = ["m", "o"].some((d) => TRENES[dia][d].some((tr) => String(tr.n) === String(numero)));
+    if (enCron) return false;
+  }
+  return true;
+}

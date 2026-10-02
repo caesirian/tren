@@ -36,7 +36,8 @@ import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { registrarSnapshot, snapshotHaceMinutos, rangoRegistrado } from "./tableroHistorial.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
-import { iniciarVigiaSalidas, textoFormaciones } from "./vigiaSalidas.js";
+import { iniciarVigiaSalidas, textoFormaciones, estadoLocalesParaBot } from "./vigiaSalidas.js";
+import { textoInformeFormaciones } from "./informeFormaciones.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
@@ -400,6 +401,11 @@ ${tramoLimitado ? `ATENCIÓN: HAY SERVICIO LIMITADO VIGENTE (solo circulan trene
 == "LOCALES" (formaciones que arrancan VACÍAS) EN "${estacion.name}" ==
 IMPORTANTE: un "local" NO es cualquier tren que pasa por la estación — es una formación puntual que arranca vacía ahí mismo, muy buscada porque conviene subirse antes de que se llene.
 ${bloqueLocales}`);
+      // Estado en vivo de los locales de la estación: ya salió / en andén esperando / aún no llegó.
+      if (/\blocal(es)?\b/i.test(pregunta)) {
+        const enVivo = await estadoLocalesParaBot({ estacion: estacion.name, pregunta, ahora }).catch((err) => { console.error("Error armando estado de locales:", err.message); return null; });
+        if (enVivo) partes.push(enVivo);
+      }
     }
   } else if (/\blocal(es)?\b/i.test(pregunta)) {
     // Preguntan por "locales" sin decir de qué estación — les paso el listado completo de hoy.
@@ -414,6 +420,8 @@ ${bloqueLocales}`);
 IMPORTANTE: un "local" es una formación que arranca VACÍA en esa estación puntual (no cualquier tren de paso). En días hábiles hay locales en Flores, Liniers, Merlo y Castelar; sábados y domingos solo en Castelar, de madrugada.
 ${estaciones.length ? estaciones.map((est) => `${est}: ${porEstacion[est].join(", ")}`).join("\n") : "Hoy no hay locales programados."}
 Esta es la lista completa del día, incluidos los que ya salieron: dala completa (no la recortes a los próximos) y no derives a la app, esto ya responde la pregunta.`);
+    const enVivo = await estadoLocalesParaBot({ estacion: null, pregunta, ahora }).catch((err) => { console.error("Error armando estado de locales:", err.message); return null; });
+    if (enVivo) partes.push(enVivo);
   } else if (/último|ultimo|primer(o)?\s+tren|primeros?\s+servicios?/i.test(pregunta)) {
     // Preguntan por el primer/último tren sin decir de qué estación — les doy
     // el horario real de las terminales (Once y Moreno), que es lo más útil.
@@ -951,10 +959,12 @@ bot.command("apptrenes", async (ctx) => {
 
 // Estado en vivo de las formaciones en Once y Moreno: si ya llegó y espera, si ya salió
 // (y a qué hora) o si está en camino. Lo alimenta la vigilancia de salidas (vigiaSalidas.js).
+// /formaciones informe [hoy|ayer|AAAA-MM-DD|DD/MM] → informe por formación del día (informeFormaciones.js).
 bot.command("formaciones", async (ctx) => {
   if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
   try {
-    const texto = textoFormaciones();
+    const args = (ctx.message?.text || "").trim().split(/\s+/).slice(1);
+    const texto = /^informe$/i.test(args[0] || "") ? await textoInformeFormaciones(args.slice(1).join(" ")) : textoFormaciones();
     for (let i = 0; i < texto.length; i += 3900) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, texto.slice(i, i + 3900));
     }
