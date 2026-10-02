@@ -2010,6 +2010,12 @@ console.log('[Firebase] Listener de estado inicializado');
 <!-- WIDGET ÚLTIMOS TRENES -->
 <!-- ═══════════════════════════════════════ -->
 
+<style>
+  /* Flotante de últimos trenes: arrastrable (el dedo no hace scroll de la página sobre él) */
+  #ltw-card, #ltw-bubble, #ltw-logo { touch-action: none; -webkit-user-select: none; user-select: none; }
+  #ltw-card { cursor: grab; }
+  #ltw-card:active { cursor: grabbing; }
+</style>
 <div id="lastTrainWidget" style="
   position:fixed;
   bottom:80px;
@@ -2262,9 +2268,7 @@ console.log('[Firebase] Listener de estado inicializado');
       display:flex;
       align-items:center;
       gap:7px;
-      position:absolute;
-      right:0;
-      bottom:0;
+      margin-left:auto;
       padding:12px 18px;
       border-radius:30px;
       border:none;
@@ -2281,6 +2285,26 @@ console.log('[Firebase] Listener de estado inicializado');
   >
     🚆 Últimos Trenes
   </button>
+
+  <!-- SOLO LOGO (al arrastrar el flotante arriba de la pantalla) -->
+  <button
+    id="ltw-logo"
+    type="button"
+    aria-label="Abrir últimos trenes"
+    style="
+      display:none;
+      margin-left:auto;
+      width:48px;
+      height:48px;
+      padding:0;
+      border-radius:50%;
+      border:2px solid rgba(255,255,255,.9);
+      background:#002B5C;
+      box-shadow:0 4px 20px rgba(0,0,0,.35);
+      cursor:pointer;
+      overflow:hidden;
+    "
+  ><img src="logo.png" alt="" width="44" height="44" style="display:block;width:100%;height:100%;border-radius:50%;object-fit:cover;pointer-events:none;"></button>
 
 </div>
 
@@ -2321,56 +2345,160 @@ console.log('[Firebase] Listener de estado inicializado');
   document.getElementById('ltw-mor-prev').textContent =
     fmt(mo[mo.length-2]);
 
-  // MINIMIZAR
+  // ── ESTADOS DEL FLOTANTE: card (completo) | bubble (texto) | logo (solo logo) ──
+  const root   = document.getElementById('lastTrainWidget');
   const bubble = document.getElementById('ltw-bubble');
   const card   = document.getElementById('ltw-card');
+  const logo   = document.getElementById('ltw-logo');
+  const trans0 = root.style.transition;
+  let modo = 'bubble';
+  let tok = 0;
+  let movido = false;   // el usuario ya lo arrastró: pasamos a coordenadas explícitas
+  let arrastro = false; // evita que el click posterior a un arrastre abra/cierre algo
 
-  document.getElementById('ltw-minimize')
-    .addEventListener('click', () => {
+  const visible = () => [card, bubble, logo].find((el) => getComputedStyle(el).display !== 'none') || bubble;
+
+  function limites() {
+    const nav = document.querySelector('.navbar');
+    const navH = nav ? nav.offsetHeight : 58;
+    return { minX: 6, maxX: window.innerWidth - 6, minY: navH + 6, maxY: window.innerHeight - 6 };
+  }
+  // "Arriba de la pantalla": a menos de ~60px por debajo de la barra superior
+  const enZona = (r) => r.top <= limites().minY + 60;
+
+  function fijarCoords(left, top) {
+    root.style.setProperty('left', left + 'px', 'important');
+    root.style.setProperty('top', top + 'px', 'important');
+    root.style.setProperty('right', 'auto', 'important');
+    root.style.setProperty('bottom', 'auto', 'important');
+    root.style.setProperty('margin-left', '0', 'important');
+  }
+  function pasarACoordenadas() {
+    if (movido) return;
+    const r = root.getBoundingClientRect();
+    root.style.setProperty('width', r.width + 'px', 'important');
+    fijarCoords(r.left, r.top);
+    movido = true;
+  }
+  // Ubica root para que el elemento visible quede dentro de los límites (y opcionalmente con su borde superior en yTop)
+  function ubicar(left, top, yTop) {
+    const rr = root.getBoundingClientRect(), vr = visible().getBoundingClientRect(), L = limites();
+    const ox = vr.left - rr.left, oy = vr.top - rr.top;
+    const acotar = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+    const x = acotar(left, L.minX - ox, L.maxX - vr.width - ox);
+    const y = yTop != null ? yTop - oy : acotar(top, L.minY - oy, L.maxY - vr.height - oy);
+    fijarCoords(x, y);
+  }
+  function acomodar() {
+    if (!movido) return;
+    const rr = root.getBoundingClientRect();
+    ubicar(rr.left, rr.top);
+  }
+
+  function setModo(nuevo, inmediato) {
+    const mio = ++tok, anterior = modo;
+    modo = nuevo;
+    if (nuevo === 'card') {
+      bubble.style.display = 'none';
+      logo.style.display = 'none';
+      card.style.display = 'block';
+      acomodar();
+      requestAnimationFrame(() => {
+        if (mio !== tok) return;
+        card.style.opacity = '1';
+        card.style.transform = 'scale(1)';
+        card.style.pointerEvents = 'auto';
+      });
+      return;
+    }
+    const compacto = nuevo === 'logo' ? logo : bubble;
+    const otro = nuevo === 'logo' ? bubble : logo;
+    const mostrar = () => {
+      if (mio !== tok) return;
+      card.style.display = 'none';
+      otro.style.display = 'none';
+      compacto.style.display = nuevo === 'logo' ? 'block' : 'flex';
+    };
+    if (anterior === 'card') {
       card.style.opacity = '0';
       card.style.transform = 'scale(.9)';
       card.style.pointerEvents = 'none';
-      setTimeout(() => {
-        card.style.display = 'none';
-        bubble.style.display = 'flex';
-      }, 180);
-    });
+      if (inmediato) mostrar(); else setTimeout(mostrar, 180);
+    } else {
+      mostrar();
+    }
+  }
+  // Al minimizar: si el flotante está arriba de la pantalla queda como logo; si no, como burbuja con texto
+  const modoCompacto = () => (movido && enZona(visible().getBoundingClientRect()) ? 'logo' : 'bubble');
 
-  // RESTAURAR
-  bubble.addEventListener('click', () => {
-    bubble.style.display = 'none';
-    card.style.display = 'block';
-    requestAnimationFrame(() => {
-      card.style.opacity = '1';
-      card.style.transform = 'scale(1)';
-      card.style.pointerEvents = 'auto';
+  document.getElementById('ltw-minimize').addEventListener('click', () => setModo(modoCompacto()));
+  bubble.addEventListener('click', () => { if (arrastro) return; setModo('card'); });
+  logo.addEventListener('click', () => { if (arrastro) return; setModo('card'); });
+
+  // ── ARRASTRE ──────────────────────────────────────────────────────────────
+  function hacerArrastrable(el) {
+    let a = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (e.target.closest && e.target.closest('#ltw-minimize')) return;
+      arrastro = false;
+      const r = root.getBoundingClientRect();
+      a = { id: e.pointerId, x0: e.clientX, y0: e.clientY, left0: r.left, top0: r.top, mov: false, zona0: enZona(visible().getBoundingClientRect()) };
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
     });
-  });
+    el.addEventListener('pointermove', (e) => {
+      if (!a || e.pointerId !== a.id) return;
+      const dx = e.clientX - a.x0, dy = e.clientY - a.y0;
+      if (!a.mov) {
+        if (Math.hypot(dx, dy) < 8) return; // por debajo de 8px es un toque, no un arrastre
+        a.mov = true;
+        arrastro = true;
+        pasarACoordenadas();
+        root.style.transition = 'none';
+        const r = root.getBoundingClientRect();
+        a.left0 = r.left; a.top0 = r.top;
+      }
+      e.preventDefault();
+      ubicar(a.left0 + dx, a.top0 + dy);
+    });
+    const fin = (e) => {
+      if (!a || e.pointerId !== a.id) return;
+      const ar = a; a = null;
+      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (!ar.mov) return; // fue un toque: el click hace lo suyo
+      root.style.transition = trans0;
+      const vr = visible().getBoundingClientRect();
+      const arriba = enZona(vr);
+      if (arriba && !ar.zona0 && modo !== 'logo') {
+        // lo llevaron arriba de la pantalla: se achica a solo logo, pegado debajo de la barra
+        setModo('logo');
+        ubicar(root.getBoundingClientRect().left, 0, limites().minY + 4);
+      } else if (!arriba && modo === 'logo') {
+        setModo('bubble', true); // lo sacaron de arriba: vuelve a la burbuja con texto
+        acomodar();
+      }
+      setTimeout(() => { arrastro = false; }, 350);
+    };
+    el.addEventListener('pointerup', fin);
+    el.addEventListener('pointercancel', fin);
+  }
+  hacerArrastrable(card);
+  hacerArrastrable(bubble);
+  hacerArrastrable(logo);
+
+  window.addEventListener('resize', acomodar);
 
   // Apertura automática después de las 22hs — info crítica para no perder el último tren
   (function autoAbrirNocturno() {
     const hora = new Date().getHours();
     if (hora >= 22 || hora < 1) {
-      // Mostrar la card directamente sin necesidad de tocar el bubble
-      setTimeout(() => {
-        if (card.style.display === 'none' || card.style.display === '') {
-          bubble.style.display = 'none';
-          card.style.display = 'block';
-          card.style.opacity = '1';
-          card.style.transform = 'scale(1)';
-          card.style.pointerEvents = 'auto';
-        }
-      }, 2000); // 2 segundos después de cargar
+      setTimeout(() => { if (modo === 'bubble') setModo('card'); }, 2000);
     }
   })();
 
   // Deep link: si la URL trae #ultimos-trenes, abrir el widget automáticamente
   function abrirWidgetUltimosTrenes() {
-    bubble.style.display = 'none';
-    card.style.display = 'block';
-    card.style.opacity = '1';
-    card.style.transform = 'scale(1)';
-    card.style.pointerEvents = 'auto';
+    setModo('card');
     document.getElementById('lastTrainWidget')
       .scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
