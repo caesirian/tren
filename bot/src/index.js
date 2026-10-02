@@ -36,6 +36,7 @@ import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { registrarSnapshot, snapshotHaceMinutos, rangoRegistrado } from "./tableroHistorial.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
+import { iniciarVigiaSalidas, textoFormaciones } from "./vigiaSalidas.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
@@ -945,6 +946,20 @@ bot.command("apptrenes", async (ctx) => {
   } catch (err) {
     console.error("Error en /apptrenes:", err.message);
     await enviar(`⚠️ No pude consultar el proxy de la app: ${err.message}`);
+  }
+});
+
+// Estado en vivo de las formaciones en Once y Moreno: si ya llegó y espera, si ya salió
+// (y a qué hora) o si está en camino. Lo alimenta la vigilancia de salidas (vigiaSalidas.js).
+bot.command("formaciones", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  try {
+    const texto = textoFormaciones();
+    for (let i = 0; i < texto.length; i += 3900) {
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, texto.slice(i, i + 3900));
+    }
+  } catch (err) {
+    console.error("Error en /formaciones:", err.message);
   }
 });
 
@@ -2594,6 +2609,7 @@ app.listen(PORT, async () => {
   await cargarEscaneoCompleto(); // restaura /apptrenes auto si estaba activo antes de un reinicio
   await cargarEstadoAuto(); // restaura /estadoauto y la última anomalía vista
   await cargarPushAuto(); // restaura /pushauto y el anti-spam de las push automáticas
+  iniciarVigiaSalidas(); // vigila Once y Moreno cada 30 s: en estación / salió / en camino
   iniciarPushAuto({ notificarAdmin: (t) => (process.env.ADMIN_TELEGRAM_ID ? bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, t).catch((e) => console.error("Error avisando push al admin:", e.message)) : null) });
   alCambiarEstado((e) => pushPorCambioEstado(e));
   alAgregarAlerta((a) => pushPorAlerta(a));

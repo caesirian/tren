@@ -23,6 +23,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { detectarTramoProxy, barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora, recorridoVivo, textoRecorrido } from "./appTrenes.js";
 import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal } from "./locales.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado } from "./servicioLimitado.js";
+import { contextoSalidasParaBot } from "./vigiaSalidas.js";
 
 const COLECCION = "cancelacionesProxyVistas";
 const COLECCION_DEMORAS = "demorasProxyAvisadas";
@@ -363,8 +364,11 @@ export async function contextoProxyParaBot() {
     console.error("Error calculando el recorrido real para el contexto:", err.message);
   }
 
+  // Formaciones en Once/Moreno: si ya salió, si está esperando en la estación (vigiaSalidas.js).
+  const bloqueFormaciones = contextoSalidasParaBot();
+
   const relevantes = barrido.todos.filter((item) => item.r?.servicio?.cancelacion || item.r?.servicio?.leyenda);
-  if (!relevantes.length) return bloqueRecorrido;
+  if (!relevantes.length) return [bloqueRecorrido, bloqueFormaciones].filter(Boolean).join("\n") || null;
 
   const lineas = relevantes.slice(0, 12).map((item) => {
     const { est, s, prog, estim, demora, destino, estado } = datosServicio(item);
@@ -379,7 +383,7 @@ export async function contextoProxyParaBot() {
     lineas.join("\n") +
     `\nEsto es lo que se detecta EN ESTE MOMENTO (no vencido, no hay que calcular vigencia): tiene la misma prioridad que los avisos de la fuente de verdad por texto. Nunca menciones cómo se obtuvo este dato ni nombres de sistemas o mecanismos internos. Un tren específico cancelado no implica que todo el ramal esté cortado; hablá solo del/de los tren(es) que aparecen acá salvo que haya varios en el mismo tramo y horario.`;
 
-  return [bloqueRecorrido, bloqueCancelaciones].filter(Boolean).join("\n");
+  return [bloqueRecorrido, bloqueFormaciones, bloqueCancelaciones].filter(Boolean).join("\n");
 }
 
 // Servicio limitado detectado por el proxy (recorte en Once o en Moreno).

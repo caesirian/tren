@@ -52,10 +52,24 @@ function listaEstaciones(data) {
     .filter((e) => e.id != null && !vistos.has(String(e.id)) && vistos.add(String(e.id)));
 }
 
+// Los IDs de estación no cambian: la búsqueda por nombre se cachea 6 h para que cada
+// consulta de arribos cueste 1 pedido al proxy en vez de 2 (importa con la vigilancia
+// de salidas, que consulta Once y Moreno cada 30 s).
+const cacheEstaciones = new Map();
+const EDAD_MAX_ESTACIONES_MS = 6 * 60 * 60 * 1000;
+async function buscarEstacionesCacheado(nombre) {
+  const k = nombre.trim().toLowerCase();
+  const hit = cacheEstaciones.get(k);
+  if (hit && Date.now() - hit.momento < EDAD_MAX_ESTACIONES_MS) return hit.data;
+  const data = await consultarProxy(`/infraestructura/estaciones?nombre=${encodeURIComponent(nombre)}`);
+  if (listaEstaciones(data).length) cacheEstaciones.set(k, { momento: Date.now(), data });
+  return data;
+}
+
 // Trae los servicios de Sarmiento de una estación (por nombre).
 // Devuelve { servicios: [{ est, r }], revisadas: [...], crudoEstaciones }.
 export async function serviciosSarmiento(nombre) {
-  const encontradas = await consultarProxy(`/infraestructura/estaciones?nombre=${encodeURIComponent(nombre)}`);
+  const encontradas = await buscarEstacionesCacheado(nombre);
   let candidatas = listaEstaciones(encontradas);
   // Si hay una estación con el nombre exacto, se usa solo esa (evita "Moreno" + "Moreno Norte", etc.).
   const exactas = candidatas.filter((e) => String(e.nombre).trim().toLowerCase() === nombre.trim().toLowerCase());
@@ -433,7 +447,7 @@ export async function columnasCabecera(nombreEstacion, cantidad = 5) {
 // horarios. Si no hay GPS, o cae lejos del ramal, se sigue usando la estimación por horarios.
 // Las coordenadas de las estaciones son las de STATIONS en index.html (misma fuente).
 // ---------------------------------------------------------------------------
-const COORDS_ESTACIONES = [
+export const COORDS_ESTACIONES = [
   [-34.6083, -58.4103], // 0 Once,
   [-34.6187, -58.4417], // 1 Caballito,
   [-34.6273, -58.4613], // 2 Flores,
