@@ -1,7 +1,7 @@
 // src/pushAuto.js
 // Push automática a los suscriptores del sitio (OneSignal) cuando:
 //  - cambia el semáforo (normal / demoras / paro), venga de quien venga
-//    (/estado, botón "✅ Tomar", semáforo automático, tweets oficiales), o
+//    (/estado, botón "✅ Tomar", semáforo automático), o
 //  - se suma una alerta complementaria (obra programada, cese de servicio, etc.).
 // El bot sigue sin escribir el semáforo por su cuenta desde las propuestas:
 // la push sale cuando el cambio YA se publicó en el sitio.

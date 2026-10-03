@@ -31,14 +31,14 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, sondearEndpoints, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { registrarSnapshot, snapshotHaceMinutos, rangoRegistrado } from "./tableroHistorial.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
 import { iniciarVigiaSalidas, textoFormaciones, estadoLocalesParaBot } from "./vigiaSalidas.js";
 import { textoInformeFormaciones } from "./informeFormaciones.js";
-import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
+import { registrarResumenBarrido, descripcionItemLog, chequearLeyendasProxy, chequearDemorasEscaladas, chequearFueraDeTramoProxy, chequearTrenesDetenidos, chequearSaludProxy, chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
 import { reporteLocales } from "./locales.js";
@@ -59,7 +59,6 @@ import { consultarColectivoEnVivo } from "./colectivoSearch.js";
 import { chequearYNotificar } from "./monitor.js";
 import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados, listarUsuariosPrivados, getHistorialUsuario, getUltimaPreguntaUsuario } from "./dailyReport.js";
 import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "./retryQueue.js";
-import { chequearYActualizarDesdeX } from "./xMonitor.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
 import { analizarComunicadoImagen, guardarComunicado, comunicadosRecientes, listarComunicados, hashImagen, esImagenYaProcesada, buscarComunicadoDuplicado, registrarImagenDescartada } from "./imageIntel.js";
@@ -913,12 +912,17 @@ bot.command("apptrenes", async (ctx) => {
         "/apptrenes origenes → trenes que declaran salir de una estación distinta a la habitual (ej. locales saliendo de Liniers en vez de Flores)\n" +
         "/apptrenes scan completo → lo mismo pero lista TODOS los servicios de TODAS las estaciones\n" +
         "/apptrenes auto on|off → activa/desactiva que el chequeo automático de cada 5 min te mande el barrido completo por privado (usalo durante un incidente puntual)\n" +
+        "/apptrenes sondear → prueba rutas de la API y lista todos los campos que trae cada servicio (para detectar datos que hoy se ignoran)\n" +
         "/apptrenes get /infraestructura/estaciones?nombre=Once → consulta cruda al proxy (para probar rutas, por ej. alertas)"
     );
     return;
   }
   try {
-    if (/^origenes$/i.test(args)) {
+    if (/^sondear$/i.test(args)) {
+      await enviar("🔎 Sondeando la API (campos de los servicios y rutas candidatas)… tarda un minuto. El detalle completo también queda en el log del servicio.");
+      const lineas = await sondearEndpoints();
+      await enviar(lineas.join("\n"));
+    } else if (/^origenes$/i.test(args)) {
       const barrido = await barridoEstructurado({ forzar: true });
       const inusuales = trenesConOrigenInusual(barrido.todos);
       if (!inusuales.length) {
@@ -1344,24 +1348,6 @@ bot.command("reporte", async (ctx) => {
   } catch (err) {
     console.error("Error guardando reporte:", err.message);
     await ctx.reply("Uh, no pude guardar el reporte. Probá de nuevo en un rato, por favor.").catch(() => {});
-  }
-});
-
-// Fuerza un chequeo manual del monitor de X (útil para probar sin esperar
-// al ping externo, y para forzar una actualización si hace falta).
-bot.command("chequeox", async (ctx) => {
-  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
-  await ctx.reply("Chequeando @InfoTSarmiento...");
-  try {
-    const resultado = await chequearYActualizarDesdeX();
-    if (resultado.actualizado) {
-      await ctx.reply(`✅ Estado actualizado desde X: ${resultado.estado}\n"${resultado.texto}"`);
-    } else {
-      await ctx.reply(`Sin cambios: ${resultado.motivo}${resultado.texto ? `\n"${resultado.texto}"` : ""}`);
-    }
-  } catch (err) {
-    console.error("Error en /chequeox:", err.message);
-    await ctx.reply("Falló el chequeo: " + err.message);
   }
 });
 
@@ -2296,20 +2282,11 @@ app.get("/internal/check", async (req, res) => {
     return res.status(403).send("forbidden");
   }
   try {
-    const desdeX = await chequearYActualizarDesdeX();
     await chequeoPeriodicoProxy("cron");
-    if (desdeX.avisarFalloPersistente && process.env.ADMIN_TELEGRAM_ID) {
-      await bot.telegram
-        .sendMessage(
-          process.env.ADMIN_TELEGRAM_ID,
-          `⚠️ El monitoreo de X (@InfoTSarmiento) lleva ${desdeX.fallosConsecutivos} chequeos seguidos sin poder leer ninguna instancia de Nitter. Puede que todas estén caídas — no te va a volver a avisar de esto hasta que se resuelva solo o reinicies el servicio.`
-        )
-        .catch(() => {});
-    }
     const resultado = await chequearYNotificar(bot);
     const informeDiario = await chequearYEnviarInformeDiario(bot);
     const reintentos = await procesarColaReintentos();
-    res.json({ ...resultado, informeDiario, reintentos, desdeX });
+    res.json({ ...resultado, informeDiario, reintentos });
   } catch (err) {
     console.error("Error en /internal/check:", err.message);
     res.status(500).json({ ok: false, error: err.message });
@@ -2519,10 +2496,15 @@ async function chequeoPeriodicoProxy(origen) {
           ? `Chequeo proxy (${origen}): error consultando el proxy — ${cancelProxy.error}`
           : `Chequeo proxy (${origen}): ${cancelProxy.nuevas.length} cancelación(es) nueva(s)${escaneoCompletoActivo() ? " · escaneo completo activo" : ""}`
     );
+    await registrarResumenBarrido(origen); // detalle de lo que trajo el proxy (solo si cambió)
+    for (const item of cancelProxy.nuevas || []) console.log(`Chequeo proxy (${origen}): cancelación nueva → ${descripcionItemLog(item)}`);
     if (cancelProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
-      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, cancelProxy.texto).catch((err) => console.error("Error avisando cancelaciones del proxy:", err.message));
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, cancelProxy.texto).then(() => console.log(`Chequeo proxy (${origen}): aviso de cancelación enviado al admin`)).catch((err) => console.error("Error avisando cancelaciones del proxy:", err.message));
     }
-    for (const t of cancelProxy.textosGrupo || []) await publicarEnGrupo(t);
+    for (const t of cancelProxy.textosGrupo || []) {
+      await publicarEnGrupo(t);
+      console.log(`Chequeo proxy (${origen}): aviso de cancelación publicado en el grupo → ${t.slice(0, 160)}`);
+    }
     for (const item of cancelProxy.nuevas || []) {
       const d = datosServicio(item);
       await sugerirEstado({
@@ -2541,7 +2523,11 @@ async function chequeoPeriodicoProxy(origen) {
     if (demorasProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, demorasProxy.texto).catch((err) => console.error("Error avisando demoras del proxy:", err.message));
     }
-    for (const t of demorasProxy.textosGrupo || []) await publicarEnGrupo(t);
+    for (const item of demorasProxy.nuevos || []) console.log(`Chequeo proxy (${origen}): demora nueva → ${descripcionItemLog(item)}`);
+    for (const t of demorasProxy.textosGrupo || []) {
+      await publicarEnGrupo(t);
+      console.log(`Chequeo proxy (${origen}): aviso de demora publicado en el grupo → ${t.slice(0, 160)}`);
+    }
     for (const item of demorasProxy.nuevos || []) {
       const d = datosServicio(item);
       await sugerirEstado({
@@ -2552,6 +2538,74 @@ async function chequeoPeriodicoProxy(origen) {
     }
   } catch (err) {
     console.error(`Error chequeando demoras del proxy (${origen}):`, err.message);
+  }
+
+  // ── Cobertura ampliada (oct 2026): salud del proxy, demoras que empeoran, leyendas, servicios fuera
+  // del tramo y trenes detenidos por GPS. Todo al admin; al grupo solo lo que dice cada función.
+  const avisarAdmin = async (texto, etiqueta) => {
+    if (!texto || !process.env.ADMIN_TELEGRAM_ID) return;
+    await bot.telegram
+      .sendMessage(process.env.ADMIN_TELEGRAM_ID, texto)
+      .then(() => console.log(`Chequeo proxy (${origen}): aviso de ${etiqueta} enviado al admin`))
+      .catch((err) => console.error(`Error avisando ${etiqueta}:`, err.message));
+  };
+
+  try {
+    const salud = await chequearSaludProxy();
+    if (salud.texto) console.log(`Chequeo proxy (${origen}): salud del proxy → ${salud.texto.replace(/\s+/g, " ").slice(0, 200)}`);
+    await avisarAdmin(salud.texto, "salud del proxy");
+  } catch (err) {
+    console.error(`Error chequeando la salud del proxy (${origen}):`, err.message);
+  }
+
+  try {
+    const escaladas = await chequearDemorasEscaladas();
+    if (!escaladas.desactivado) console.log(`Chequeo proxy (${origen}): ${escaladas.nuevos?.length ?? 0} demora(s) que empeoran`);
+    for (const item of escaladas.nuevos || []) console.log(`Chequeo proxy (${origen}): demora que empeora → ${descripcionItemLog(item)}`);
+    await avisarAdmin(escaladas.texto, "demora que empeora");
+    for (const tg of escaladas.textosGrupo || []) {
+      await publicarEnGrupo(tg);
+      console.log(`Chequeo proxy (${origen}): aviso de demora que empeora publicado en el grupo → ${tg.slice(0, 160)}`);
+    }
+    for (const item of escaladas.nuevos || []) {
+      const d = datosServicio(item);
+      await sugerirEstado({
+        origen: "proxy_demora",
+        detalle: `Tren con demora en aumento (~${d.demora} min), destino ${d.destino}, programado ${hora(d.prog)} (${d.est.nombre}).`,
+        alerta: { estado: "demorado", texto: `Demoras de ~${d.demora} min con destino ${d.destino}.`, lugar: d.est.nombre },
+      });
+    }
+  } catch (err) {
+    console.error(`Error chequeando demoras que empeoran (${origen}):`, err.message);
+  }
+
+  try {
+    const leyendas = await chequearLeyendasProxy();
+    if (!leyendas.desactivado) console.log(`Chequeo proxy (${origen}): ${leyendas.nuevas?.length ?? 0} leyenda(s) nueva(s)`);
+    for (const g of leyendas.nuevas || []) console.log(`Chequeo proxy (${origen}): leyenda nueva → "${String(g.texto).replace(/\s+/g, " ").slice(0, 200)}" (${g.items.length} servicio(s))`);
+    await avisarAdmin(leyendas.texto, "leyenda");
+    for (const tg of leyendas.textosGrupo || []) await publicarEnGrupo(tg);
+  } catch (err) {
+    console.error(`Error chequeando leyendas del proxy (${origen}):`, err.message);
+  }
+
+  try {
+    const fuera = await chequearFueraDeTramoProxy();
+    if (!fuera.desactivado) console.log(`Chequeo proxy (${origen}): ${fuera.nuevos?.length ?? 0} servicio(s) fuera del tramo con cancelación/leyenda`);
+    for (const item of fuera.nuevos || []) console.log(`Chequeo proxy (${origen}): fuera del tramo → ${descripcionItemLog(item)}`);
+    await avisarAdmin(fuera.texto, "servicios fuera del tramo");
+  } catch (err) {
+    console.error(`Error chequeando servicios fuera del tramo (${origen}):`, err.message);
+  }
+
+  try {
+    const detenidos = await chequearTrenesDetenidos();
+    if (!detenidos.desactivado) console.log(`Chequeo proxy (${origen}): ${detenidos.nuevos?.length ?? 0} tren(es) detenido(s) por GPS`);
+    for (const n of detenidos.nuevos || []) console.log(`Chequeo proxy (${origen}): tren detenido → #${n.numero} → ${n.destino} · ${n.lugar} · ~${n.minutos} min en el mismo punto (${n.gps.lat},${n.gps.long})`);
+    await avisarAdmin(detenidos.texto, "tren detenido");
+    for (const tg of detenidos.textosGrupo || []) await publicarEnGrupo(tg);
+  } catch (err) {
+    console.error(`Error chequeando trenes detenidos (${origen}):`, err.message);
   }
 
   try {
@@ -2573,6 +2627,7 @@ async function chequeoPeriodicoProxy(origen) {
   try {
     const origenesProxy = await chequearOrigenesInusuales();
     if (!origenesProxy.desactivado) console.log(`Chequeo proxy (${origen}): ${origenesProxy.nuevos?.length ?? 0} tren(es) con origen inusual nuevo(s)`);
+    for (const item of origenesProxy.nuevos || []) console.log(`Chequeo proxy (${origen}): origen inusual → ${descripcionItemLog(item)}`);
     if (origenesProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, origenesProxy.texto).catch((err) => console.error("Error avisando origen inusual:", err.message));
     }
@@ -2583,17 +2638,21 @@ async function chequeoPeriodicoProxy(origen) {
   try {
     const localesProxy = await chequearLocalesFueraCronograma();
     if (!localesProxy.desactivado) console.log(`Chequeo proxy (${origen}): ${localesProxy.nuevos?.length ?? 0} local(es) fuera de cronograma nuevo(s)`);
+    for (const item of localesProxy.nuevos || []) console.log(`Chequeo proxy (${origen}): local fuera de cronograma → ${descripcionItemLog(item)}`);
     if (localesProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, localesProxy.texto).catch((err) => console.error("Error avisando locales fuera de cronograma:", err.message));
     }
-    for (const t of localesProxy.textosGrupo || []) await publicarEnGrupo(t);
+    for (const t of localesProxy.textosGrupo || []) {
+      await publicarEnGrupo(t);
+      console.log(`Chequeo proxy (${origen}): aviso de local publicado en el grupo → ${t.slice(0, 160)}`);
+    }
   } catch (err) {
     console.error(`Error chequeando locales fuera de cronograma (${origen}):`, err.message);
   }
 
   try {
     const auto = await evaluarEstadoAutomatico();
-    console.log(`Chequeo proxy (${origen}): semáforo automático → ${auto.accion}`);
+    console.log(`Chequeo proxy (${origen}): semáforo automático → ${auto.accion}${auto.texto ? ` · ${String(auto.texto).replace(/\s+/g, " ").slice(0, 200)}` : ""}`);
     if (auto.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, auto.texto).catch((err) => console.error("Error avisando cambio de semáforo automático:", err.message));
     }

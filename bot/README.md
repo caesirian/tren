@@ -140,7 +140,7 @@ todavía) — recién a partir del segundo chequeo empieza a detectar cambios.
 
 El bot manda solo una push a los suscriptores del sitio cuando:
 
-- **Cambia el semáforo** (demoras / paro / normalizado), venga de `/estado`, del botón "✅ Tomar", del semáforo automático o de los tweets oficiales.
+- **Cambia el semáforo** (demoras / paro / normalizado), venga de `/estado`, del botón "✅ Tomar", o del semáforo automático.
 - **Se suma una alerta** (`/alerta`, o un comunicado de tipo obra / paro / demora / normalización): obras programadas, cese de servicio, etc.
 
 Reglas: el semáforo automático solo avisa si hay cancelaciones (`PUSH_AUTO_DEMORAS=true` lo habilita siempre); "normalizado" solo sale si antes se avisó un incidente (24 h); la misma push no se repite en 2 h y entre dos pushes pasan 10 min (el paro se salta ese intervalo). Cada envío automático se avisa por privado al admin.

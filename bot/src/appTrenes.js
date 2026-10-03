@@ -68,7 +68,15 @@ async function buscarEstacionesCacheado(nombre) {
 
 // Trae los servicios de Sarmiento de una estación (por nombre).
 // Devuelve { servicios: [{ est, r }], revisadas: [...], crudoEstaciones }.
-export async function serviciosSarmiento(nombre) {
+// Cantidad de arribos que se piden por estación. Por defecto 8 (uso puntual); el barrido
+// periódico pide más (TRENES_BARRIDO_CANTIDAD, 12 por defecto) para no perder trenes que
+// quedaron detenidos o muy demorados y se "corrieron" fuera de los próximos 8.
+const cantidadArribos = (cantidad) => {
+  const n = Number(cantidad ?? process.env.TRENES_ARRIBOS_CANTIDAD ?? 8);
+  return Number.isFinite(n) && n >= 1 && n <= 40 ? Math.floor(n) : 8;
+};
+
+export async function serviciosSarmiento(nombre, { cantidad } = {}) {
   const encontradas = await buscarEstacionesCacheado(nombre);
   let candidatas = listaEstaciones(encontradas);
   // Si hay una estación con el nombre exacto, se usa solo esa (evita "Moreno" + "Moreno Norte", etc.).
@@ -76,10 +84,11 @@ export async function serviciosSarmiento(nombre) {
   if (exactas.length) candidatas = exactas;
 
   const servicios = [];
+  const descartados = []; // servicios de Sarmiento que el filtro Once–Moreno dejó afuera (se siguen vigilando aparte)
   const revisadas = [];
   for (const est of candidatas.slice(0, 4)) {
     revisadas.push(`${est.nombre} (${est.id})`);
-    const data = await consultarProxy(`/arribos/estacion/${est.id}?cantidad=8`);
+    const data = await consultarProxy(`/arribos/estacion/${est.id}?cantidad=${cantidadArribos(cantidad)}`);
     for (const r of data?.results || []) {
       if (!String(r?.servicio?.gerencia?.nombre || "").toLowerCase().includes("sarmiento")) continue;
       // Por ahora el bot informa SOLO lo que ocurre dentro del tramo Moreno–Once
@@ -88,11 +97,14 @@ export async function serviciosSarmiento(nombre) {
       // etc.). Todo lo que consume este barrido (avisos al grupo, estado
       // automático, tableros, contexto de respuestas) hereda el filtro.
       // Se apaga con TRAMO_SOLO_MORENO_ONCE=false.
-      if (tramoSoloMorenoOnce() && servicioFueraDelTramo({ est, r })) continue;
+      if (tramoSoloMorenoOnce() && servicioFueraDelTramo({ est, r })) {
+        descartados.push({ est, r });
+        continue;
+      }
       servicios.push({ est, r });
     }
   }
-  return { servicios, revisadas, candidatas, crudoEstaciones: encontradas };
+  return { servicios, descartados, revisadas, candidatas, crudoEstaciones: encontradas };
 }
 
 export function tramoSoloMorenoOnce() {
@@ -246,16 +258,25 @@ const EDAD_MAX_CACHE_MS = 2 * 60 * 1000;
 
 export async function barridoEstructurado({ forzar = false } = {}) {
   if (!forzar && cacheBarrido && Date.now() - cacheBarrido.momento < EDAD_MAX_CACHE_MS) return cacheBarrido;
-  const resultados = await Promise.allSettled(ESTACIONES_BARRIDO.map((n) => serviciosSarmiento(n)));
+  const cantidad = cantidadArribos(process.env.TRENES_BARRIDO_CANTIDAD ?? 12);
+  const resultados = await Promise.allSettled(ESTACIONES_BARRIDO.map((n) => serviciosSarmiento(n, { cantidad })));
   const todos = [];
+  const fueraTramo = [];
   const vistos = new Set();
+  const vistosFuera = new Set();
   const errores = [];
   resultados.forEach((res, i) => {
     if (res.status === "rejected") {
       errores.push(`${ESTACIONES_BARRIDO[i]}: ${res.reason?.message || res.reason}`);
       return;
     }
-    if (!res.value.servicios.length) errores.push(`${ESTACIONES_BARRIDO[i]}: sin servicios de Sarmiento (estaciones: ${res.value.revisadas.join(", ") || "ninguna"})`);
+    for (const item of res.value.descartados || []) {
+      const clave = `${item.r?.servicio?.numero}-${item.est.id}`;
+      if (vistosFuera.has(clave)) continue;
+      vistosFuera.add(clave);
+      fueraTramo.push(item);
+    }
+    if (!res.value.servicios.length && !(res.value.descartados || []).length) errores.push(`${ESTACIONES_BARRIDO[i]}: sin servicios de Sarmiento (estaciones: ${res.value.revisadas.join(", ") || "ninguna"})`);
     for (const item of res.value.servicios) {
       const clave = `${item.r?.servicio?.numero}-${item.est.id}`;
       if (vistos.has(clave)) continue;
@@ -263,7 +284,7 @@ export async function barridoEstructurado({ forzar = false } = {}) {
       todos.push(item);
     }
   });
-  cacheBarrido = { todos, anormales: todos.filter(esAnormal), errores, momento: Date.now() };
+  cacheBarrido = { todos, fueraTramo, anormales: todos.filter(esAnormal), errores, momento: Date.now() };
   return cacheBarrido;
 }
 
@@ -766,4 +787,103 @@ export async function detectarTramoProxy({ minimoPorSentido = 3 } = {}) {
   if (desdeIdx <= 0 && hastaIdx >= ultimo) return null;
   if (hastaIdx - desdeIdx < 2) return null;
   return { desdeIdx, hastaIdx, trenes: haciaMoreno.length + haciaOnce.length };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sondeo de la API: qué rutas responden y qué campos trae cada servicio.
+// La API de SOFSE no tiene documentación oficial y el bot hoy usa UNA sola ruta
+// (arribos por estación). Esto prueba rutas candidatas (los nombres son suposiciones:
+// lo que importa es cuáles devuelven 200) y lista TODOS los campos que trae un
+// servicio, para detectar datos útiles que hoy se ignoran (alertas, posición, estado,
+// formación, etc.). Comando admin: /apptrenes sondear. También deja todo en el log.
+// ─────────────────────────────────────────────────────────────────────────
+function tipoValor(v) {
+  if (v === null) return "null";
+  if (Array.isArray(v)) return `array(${v.length})`;
+  if (typeof v === "object") return `{${Object.keys(v).slice(0, 8).join(",")}${Object.keys(v).length > 8 ? ",…" : ""}}`;
+  const s = String(v);
+  return `${typeof v}:${s.length > 40 ? s.slice(0, 40) + "…" : s}`;
+}
+
+// Une las claves de los primeros servicios del barrido: { "servicio.location": "{lat,long}", … }
+export function camposDelProxy(items, max = 40) {
+  const campos = new Map();
+  for (const { r } of items.slice(0, max)) {
+    for (const [grupo, obj] of [["raíz", r], ["servicio", r?.servicio], ["arribo", r?.arribo]]) {
+      if (!obj || typeof obj !== "object") continue;
+      for (const [k, v] of Object.entries(obj)) {
+        const clave = `${grupo}.${k}`;
+        // Se prefiere un ejemplo con valor real (no null) si aparece en algún servicio.
+        if (!campos.has(clave) || (campos.get(clave) === "null" && v !== null)) campos.set(clave, tipoValor(v));
+      }
+    }
+  }
+  return Object.fromEntries([...campos.entries()].sort());
+}
+
+const RUTAS_CANDIDATAS = [
+  "/infraestructura/estaciones?nombre=Merlo",
+  "/infraestructura/ramales",
+  "/infraestructura/gerencias",
+  "/infraestructura/lineas",
+  "/infraestructura/tramos",
+  "/infraestructura/novedades",
+  "/alertas",
+  "/novedades",
+  "/noticias",
+  "/avisos",
+  "/comunicados",
+  "/estado",
+  "/estados",
+  "/servicios",
+  "/formaciones",
+  "/operaciones",
+  "/gtfs",
+];
+
+export async function sondearEndpoints() {
+  const lineas = [];
+  const log = (l) => { lineas.push(l); console.log(`Sondeo proxy: ${l}`); };
+
+  // 1) Campos que trae hoy un servicio (lo que el bot podría usar y quizá ignora).
+  let barrido = null;
+  try {
+    barrido = await barridoEstructurado({ forzar: true });
+    const campos = camposDelProxy(barrido.todos);
+    log(`servicios en el barrido: ${barrido.todos.length} (fuera del tramo: ${barrido.fueraTramo?.length ?? 0}) · errores: ${barrido.errores.length}`);
+    for (const [k, v] of Object.entries(campos)) log(`campo ${k} = ${v}`);
+  } catch (err) {
+    log(`no pude hacer el barrido: ${err.message}`);
+  }
+
+  // 2) Rutas candidatas (+ las que se arman con IDs reales del primer servicio).
+  const ejemplo = barrido?.todos?.[0];
+  const s = ejemplo?.r?.servicio || {};
+  const dinamicas = [];
+  if (s.numero != null) dinamicas.push(`/arribos/servicio/${s.numero}`, `/servicios/${s.numero}`, `/formaciones/${s.numero}`);
+  if (s.id != null) dinamicas.push(`/arribos/servicio/${s.id}`, `/servicios/${s.id}`);
+  if (s.ramal?.id != null) dinamicas.push(`/infraestructura/ramales/${s.ramal.id}`, `/arribos/ramal/${s.ramal.id}`, `/formaciones/ramal/${s.ramal.id}`);
+  if (s.gerencia?.id != null) dinamicas.push(`/infraestructura/gerencias/${s.gerencia.id}`);
+  if (ejemplo?.est?.id != null) dinamicas.push(`/infraestructura/estaciones/${ejemplo.est.id}`, `/arribos/estacion/${ejemplo.est.id}?cantidad=1`);
+
+  for (const ruta of [...RUTAS_CANDIDATAS, ...dinamicas]) {
+    try {
+      const res = await fetch(`${BASE}${ruta}`, { signal: AbortSignal.timeout(15000) });
+      const texto = await res.text();
+      let resumen = "";
+      if (res.ok) {
+        try {
+          const j = JSON.parse(texto);
+          resumen = Array.isArray(j) ? `array(${j.length})` : `{${Object.keys(j).slice(0, 8).join(",")}}`;
+        } catch {
+          resumen = "no JSON";
+        }
+      }
+      log(`${res.ok ? "✅" : "✖"} ${res.status} ${ruta} · ${texto.length} caracteres ${resumen}`);
+    } catch (err) {
+      log(`✖ error ${ruta} · ${err.message}`);
+    }
+    await new Promise((r) => setTimeout(r, 250)); // sin saturar al proxy de terceros
+  }
+  return lineas;
 }

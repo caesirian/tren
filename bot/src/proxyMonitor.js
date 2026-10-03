@@ -18,16 +18,24 @@
 //
 // Interruptor: APP_TRENES_MONITOR_ACTIVO=false apaga las dos cosas.
 
+import { createHash } from "node:crypto";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { detectarTramoProxy, barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora, recorridoVivo, textoRecorrido } from "./appTrenes.js";
 import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal } from "./locales.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado } from "./servicioLimitado.js";
 import { contextoSalidasParaBot } from "./vigiaSalidas.js";
+import { crearEstadoDetenidos, detectarDetenidos, detectorDetenidosActivo } from "./trenDetenido.js";
 
 const COLECCION = "cancelacionesProxyVistas";
 const COLECCION_DEMORAS = "demorasProxyAvisadas";
 const UMBRAL_DEMORA_MIN = 10; // mismo umbral que "anormal" en el resto del bot
+// Una demora ya avisada vuelve a avisarse si EMPEORA: nivel 0 = 10–29 min, 1 = 30–49, 2 = 50–69…
+// (ver chequearDemorasEscaladas). Así un tren que pasa de 10 a 60 min no queda en silencio.
+const PASO_ESCALA_MIN = 20;
+const nivelDemora = (min) => (min >= UMBRAL_DEMORA_MIN + PASO_ESCALA_MIN ? Math.floor((min - UMBRAL_DEMORA_MIN) / PASO_ESCALA_MIN) : 0);
+const COLECCION_LEYENDAS = "leyendasProxyVistas";
+const COLECCION_FUERA_TRAMO = "fueraTramoProxyVistos";
 const COLECCION_ORIGEN = "origenesInusualesVistos";
 const COLECCION_LOCALES = "localesFueraCronogramaVistos";
 const RETENCION_DIAS = 3;
@@ -71,7 +79,67 @@ export function monitorProxyActivo() {
   return String(process.env.APP_TRENES_MONITOR_ACTIVO ?? "true").trim().toLowerCase() !== "false";
 }
 
-let vistosEnMemoria = new Set(); // respaldo sin Firestore y para no repetir dentro del mismo proceso
+// ── Diagnóstico por logs ──────────────────────────────────────────────────
+// Los logs de Render solo mostraban contadores ("1 cancelación nueva"), sin
+// decir qué tren, en qué estación ni qué leyenda traía el proxy. Estas dos
+// funciones agregan ese detalle SIN cambiar ningún aviso ni decisión del bot.
+
+// Una línea legible por servicio: número, estación, destino, horarios, demora, estado.
+export function descripcionItemLog(item) {
+  const { est, s, prog, estim, demora, destino, estado } = datosServicio(item);
+  let l = `#${s.numero ?? "?"} ${est.nombre} → ${destino} · prog ${hora(prog)}${estim ? ` / est ${hora(estim)}` : ""}${demora != null ? ` (${demora >= 0 ? "+" : ""}${demora} min)` : ""} · ${estado}`;
+  if (s.cancelacion) l += ` · CANCELADO: ${textoCancelacion(s.cancelacion)}`;
+  if (s.leyenda) l += ` · LEYENDA: ${String(s.leyenda).replace(/\s+/g, " ").slice(0, 200)}`;
+  return l;
+}
+
+// Loguea un detalle de lo que mostró el barrido del proxy. Solo escribe cuando
+// algo cambió respecto del chequeo anterior (cancelados / demorados / leyendas /
+// errores), más un latido cada 12 chequeos para saber que el barrido sigue
+// llegando aunque no haya novedades. No hace consultas nuevas (usa el caché).
+let firmaBarridoAnterior = null;
+let chequeosDesdeUltimoLatido = 0;
+export async function registrarResumenBarrido(origen = "cron") {
+  if (!monitorProxyActivo()) return;
+  let barrido;
+  try {
+    barrido = await barridoEstructurado();
+  } catch (err) {
+    console.error(`Resumen proxy (${origen}): error consultando el proxy — ${err.message}`);
+    return;
+  }
+  const todos = barrido.todos || [];
+  const cancelados = todos.filter((i) => i.r?.servicio?.cancelacion);
+  const demorados = todos.filter((i) => {
+    const d = datosServicio(i);
+    return !d.s.cancelacion && d.demora != null && d.demora >= UMBRAL_DEMORA_MIN;
+  });
+  const conLeyenda = todos.filter((i) => i.r?.servicio?.leyenda);
+  const errores = barrido.errores || [];
+  const maxDemora = todos.reduce((m, i) => Math.max(m, datosServicio(i).demora ?? 0), 0);
+
+  const detalle = [
+    ...cancelados.map(descripcionItemLog),
+    ...demorados.map(descripcionItemLog),
+    ...conLeyenda.filter((i) => !i.r.servicio.cancelacion).map(descripcionItemLog),
+    ...errores.map((e) => `ERROR/SIN DATOS: ${e}`),
+  ];
+  const firma = detalle.join("|");
+  chequeosDesdeUltimoLatido += 1;
+  if (firma === firmaBarridoAnterior && chequeosDesdeUltimoLatido < 12) return;
+  const huboCambio = firma !== firmaBarridoAnterior;
+  firmaBarridoAnterior = firma;
+  chequeosDesdeUltimoLatido = 0;
+
+  console.log(
+    `Resumen proxy (${origen})${huboCambio ? "" : " [latido, sin cambios]"}: ${todos.length} servicios · ${cancelados.length} cancelados · ${demorados.length} con demora ${UMBRAL_DEMORA_MIN}+ min (máx ${maxDemora} min) · ${conLeyenda.length} con leyenda · ${errores.length} estación(es) con error/sin datos`
+  );
+  for (const l of detalle.slice(0, 15)) console.log(`  ${l}`);
+  if (detalle.length > 15) console.log(`  … y ${detalle.length - 15} más`);
+}
+
+let vistosEnMemoria = new Set();
+const nivelesDemora = new Map(); // claveDia -> nivel ya avisado (respaldo sin Firestore) // respaldo sin Firestore y para no repetir dentro del mismo proceso
 
 // Clave estable para una cancelación puntual: mismo tren + misma estación +
 // mismo día programado. Si la misma cancelación sigue apareciendo, no vuelve
@@ -216,7 +284,8 @@ export async function chequearDemorasProxy() {
     }
     if (visto) continue;
     vistosEnMemoria.add(`demora:${claveDia}`);
-    if (firestore) firestore.collection(COLECCION_DEMORAS).doc(claveDia).set({ timestamp: FieldValue.serverTimestamp() }).catch((err) => console.error("Error guardando demora avisada:", err.message));
+    nivelesDemora.set(claveDia, nivelDemora(datosServicio(item).demora ?? 0));
+    if (firestore) firestore.collection(COLECCION_DEMORAS).doc(claveDia).set({ timestamp: FieldValue.serverTimestamp(), nivel: nivelDemora(datosServicio(item).demora ?? 0) }).catch((err) => console.error("Error guardando demora avisada:", err.message));
     nuevos.push(item);
   }
 
@@ -334,6 +403,225 @@ export async function chequearLocalesFueraCronograma() {
     textosGrupo = [];
   }
   return { nuevos: nuevos.map((n) => n.item), texto: texto2, textosGrupo };
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// Más cobertura del servicio (oct 2026). Todo esto avisa al admin por privado; solo
+// las demoras que empeoran se publican en el grupo (igual que la demora original).
+// ─────────────────────────────────────────────────────────────────────────
+const diaDe = (prog) => (prog ? new Date(prog).toISOString().slice(0, 10) : "s-fecha");
+const hashCorto = (s) => createHash("sha1").update(String(s)).digest("hex").slice(0, 20);
+const normTexto = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+
+async function marcarSiNueva(coleccion, clave) {
+  if (vistosEnMemoria.has(`${coleccion}:${clave}`)) return false;
+  vistosEnMemoria.add(`${coleccion}:${clave}`);
+  const firestore = ensureInit();
+  if (!firestore) return true;
+  try {
+    const ref = firestore.collection(coleccion).doc(clave);
+    if ((await ref.get()).exists) return false;
+    ref.set({ timestamp: FieldValue.serverTimestamp() }).catch((err) => console.error(`Error guardando ${coleccion}:`, err.message));
+  } catch (err) {
+    console.error(`Error chequeando ${coleccion}:`, err.message);
+  }
+  return true;
+}
+
+// Leyendas: el texto libre que la app de Trenes Argentinos pone en un servicio (obras, accidente,
+// "servicio con demoras", etc.). Hasta ahora solo llegaban al bot cuando alguien preguntaba.
+// Una vez por texto y por día. Al grupo SOLO si LEYENDAS_AVISO_GRUPO=true (por defecto va solo al admin,
+// porque el texto es de la app y puede ser técnico o confuso).
+export async function chequearLeyendasProxy() {
+  if (!monitorProxyActivo()) return { nuevas: [], texto: null, desactivado: true };
+  let barrido;
+  try {
+    barrido = await barridoEstructurado();
+  } catch (err) {
+    console.error("Error consultando el proxy para leyendas:", err.message);
+    return { nuevas: [], texto: null, error: err.message };
+  }
+  const porTexto = new Map();
+  for (const item of barrido.todos) {
+    const s = item.r?.servicio;
+    if (!s?.leyenda || s.cancelacion) continue; // las cancelaciones ya tienen su propio aviso
+    const k = normTexto(typeof s.leyenda === "string" ? s.leyenda : JSON.stringify(s.leyenda));
+    if (!k) continue;
+    if (!porTexto.has(k)) porTexto.set(k, { texto: typeof s.leyenda === "string" ? s.leyenda.trim() : JSON.stringify(s.leyenda), items: [] });
+    porTexto.get(k).items.push(item);
+  }
+  const nuevas = [];
+  for (const [k, g] of porTexto) {
+    const dia = diaDe(datosServicio(g.items[0]).prog);
+    if (await marcarSiNueva(COLECCION_LEYENDAS, `${hashCorto(k)}-${dia}`)) nuevas.push(g);
+  }
+  if (!nuevas.length) return { nuevas: [], texto: null };
+  const alGrupo = String(process.env.LEYENDAS_AVISO_GRUPO ?? "false").trim().toLowerCase() === "true";
+  const texto =
+    `📢 La app de Trenes Argentinos muestra ${nuevas.length === 1 ? "una leyenda nueva" : `${nuevas.length} leyendas nuevas`}:\n\n` +
+    nuevas
+      .map((g) => {
+        const trenes = g.items.slice(0, 5).map((i) => {
+          const d = datosServicio(i);
+          return `   • #${d.s.numero ?? "?"} ${d.est.nombre} → ${d.destino} · prog ${hora(d.prog)}`;
+        });
+        return `"${g.texto.slice(0, 400)}"\n${trenes.join("\n")}${g.items.length > 5 ? `\n   … y ${g.items.length - 5} más` : ""}`;
+      })
+      .join("\n\n") +
+    `\n\n(Detectado por el proxy no oficial. ${alGrupo ? "Se publicó en el grupo." : "No se publicó en el grupo: LEYENDAS_AVISO_GRUPO=true para publicarlas."})`;
+  const textosGrupo = alGrupo ? nuevas.map((g) => `📢 La app de Trenes Argentinos informa: "${g.texto.slice(0, 300)}"`) : [];
+  return { nuevas, texto, textosGrupo };
+}
+
+// Demoras que EMPEORAN: la primera demora de 10+ min ya se avisó (chequearDemorasProxy) y no se repite,
+// así que un tren que pasa de 10 a 60 min quedaba en silencio. Acá se vuelve a avisar cada +20 min.
+export async function chequearDemorasEscaladas() {
+  if (!monitorProxyActivo()) return { nuevos: [], texto: null, desactivado: true };
+  let barrido;
+  try {
+    barrido = await barridoEstructurado();
+  } catch (err) {
+    console.error("Error consultando el proxy para demoras que empeoran:", err.message);
+    return { nuevos: [], texto: null, error: err.message };
+  }
+  const peor = new Map(); // numero-dia -> item con la mayor demora
+  for (const item of barrido.todos) {
+    const d = datosServicio(item);
+    if (d.s.cancelacion || d.demora == null || nivelDemora(d.demora) < 1) continue;
+    const clave = `${d.s.numero ?? "s-num"}-${diaDe(d.prog)}`;
+    if (!peor.has(clave) || d.demora > datosServicio(peor.get(clave)).demora) peor.set(clave, item);
+  }
+  const nuevos = [];
+  const firestore = ensureInit();
+  for (const [clave, item] of peor) {
+    const nivel = nivelDemora(datosServicio(item).demora);
+    let avisado = nivelesDemora.get(clave);
+    if (avisado == null && firestore) {
+      try {
+        const doc = await firestore.collection(COLECCION_DEMORAS).doc(clave).get();
+        if (doc.exists) avisado = doc.data()?.nivel ?? 0;
+      } catch (err) {
+        console.error("Error chequeando nivel de demora:", err.message);
+      }
+    }
+    if (avisado == null) continue; // todavía no se avisó la demora inicial: lo hace chequearDemorasProxy
+    if (nivel <= avisado) continue;
+    nivelesDemora.set(clave, nivel);
+    if (firestore) firestore.collection(COLECCION_DEMORAS).doc(clave).set({ timestamp: FieldValue.serverTimestamp(), nivel }).catch((err) => console.error("Error guardando nivel de demora:", err.message));
+    nuevos.push(item);
+  }
+  if (!nuevos.length) return { nuevos: [], texto: null };
+  const texto =
+    `⏰📈 ${nuevos.length} demora(s) que EMPEORAN (ya se había avisado antes con menos):\n\n` +
+    nuevos
+      .map((item) => {
+        const d = datosServicio(item);
+        return `• #${d.s.numero ?? "?"} → ${d.destino} | ${d.est.nombre}: prog ${hora(d.prog)} / est ${hora(d.estim)} (+${d.demora} min)`;
+      })
+      .join("\n") +
+    `\n\n(Se publicó en el grupo.)`;
+  const textosGrupo = nuevos.map((item) => {
+    const d = datosServicio(item);
+    return `⏰ La demora del tren con destino ${d.destino}, programado para las ${hora(d.prog)} (${d.est.nombre}), sigue aumentando: ahora ~${d.demora} min (estimado ${hora(d.estim)}).${etiquetaGrupoLocal(item)}`;
+  });
+  return { nuevos, texto, textosGrupo };
+}
+
+// Servicios de Sarmiento que el filtro Once–Moreno deja afuera (Merlo–Las Heras, Morón–Luján, etc.).
+// No se informan al grupo, pero un accidente en Merlo los afecta: si tienen cancelación o leyenda,
+// se avisa SOLO al admin para que decida.
+export async function chequearFueraDeTramoProxy() {
+  if (!monitorProxyActivo()) return { nuevos: [], texto: null, desactivado: true };
+  let barrido;
+  try {
+    barrido = await barridoEstructurado();
+  } catch (err) {
+    console.error("Error consultando el proxy para servicios fuera del tramo:", err.message);
+    return { nuevos: [], texto: null, error: err.message };
+  }
+  const nuevos = [];
+  for (const item of barrido.fueraTramo || []) {
+    const s = item.r?.servicio || {};
+    if (!s.cancelacion && !s.leyenda) continue;
+    const d = datosServicio(item);
+    const clave = `${s.numero ?? "s-num"}-${hashCorto(`${textoCancelacion(s.cancelacion) || ""}|${normTexto(s.leyenda)}`)}-${diaDe(d.prog)}`;
+    if (await marcarSiNueva(COLECCION_FUERA_TRAMO, clave)) nuevos.push(item);
+  }
+  if (!nuevos.length) return { nuevos: [], texto: null };
+  const texto =
+    `🚆➡️ ${nuevos.length} servicio(s) FUERA del tramo Once–Moreno con cancelación o leyenda (no se publican en el grupo):\n\n` +
+    nuevos
+      .slice(0, 8)
+      .map((item) => {
+        const d = datosServicio(item);
+        let l = `• #${d.s.numero ?? "?"} ${d.est.nombre} → ${d.destino} · prog ${hora(d.prog)}`;
+        if (d.s.cancelacion) l += `\n   ❌ ${textoCancelacion(d.s.cancelacion)}`;
+        if (d.s.leyenda) l += `\n   📢 ${String(d.s.leyenda).replace(/\s+/g, " ").slice(0, 200)}`;
+        return l;
+      })
+      .join("\n") +
+    (nuevos.length > 8 ? `\n… y ${nuevos.length - 8} más` : "");
+  return { nuevos, texto };
+}
+
+// Trenes detenidos por GPS (ver trenDetenido.js). Al grupo SOLO si TREN_DETENIDO_AVISO_GRUPO=true:
+// el GPS puede estar congelado sin que el tren lo esté, así que por defecto lo confirma el admin.
+const estadoDetenidos = crearEstadoDetenidos();
+export async function chequearTrenesDetenidos() {
+  if (!monitorProxyActivo() || !detectorDetenidosActivo()) return { nuevos: [], texto: null, desactivado: true };
+  let barrido;
+  try {
+    barrido = await barridoEstructurado();
+  } catch (err) {
+    console.error("Error consultando el proxy para trenes detenidos:", err.message);
+    return { nuevos: [], texto: null, error: err.message };
+  }
+  const nuevos = detectarDetenidos(barrido.todos, estadoDetenidos, barrido.momento || Date.now());
+  if (!nuevos.length) return { nuevos: [], texto: null };
+  const alGrupo = String(process.env.TREN_DETENIDO_AVISO_GRUPO ?? "false").trim().toLowerCase() === "true";
+  const texto =
+    `🛑 ${nuevos.length} tren(es) SIN MOVERSE según el GPS de la app:\n\n` +
+    nuevos
+      .map((n) => `• #${n.numero} → ${n.destino} · ${n.lugar} · lleva ~${n.minutos} min en el mismo punto${n.estim ? ` (est ${hora(n.estim)})` : ""}${n.cercanos.length ? `\n   ⚠️ Hay otros trenes detenidos cerca (${n.cercanos.map((c) => `#${c}`).join(", ")}): posible incidente en la vía.` : ""}\n   https://maps.google.com/?q=${n.gps.lat},${n.gps.long}`)
+      .join("\n") +
+    `\n\n(Ojo: es el GPS del proxy no oficial; puede estar congelado aunque el tren se mueva. ${alGrupo ? "Se publicó en el grupo." : "No se publicó en el grupo: TREN_DETENIDO_AVISO_GRUPO=true para publicarlo."})`;
+  const textosGrupo = alGrupo
+    ? nuevos.map((n) => `🛑 El tren con destino ${n.destino} lleva unos ${n.minutos} min detenido ${n.lugar}.${n.cercanos.length ? " Hay más trenes detenidos en la zona." : ""}`)
+    : [];
+  return { nuevos, texto, textosGrupo };
+}
+
+// Salud del proxy: si la API de terceros falla o devuelve vacío en horario de servicio, el bot queda
+// "ciego" sin avisar (hasta ahora solo quedaba en el log). Avisa al admin tras varios chequeos seguidos.
+let chequeosMalos = 0;
+let avisoCaidoEnviado = false;
+const FALLAS_SEGUIDAS_PARA_AVISAR = 3;
+export async function chequearSaludProxy() {
+  if (!monitorProxyActivo()) return { texto: null, desactivado: true };
+  let motivo = null;
+  try {
+    const barrido = await barridoEstructurado();
+    const duros = (barrido.errores || []).filter((e) => !/sin servicios de Sarmiento/i.test(e));
+    const horaAR = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", hour12: false }).format(new Date()));
+    const horarioDeServicio = horaAR >= 5 && horaAR < 23;
+    if (duros.length >= 8) motivo = `${duros.length} de 16 estaciones dieron error. Ej.: ${duros.slice(0, 2).join(" | ").slice(0, 300)}`;
+    else if (horarioDeServicio && barrido.todos.length === 0 && !(barrido.fueraTramo || []).length) motivo = "el proxy responde pero no devuelve ningún servicio de Sarmiento en horario de servicio";
+  } catch (err) {
+    motivo = `error consultando el proxy: ${err.message}`;
+  }
+  if (motivo) {
+    chequeosMalos += 1;
+    if (chequeosMalos >= FALLAS_SEGUIDAS_PARA_AVISAR && !avisoCaidoEnviado) {
+      avisoCaidoEnviado = true;
+      return { texto: `🔌 El bot está SIN DATOS del proxy de Trenes Argentinos hace ${chequeosMalos} chequeos seguidos (~${Math.round(chequeosMalos * 2.5)} min): ${motivo}.\n\nMientras tanto no detecta cancelaciones, demoras ni trenes detenidos. Revisá que ariedro.dev esté en pie o configurá TRENES_PROXY_URL con otra instancia.` };
+    }
+    return { texto: null, malos: chequeosMalos };
+  }
+  const estabaCaido = avisoCaidoEnviado;
+  chequeosMalos = 0;
+  avisoCaidoEnviado = false;
+  return { texto: estabaCaido ? "✅ El proxy de Trenes Argentinos volvió a responder: el bot recuperó los datos." : null };
 }
 
 // Para el contexto del bot al responder preguntas: cancelaciones y leyendas
