@@ -48,10 +48,17 @@ const PUNTOS_CANCELADO = 2;
 const PUNTOS_MIN = Number(process.env.ESTADO_AUTO_PUNTOS_MIN) || 3;
 const CONFIRMACIONES_MIN = 2;
 const COOLDOWN_MIN = 20;
+// El chequeo lo disparan el cron externo (cada 10-15 min) y el timer interno
+// (cada 5 min), sin coordinarse. Para que "2 chequeos seguidos" sean dos
+// lecturas distintas del proxy y no la misma repetida, se ignora cualquier
+// evaluación que llegue a menos de SEPARACION_MIN minutos de la anterior
+// (3 min: deja margen al timer de 5 min aunque un chequeo tarde en correr).
+const SEPARACION_MIN = Number(process.env.ESTADO_AUTO_SEPARACION_MIN) || 3;
 
 let activo = String(process.env.ESTADO_AUTO ?? "true").trim().toLowerCase() !== "false";
 let ultimaAnomaliaMs = null;
 let confirmaciones = 0;
+let ultimaEvaluacionMs = null;
 let ultimoNormalAutoMs = null;
 
 export const puntosAnomalias = (an) => (an?.demorados || 0) * PUNTOS_DEMORADO + (an?.cancelaciones || 0) * PUNTOS_CANCELADO;
@@ -140,7 +147,8 @@ export function armarMensajeAuto({ cancelaciones = 0, demorados = 0, maxDemora =
 
 // Devuelve { accion, texto? }. accion: desactivado | sin_datos | sin_estado |
 // paro_no_tocar | vigencia_no_tocar | a_modificado | mantiene_modificado |
-// a_normal | ya_normal | espera_calma
+// a_normal | ya_normal | espera_calma | espera_confirmacion | espera_cooldown |
+// espera_separacion
 export async function evaluarEstadoAutomatico({ ahora = new Date(), deps = {} } = {}) {
   const {
     getBarrido = () => barridoEstructurado(),
@@ -152,6 +160,9 @@ export async function evaluarEstadoAutomatico({ ahora = new Date(), deps = {} } 
   } = deps;
   if (!activo) return { accion: "desactivado" };
   const ahoraMs = ahora.getTime();
+  // Dos disparadores casi simultáneos no cuentan como dos chequeos distintos.
+  if (ultimaEvaluacionMs != null && Math.abs(ahoraMs - ultimaEvaluacionMs) < SEPARACION_MIN * MIN) return { accion: "espera_separacion" };
+  ultimaEvaluacionMs = ahoraMs;
 
   let barrido;
   try {

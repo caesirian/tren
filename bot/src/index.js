@@ -59,7 +59,6 @@ import { consultarColectivoEnVivo } from "./colectivoSearch.js";
 import { chequearYNotificar } from "./monitor.js";
 import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados, listarUsuariosPrivados, getHistorialUsuario, getUltimaPreguntaUsuario } from "./dailyReport.js";
 import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "./retryQueue.js";
-import { chequearYActualizarDesdeX } from "./xMonitor.js";
 import { esInsulto } from "./insultDetector.js";
 import { excedioLimite } from "./rateLimiter.js";
 import { analizarComunicadoImagen, guardarComunicado, comunicadosRecientes, listarComunicados, hashImagen, esImagenYaProcesada, buscarComunicadoDuplicado, registrarImagenDescartada } from "./imageIntel.js";
@@ -1347,24 +1346,6 @@ bot.command("reporte", async (ctx) => {
   }
 });
 
-// Fuerza un chequeo manual del monitor de X (útil para probar sin esperar
-// al ping externo, y para forzar una actualización si hace falta).
-bot.command("chequeox", async (ctx) => {
-  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
-  await ctx.reply("Chequeando @InfoTSarmiento...");
-  try {
-    const resultado = await chequearYActualizarDesdeX();
-    if (resultado.actualizado) {
-      await ctx.reply(`✅ Estado actualizado desde X: ${resultado.estado}\n"${resultado.texto}"`);
-    } else {
-      await ctx.reply(`Sin cambios: ${resultado.motivo}${resultado.texto ? `\n"${resultado.texto}"` : ""}`);
-    }
-  } catch (err) {
-    console.error("Error en /chequeox:", err.message);
-    await ctx.reply("Falló el chequeo: " + err.message);
-  }
-});
-
 // Si la foto la manda alguien de esColaboradorImagenes() (piloto: por ahora
 // vos; después se suman colaboradores por @usuario sin tocar código), la
 // trata como un posible comunicado oficial y la analiza con Gemini Vision
@@ -2296,20 +2277,11 @@ app.get("/internal/check", async (req, res) => {
     return res.status(403).send("forbidden");
   }
   try {
-    const desdeX = await chequearYActualizarDesdeX();
     await chequeoPeriodicoProxy("cron");
-    if (desdeX.avisarFalloPersistente && process.env.ADMIN_TELEGRAM_ID) {
-      await bot.telegram
-        .sendMessage(
-          process.env.ADMIN_TELEGRAM_ID,
-          `⚠️ El monitoreo de X (@InfoTSarmiento) lleva ${desdeX.fallosConsecutivos} chequeos seguidos sin poder leer ninguna instancia de Nitter. Puede que todas estén caídas — no te va a volver a avisar de esto hasta que se resuelva solo o reinicies el servicio.`
-        )
-        .catch(() => {});
-    }
     const resultado = await chequearYNotificar(bot);
     const informeDiario = await chequearYEnviarInformeDiario(bot);
     const reintentos = await procesarColaReintentos();
-    res.json({ ...resultado, informeDiario, reintentos, desdeX });
+    res.json({ ...resultado, informeDiario, reintentos });
   } catch (err) {
     console.error("Error en /internal/check:", err.message);
     res.status(500).json({ ok: false, error: err.message });
