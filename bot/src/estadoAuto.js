@@ -3,9 +3,10 @@
 // periódico del proxy, el bot decide solo si el estado del sitio debe ser
 // "Normal" o "Servicio completo con algunas demoras".
 //
-//  - Hay anomalías nuevas (tren cancelado o demora de 10+ min en el proxy, o
-//    3+ cuentas distintas del grupo reportando demoras/cancelaciones en 30
-//    min) y el sitio dice "normal"  →  "modificado" con el mensaje
+//  - Hay anomalías suficientes (3+ puntos: demora de 10+ min = 1, cancelación
+//    = 2, sobre trenes distintos en el proxy; o 3+ cuentas distintas del grupo
+//    reportando demoras/cancelaciones en 30 min), confirmadas en 2 chequeos
+//    seguidos, y el sitio dice "normal"  →  "modificado" con el mensaje
 //    "Servicio completo con algunas demoras. ...".
 //    (Si hay cancelaciones, el mensaje no dice "completo": sería falso.)
 //  - No hubo anomalías en el proxy ni quejas en el grupo durante la ventana
@@ -36,9 +37,24 @@ const PROG_ATRAS_MIN = 45;
 const PROG_ADELANTE_MIN = 60;
 const MAX_ERRORES_PROXY = 6;
 const INICIO_PROCESO = Date.now();
+// Anti-parpadeo (3/10): un tren suelto con demora no significa servicio con
+// demoras. Cada tren demorado suma 1 punto y cada cancelado 2; hace falta
+// PUNTOS_MIN para considerar que el servicio está afectado (p. ej. 3 demorados,
+// o 1 cancelado + 1 demorado). Además el cambio a "modificado" exige verlo en
+// CONFIRMACIONES_MIN chequeos seguidos, y tras volver a Normal el bot no
+// vuelve a "modificado" por COOLDOWN_MIN salvo que sea grave (el doble de puntos).
+const PUNTOS_DEMORADO = 1;
+const PUNTOS_CANCELADO = 2;
+const PUNTOS_MIN = Number(process.env.ESTADO_AUTO_PUNTOS_MIN) || 3;
+const CONFIRMACIONES_MIN = 2;
+const COOLDOWN_MIN = 20;
 
 let activo = String(process.env.ESTADO_AUTO ?? "true").trim().toLowerCase() !== "false";
 let ultimaAnomaliaMs = null;
+let confirmaciones = 0;
+let ultimoNormalAutoMs = null;
+
+export const puntosAnomalias = (an) => (an?.demorados || 0) * PUNTOS_DEMORADO + (an?.cancelaciones || 0) * PUNTOS_CANCELADO;
 
 export const estadoAutoActivo = () => activo;
 
@@ -157,7 +173,8 @@ export async function evaluarEstadoAutomatico({ ahora = new Date(), deps = {} } 
   }
 
   const an = proxyConfiable ? anomaliasProxy(barrido, ahoraMs) : { lista: [], cancelaciones: 0, demorados: 0, maxDemora: 0, locales: 0 };
-  const hayProxy = an.lista.length > 0;
+  const puntos = puntosAnomalias(an);
+  const hayProxy = puntos >= PUNTOS_MIN; // un tren suelto no alcanza
   const cuentasQueja = getQuejas(VENTANA_QUEJAS_MIN * MIN);
   const hayGrupo = cuentasQueja >= MIN_CUENTAS_QUEJA;
 
@@ -168,6 +185,13 @@ export async function evaluarEstadoAutomatico({ ahora = new Date(), deps = {} } 
 
   if (hayProxy || hayGrupo) {
     if (actual.estado !== "normal") return { accion: "mantiene_modificado" };
+    // Confirmación: tiene que verse en chequeos consecutivos antes de cambiar.
+    confirmaciones += 1;
+    if (confirmaciones < CONFIRMACIONES_MIN) return { accion: "espera_confirmacion" };
+    // Enfriamiento: recién volvió a Normal; solo se re-activa si es grave.
+    const grave = puntos >= PUNTOS_MIN * 2 || cuentasQueja >= MIN_CUENTAS_QUEJA * 2;
+    if (!grave && ultimoNormalAutoMs != null && ahoraMs - ultimoNormalAutoMs < COOLDOWN_MIN * MIN) return { accion: "espera_cooldown" };
+    confirmaciones = 0;
     const mensaje = armarMensajeAuto({ ...an, cuentasQueja: hayGrupo ? cuentasQueja : 0 });
     await setEstado({ estado: "modificado", mensaje, editor: EDITOR_AUTO });
     const motivo = [hayProxy ? `proxy: ${an.demorados} demorado(s), ${an.cancelaciones} cancelado(s)` : null, hayGrupo ? `grupo: ${cuentasQueja} cuentas reportan demoras` : null].filter(Boolean).join(" · ");
@@ -175,6 +199,7 @@ export async function evaluarEstadoAutomatico({ ahora = new Date(), deps = {} } 
   }
 
   // Calma: candidato a volver a Normal
+  confirmaciones = 0;
   if (actual.estado !== "modificado") return { accion: "ya_normal" };
   if (!proxyConfiable) return { accion: "sin_datos" };
   const esperaMin = actual.editor === EDITOR_AUTO ? VENTANA_CALMA_AUTO_MIN : VENTANA_CALMA_MANUAL_MIN;
@@ -186,5 +211,6 @@ export async function evaluarEstadoAutomatico({ ahora = new Date(), deps = {} } 
   if (!calmaDesdeAnomalia || !calmaDesdeCambio || quejasEnVentana > 0 || !uptimeOk) return { accion: "espera_calma" };
 
   await setEstado({ estado: "normal", editor: EDITOR_AUTO });
+  ultimoNormalAutoMs = ahoraMs;
   return { accion: "a_normal", texto: `🚦🤖 Semáforo automático → Servicio normal\n(sin cancelaciones ni demoras de 10+ min en el proxy ni quejas en el grupo durante ${esperaMin} min)` };
 }
