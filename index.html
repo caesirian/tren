@@ -176,9 +176,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap&font-display=swap" rel="stylesheet"/>
 
-<!-- Leaflet CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-
 <!-- OneSignal Web Push SDK -->
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
@@ -1274,7 +1271,6 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .faq-item.open .faq-a { display: block; }
 
 /* ─── Mapa ────────────────────────────────────────────────── */
-#map { width: 100%; height: 380px; border-radius: var(--radius); box-shadow: var(--shadow-lg); }
 
 /* ─── App ─────────────────────────────────────────────────── */
 .app-section { background: linear-gradient(135deg, var(--navy), #004A9F); padding: 44px 20px; color: #fff; }
@@ -1996,7 +1992,6 @@ console.log('[Firebase] Listener de estado inicializado');
       <li><a href="#tarifas">💳 Tarifas</a></li>
       <li><a href="#estaciones">🚌 Colectivos</a></li>
       <li><a href="#mapa-vivo">🚆 Ramal en vivo</a></li>
-      <li><a href="#mapa">🗺️ Mapa</a></li>
       <li><a href="#faq">❓ FAQ</a></li>
       <li><a href="#ultimos-trenes">🚆 Últimos Trenes</a></li>
     </ul>
@@ -3174,9 +3169,6 @@ console.log('[Firebase] Listener de estado inicializado');
     </div>
   </section>
 
-  <div id="map" role="application" aria-label="Mapa interactivo de las estaciones del Tren Sarmiento"></div>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
 
   <!-- OBJETOS PERDIDOS / ENCONTRADOS -->
   <section class="section section-white" id="objetos-perdidos" aria-labelledby="objetos-title">
@@ -3398,7 +3390,6 @@ console.log('[Firebase] Listener de estado inicializado');
 <!-- ═══════════════════════════════════════════════════════════════
      SCRIPTS — al final del body, no bloquean render
 ═══════════════════════════════════════════════════════════════ -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 <script>
 // ─── Visually hidden utility ─────────────────────────────────
 const styleVH = document.createElement('style');
@@ -4397,28 +4388,6 @@ document.querySelectorAll('.faq-q').forEach(btn => {
     const isOpen = item.classList.toggle('open');
     btn.setAttribute('aria-expanded', isOpen);
     answer.hidden = !isOpen;
-  });
-});
-
-// ─── Mapa Leaflet ─────────────────────────────────────────────
-window.addEventListener('load', function() {
-  if (typeof L === 'undefined') return;
-  if (!document.getElementById('map')) return; // mapa comentado en HTML
-  const map = L.map('map').setView([-34.66,-58.60],11);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
-    attribution:'© OpenStreetMap contributors © CARTO', subdomains:'abcd', maxZoom:19
-  }).addTo(map);
-  L.polyline(STATIONS.map(s=>[s.lat,s.lng]),{color:'#0095D4',weight:4,opacity:.9}).addTo(map);
-  const mSec={1:'#22c55e',2:'#3b82f6',3:'#8b5cf6'};
-  STATIONS.forEach((st,i) => {
-    const icon=L.divIcon({className:'',html:`<div style="background:${mSec[st.sec]};color:#fff;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);" aria-label="${st.name}">${i+1}</div>`,iconSize:[26,26],iconAnchor:[13,13]});
-    L.marker([st.lat,st.lng],{icon,alt:st.name}).addTo(map).bindPopup(`
-      <div style="font-family:Inter,sans-serif;min-width:160px;">
-        <b style="font-size:1rem;color:#002B5C;">${i+1}. ${st.name}</b><br/>
-        <span style="font-size:.8rem;color:#555;">Sección ${st.sec} · <b>$${PRECIOS[st.sec]}</b> con SUBE</span>
-        ${st.nota?`<br/><span style="font-size:.75rem;color:#d97706;">${st.nota}</span>`:''}
-      </div>
-    `);
   });
 });
 
