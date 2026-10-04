@@ -35,6 +35,7 @@ import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { registrarSnapshot, snapshotHaceMinutos, rangoRegistrado } from "./tableroHistorial.js";
+import { mapaVivoHTML } from "./mapaVivo.js";
 import { iniciarVigiaSalidas, textoFormaciones, estadoLocalesParaBot } from "./vigiaSalidas.js";
 import { textoInformeFormaciones } from "./informeFormaciones.js";
 import { registrarValidacion, excedioLimiteValidaciones, textoValidaciones } from "./validacionesGps.js";
@@ -2356,11 +2357,13 @@ app.get("/tablero-vivo", (req, res) => {
 // de abajo de cada columna. Se cachea 20s (varias visitas casi juntas no
 // deberían disparar 5 consultas nuevas al proxy cada vez).
 let cacheCabecera = new Map(); // estacion -> { momento, data }
-// El mapa vivo vigente (GPS real + respaldo por horarios) vive en el sitio.
-// Esta ruta solo redirige para no mantener dos versiones.
-app.get("/mapa-vivo", (_req, res) =>
-  res.redirect(302, "https://trensarmientoenlinea.com.ar/#mapa-vivo")
-);
+app.get("/mapa-vivo", (req, res) => {
+  if (!claveTableroValida(req)) {
+    console.log("/mapa-vivo: 403 (clave inválida o ausente)");
+    return res.status(403).send("forbidden");
+  }
+  res.set("Content-Type", "text/html; charset=utf-8").send(mapaVivoHTML());
+});
 
 app.get("/api/tablero-mapa", async (req, res) => {
   const origin = req.headers.origin;
