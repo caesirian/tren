@@ -599,7 +599,7 @@ const TRENES_RAW = {
 };
 
 // Se decodifica una vez: TRENES[dia][sentido] = [{ n, first, t: [minuto en cada estación | null] }]
-const TRENES = (() => {
+export const TRENES = (() => {
   const out = {};
   for (const dia of Object.keys(TRENES_RAW)) {
     out[dia] = {};
