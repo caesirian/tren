@@ -39,6 +39,7 @@ import { mapaVivoHTML } from "./mapaVivo.js";
 import { iniciarVigiaSalidas, textoFormaciones, estadoLocalesParaBot } from "./vigiaSalidas.js";
 import { textoInformeFormaciones } from "./informeFormaciones.js";
 import { registrarValidacion, excedioLimiteValidaciones, textoValidaciones } from "./validacionesGps.js";
+import { iniciarViaje, estadoViaje, ubicacionUsuario, iniciarViajes, hayViajeActivo } from "./viaje.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
@@ -972,6 +973,32 @@ bot.command("formaciones", async (ctx) => {
     console.error("Error en /formaciones:", err.message);
   }
 });
+
+// Asistente de viaje (viaje.js): el admin sube a un tren y el bot lo sigue y le avisa por PRIVADO en cada
+// estación, con demora real vs. la que informa la app y los motivos posibles. Nunca escribe en el grupo.
+//   /viaje [número | HH:MM] [desde X] [a Y] · /viaje off · /donde (o "¿dónde estoy?")
+async function responderViaje(ctx, fn) {
+  if (!esAdminEstado(ctx)) return;
+  if (ctx.chat?.type !== "private") { await ctx.reply("El asistente de viaje funciona solo por chat privado conmigo."); return; }
+  try {
+    const texto = await fn();
+    if (texto) await ctx.reply(texto.slice(0, 3900));
+  } catch (err) {
+    console.error("Error en asistente de viaje:", err.message);
+    await ctx.reply("⚠️ Falló el asistente de viaje: " + err.message);
+  }
+}
+bot.command("viaje", (ctx) => responderViaje(ctx, () => iniciarViaje({ chatId: ctx.chat.id, texto: (ctx.message?.text || "").replace(/^\/viaje(@\w+)?\s*/i, "") })));
+const responderDonde = (ctx) => responderViaje(ctx, async () => (await estadoViaje(ctx.chat.id)) || "No tenés un viaje en curso. Mandá /viaje para empezar (o /viaje ayuda).");
+bot.command("donde", responderDonde);
+bot.hears(/^\s*¿?\s*d[oó]nde\s+(estoy|voy|vamos|andamos)\s*\??\s*$/i, (ctx, next) => (ctx.chat?.type === "private" && hayViajeActivo(ctx.chat.id) ? responderDonde(ctx) : next()));
+// Ubicación (también en tiempo real) que comparte el admin: se compara con la del tren como dato de precisión.
+const alRecibirUbicacion = (ctx, msg) => {
+  if (ctx.chat?.type !== "private" || !esAdminEstado(ctx) || !msg?.location) return;
+  ubicacionUsuario(ctx.chat.id, msg.location.latitude, msg.location.longitude, msg.location.horizontal_accuracy);
+};
+bot.on("location", (ctx) => alRecibirUbicacion(ctx, ctx.message));
+bot.on("edited_message", (ctx, next) => (ctx.editedMessage?.location ? alRecibirUbicacion(ctx, ctx.editedMessage) : next()));
 
 // Estadísticas de la "Validación de Usuario" del mapa de formaciones del sitio (validacionesGps.js).
 // /validaciones [días]  → intentos, % que validó, diferencia celular vs. formación y motivos de falla.
@@ -2635,6 +2662,7 @@ app.listen(PORT, async () => {
   await cargarEstadoAuto(); // restaura /estadoauto y la última anomalía vista
   await cargarPushAuto(); // restaura /pushauto y el anti-spam de las push automáticas
   iniciarVigiaSalidas(); // vigila Once y Moreno cada 30 s: en estación / salió / en camino
+  iniciarViajes({ enviar: (chatId, texto) => bot.telegram.sendMessage(chatId, texto) }); // asistente de viaje: retoma viajes en curso
   iniciarPushAuto({ notificarAdmin: (t) => (process.env.ADMIN_TELEGRAM_ID ? bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, t).catch((e) => console.error("Error avisando push al admin:", e.message)) : null) });
   alCambiarEstado((e) => pushPorCambioEstado(e));
   alAgregarAlerta((a) => pushPorAlerta(a));
