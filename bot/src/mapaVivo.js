@@ -51,7 +51,7 @@ const PLANTILLA_HTML = `<!doctype html>
   .leyenda { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 16px; font-size: 11.5px; color: var(--muted); margin-top: 10px; }
   .leyenda span { display: inline-flex; align-items: center; gap: 5px; }
   .leyenda i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-  .mv-wrap { margin: 12px 16px 16px; background: var(--card); border-radius: 12px; box-shadow: 0 2px 12px rgba(0,43,92,.09); padding: 24px 20px 90px; overflow-x: auto; }
+  .mv-wrap { margin: 12px 16px 16px; background: var(--card); border-radius: 12px; box-shadow: 0 2px 12px rgba(0,43,92,.09); padding: 24px 20px 150px; overflow-x: auto; }
   .mv-stage { position: relative; min-width: 1000px; height: 130px; margin: 0 100px 0 30px; }
   .mv-via { position: absolute; left: -12px; right: -12px; height: 12px; border-radius: 6px; background-repeat: repeat-x; background-position: 0 center; }
   .mv-via.ida { top: 30px; background-color: var(--celeste); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='12'%3E%3Cpath d='M8 2.5l3.5 3.5L8 9.5' fill='none' stroke='%23ffffff' stroke-opacity='.85' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
@@ -66,7 +66,7 @@ const PLANTILLA_HTML = `<!doctype html>
   .mv-estacion .mv-punto.vuelta { top: 88px; }
   .mv-estacion .mv-nombre { position: absolute; top: 112px; left: 0; transform-origin: top left; transform: rotate(45deg); font-size: 10px; color: var(--muted); font-weight: 600; white-space: nowrap; }
   .mv-estacion.cabecera .mv-nombre { color: var(--navy); font-weight: 800; font-size: 11px; }
-  .mv-tren { position: absolute; min-width: 36px; height: 24px; padding: 0 6px; transform: translateX(-50%); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,43,92,.3); transition: left 1s linear; z-index: 2; }
+  .mv-tren { position: absolute; min-width: 36px; height: 24px; padding: 0 6px; transform: translateX(-50%); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,43,92,.3); transition: left 14s linear; z-index: 2; }
   .mv-tren.ida { top: 24px; }
   .mv-tren.vuelta { top: 84px; }
   .mv-tren.ok { background: var(--green); }
@@ -81,14 +81,14 @@ const PLANTILLA_HTML = `<!doctype html>
   .mv-vacio.ida { top: 48px; }
   .mv-vacio.vuelta { top: 108px; }
   .mv-stage.con-mio .mv-tren:not(.mio) { opacity: .3; }
-  .mv-tren.mio { width: 34px; height: 34px; margin-left: -17px; z-index: 4; font-size: 11px; box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); }
-  .mv-tren.mio.ida { top: 19px; }
-  .mv-tren.mio.vuelta { top: 79px; }
-  .mv-mio-tag { position: absolute; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; background: var(--celeste); color: #fff; font-size: 10px; font-weight: 800; white-space: nowrap; pointer-events: none; }
-  .mv-tren.mio.ida .mv-mio-tag { top: 40px; }
-  .mv-tren.mio.vuelta .mv-mio-tag { top: -26px; }
+  .mv-tren.mio { z-index: 4; box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--celeste), 0 3px 8px rgba(0,43,92,.4); }
   @media (prefers-reduced-motion: no-preference) { .mv-tren.mio { animation: mvMioPulso 1.8s ease-in-out infinite; } }
-  @keyframes mvMioPulso { 0%, 100% { box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); } 50% { box-shadow: 0 0 0 4px #fff, 0 0 0 11px rgba(0,149,212,.35), 0 4px 14px rgba(0,43,92,.45); } }
+  @keyframes mvMioPulso { 0%, 100% { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--celeste), 0 3px 8px rgba(0,43,92,.4); } 50% { box-shadow: 0 0 0 3px #fff, 0 0 0 8px rgba(0,149,212,.35), 0 3px 8px rgba(0,43,92,.4); } }
+  /* Línea que baja desde la formación (clavada en la vía, se mueve con ella) hasta una etiqueta que queda debajo de los nombres de estación. */
+  .mv-mio-pin { position: absolute; left: 50%; top: 100%; width: 0; margin-top: 2px; border-left: 2px solid var(--celeste); pointer-events: none; }
+  .mv-tren.mio.ida .mv-mio-pin { height: 135px; }
+  .mv-tren.mio.vuelta .mv-mio-pin { height: 75px; }
+  .mv-mio-tag { position: absolute; left: 0; top: 100%; transform: translateX(-50%); padding: 3px 10px; border-radius: 999px; background: var(--celeste); color: #fff; font-size: 11px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,43,92,.3); }
   .mv-mio-panel { background: var(--card); border-radius: 12px; box-shadow: 0 2px 12px rgba(0,43,92,.09); padding: 16px 18px; margin: 12px 16px 0; }
   .mv-mio-titulo { margin: 0 0 4px; font-weight: 800; color: var(--navy); font-size: 15px; }
   .mv-mio-sub { margin: 0 0 12px; font-size: 12.5px; color: var(--muted); }
@@ -219,22 +219,34 @@ const PLANTILLA_HTML = `<!doctype html>
   }
 
   let ultimaData = null;
+  const elTrenes = new Map(); // clave de formación → su elemento en el mapa
   function render(data) {
     ultimaData = data;
     const estaciones = data.estaciones || [];
     if (!dibujadas && estaciones.length > 1) dibujarEstaciones(estaciones);
     const n = estaciones.length;
-    stage.querySelectorAll(".mv-tren").forEach((x) => x.remove());
     const hacia = { ida: 0, vuelta: 0 };
     const mio = buscarMiTren(data.trenes || []);
-    (data.trenes || []).forEach((t) => {
+    const vivos = new Set();
+    (data.trenes || []).forEach((t, idx) => {
       if (n < 2) return;
       const via = viaDe(t);
       hacia[via]++;
-      const div = document.createElement("div");
+      const clave = via + ":" + (t.numero != null ? t.numero : "i" + idx);
+      vivos.add(clave);
+      // Se reutiliza el elemento de cada formación: al cambiar solo su "left", el navegador la desliza
+      // sobre la vía (transición) en vez de saltar de una posición a otra.
+      let div = elTrenes.get(clave);
+      const pos = (t.posicion / (n - 1)) * 100 + "%";
+      if (!div) {
+        div = document.createElement("div");
+        div.tabIndex = 0;
+        div.style.left = pos;
+        stage.appendChild(div);
+        elTrenes.set(clave, div);
+      }
       div.className = "mv-tren " + via + " " + claseDemora(t) + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "");
-      div.tabIndex = 0;
-      div.style.left = (t.posicion / (n - 1)) * 100 + "%";
+      div.style.left = pos;
       div.textContent = t.numero ?? "";
       const dem = t.cancelado ? "Cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
       const inusual = t.origenInusual ? " · ⚠ origen inusual" : "";
@@ -244,12 +256,17 @@ const PLANTILLA_HTML = `<!doctype html>
       div.appendChild(tip);
       if (mio && mio.tren === t) {
         div.classList.add("mio");
+        const pin = document.createElement("span");
+        pin.className = "mv-mio-pin";
         const tag = document.createElement("span");
         tag.className = "mv-mio-tag";
-        tag.textContent = "📍 Tu tren" + (validacionOk(mio.tren) ? " ✔" : "");
-        div.appendChild(tag);
+        tag.textContent = "📍 Tu tren #" + (t.numero ?? "?") + (validacionOk(mio.tren) ? " ✔" : "");
+        pin.appendChild(tag);
+        div.appendChild(pin);
       }
-      stage.appendChild(div);
+    });
+    elTrenes.forEach((el, clave) => {
+      if (!vivos.has(clave)) { el.remove(); elTrenes.delete(clave); }
     });
     stage.classList.toggle("con-mio", !!mio);
     actualizarMio(mio, data);
