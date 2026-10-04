@@ -38,6 +38,7 @@ import { registrarSnapshot, snapshotHaceMinutos, rangoRegistrado } from "./table
 import { mapaVivoHTML } from "./mapaVivo.js";
 import { iniciarVigiaSalidas, textoFormaciones, estadoLocalesParaBot } from "./vigiaSalidas.js";
 import { textoInformeFormaciones } from "./informeFormaciones.js";
+import { registrarValidacion, excedioLimiteValidaciones, textoValidaciones } from "./validacionesGps.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
@@ -969,6 +970,20 @@ bot.command("formaciones", async (ctx) => {
     }
   } catch (err) {
     console.error("Error en /formaciones:", err.message);
+  }
+});
+
+// Estadísticas de la "Validación de Usuario" del mapa de formaciones del sitio (validacionesGps.js).
+// /validaciones [días]  → intentos, % que validó, diferencia celular vs. formación y motivos de falla.
+bot.command("validaciones", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  try {
+    const dias = parseInt((ctx.message?.text || "").trim().split(/\s+/)[1], 10);
+    const texto = await textoValidaciones(Number.isFinite(dias) ? dias : 7);
+    for (let i = 0; i < texto.length; i += 3900) await ctx.reply(texto.slice(i, i + 3900));
+  } catch (err) {
+    console.error("Error en /validaciones:", err.message);
+    await ctx.reply("⚠️ No pude leer las validaciones: " + err.message);
   }
 });
 
@@ -2411,6 +2426,34 @@ app.get("/api/tablero-vivo", async (req, res) => {
   } catch (err) {
     console.error("Error en /api/tablero-vivo:", err.message);
     res.status(502).json({ error: err.message });
+  }
+});
+
+// Registro de la "Validación de Usuario" del mapa del sitio. El navegador manda solo datos derivados
+// (sin coordenadas) como text/plain para evitar el preflight de CORS; se guarda en Firestore.
+app.options("/api/validacion-gps", (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  }
+  res.sendStatus(204);
+});
+app.post("/api/validacion-gps", express.text({ type: "*/*", limit: "4kb" }), async (req, res) => {
+  const origin = req.headers.origin;
+  if (!origin || !ORIGENES_TABLERO_PERMITIDOS.has(origin)) return res.status(403).json({ error: "forbidden" });
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  const ip = (req.headers["x-forwarded-for"] || req.ip || "").toString().split(",")[0].trim();
+  if (excedioLimiteValidaciones(ip)) return res.status(429).json({ error: "demasiados envíos" });
+  try {
+    let body = req.body;
+    if (typeof body === "string") body = JSON.parse(body);
+    const r = await registrarValidacion(body);
+    res.status(r.ok ? 200 : 400).json(r);
+  } catch (err) {
+    console.error("Error en /api/validacion-gps:", err.message);
+    res.status(400).json({ ok: false, error: "payload inválido" });
   }
 });
 

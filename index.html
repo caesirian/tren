@@ -5069,7 +5069,7 @@ renderStations();
 
   // ── Validación de Usuario ───────────────────────────────────────────────
   // Compara el GPS del celular con la posición del tren elegido. Todo se hace en el dispositivo:
-  // la ubicación del usuario no se envía a ningún servidor. Es una confirmación informal, no segura.
+  // las coordenadas del usuario no se envían a ningún servidor (solo un registro anónimo de precisión). Es una confirmación informal, no segura.
   const MAX_DIST_EJE_VAL_M = 1000;   // más lejos que esto de las vías = no está en el ramal
   const MAX_PRECISION_VAL_M = 1500;  // GPS demasiado impreciso para validar
   const TOL_EST_GPS = 0.5;           // estaciones de diferencia aceptadas si el tren tiene GPS real
@@ -5092,14 +5092,46 @@ renderStations();
     return mejor;
   }
 
-  function coincideConTren(pos, t) {
+  // Devuelve el resultado de comparar el celular con el tren y los datos derivados para el registro
+  // (motivo, posición proyectada, distancia al eje, precisión, diferencia). No incluye coordenadas.
+  function evaluarValidacion(pos, t) {
     const lat = pos.coords.latitude, lng = pos.coords.longitude, prec = pos.coords.accuracy;
-    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !t) return false;
-    if (Number.isFinite(prec) && prec > MAX_PRECISION_VAL_M) return false;
+    const base = { ok: false, motivo: "dato_invalido", precisionM: Number.isFinite(prec) ? prec : null };
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !t) return base;
+    if (Number.isFinite(prec) && prec > MAX_PRECISION_VAL_M) return Object.assign(base, { motivo: "impreciso" });
     const p = proyectarRamal(lat, lng);
-    if (p.distM > MAX_DIST_EJE_VAL_M) return false;
     const tol = t.fuente === "gps" ? TOL_EST_GPS : TOL_EST_ESTIMADA;
-    return Math.abs(p.posicion - t.posicion) <= tol;
+    const det = Object.assign(base, { posUsuario: p.posicion, distEjeM: p.distM, tolerancia: tol });
+    if (p.distM > MAX_DIST_EJE_VAL_M) return Object.assign(det, { motivo: "lejos_del_ramal" });
+    const dif = Math.abs(p.posicion - t.posicion);
+    det.difEstaciones = dif;
+    return dif <= tol ? Object.assign(det, { ok: true, motivo: "ok" }) : Object.assign(det, { motivo: "distinto_tramo" });
+  }
+
+  // Registro de cada intento (pedido 4/10): se manda al bot, que lo guarda en Firestore para medir la
+  // precisión de la validación. Solo viajan datos derivados, nunca las coordenadas del celular.
+  const API_VALIDACION = "https://trenbot.onrender.com/api/validacion-gps";
+  const SESION_VAL = Math.random().toString(36).slice(2, 10); // id al azar por carga de página: agrupa intentos, no identifica a nadie
+  function registrarValidacion(tren, det) {
+    try {
+      const body = {
+        sesion: SESION_VAL,
+        resultado: det.ok ? "ok" : "fail",
+        motivo: det.motivo,
+        numero: tren ? tren.numero : null,
+        via: sel ? sel.via : null,
+        dep: sel ? hhmm(sel.dep) : null,
+        destino: tren ? tren.destino : null,
+        fuenteTren: tren ? tren.fuente : null,
+        posTren: tren && Number.isFinite(tren.posicion) ? tren.posicion : null,
+        posUsuario: det.posUsuario, difEstaciones: det.difEstaciones, tolerancia: det.tolerancia,
+        distEjeM: det.distEjeM, precisionM: det.precisionM,
+        demoraMin: tren ? tren.demoraMax : null,
+        pagina: /index_prueba/.test(location.pathname) ? "prueba" : "produccion"
+      };
+      // text/plain: evita el preflight de CORS; keepalive: sale aunque se cierre la página.
+      fetch(API_VALIDACION, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(body), keepalive: true }).catch(function () {});
+    } catch (e) { /* el registro nunca debe romper la validación */ }
   }
 
   function pintarBotonVal() {
@@ -5125,20 +5157,22 @@ renderStations();
     }
   }
 
-  function terminarValidacion(ok) {
+  function terminarValidacion(det) {
+    const tren = miTrenActual;
     validando = false;
-    validacion = { estado: ok ? "ok" : "fail", numero: miTrenActual ? (miTrenActual.numero ?? null) : null };
+    validacion = { estado: det.ok ? "ok" : "fail", numero: tren ? (tren.numero ?? null) : null };
+    registrarValidacion(tren, det);
     if (ultimaData) render(ultimaData); else pintarBotonVal();
   }
 
   function pedirValidacion() {
     if (validando || !miTrenActual || validacionOk(miTrenActual)) return;
-    if (!navigator.geolocation) { terminarValidacion(false); return; }
+    if (!navigator.geolocation) { terminarValidacion({ ok: false, motivo: "sin_geolocalizacion" }); return; }
     validando = true;
     pintarBotonVal();
     navigator.geolocation.getCurrentPosition(
-      (pos) => terminarValidacion(coincideConTren(pos, miTrenActual)),
-      () => terminarValidacion(false), // permiso rechazado, sin señal o tiempo agotado
+      (pos) => terminarValidacion(evaluarValidacion(pos, miTrenActual)),
+      (err) => terminarValidacion({ ok: false, motivo: err && err.code === 1 ? "sin_permiso" : err && err.code === 3 ? "tiempo_agotado" : "gps_no_disponible" }),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
     );
   }
