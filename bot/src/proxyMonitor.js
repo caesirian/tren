@@ -232,10 +232,17 @@ export async function chequearDemorasProxy() {
       })
       .join("\n") +
     `\n\n(Detectado por el proxy no oficial. Se publicó en el grupo.)`;
-  const textosGrupo = nuevos.map((item) => {
+  // Un solo mensaje para el grupo, aunque haya varios trenes demorados en el mismo chequeo.
+  // Texto plano (publicarEnGrupo no usa parse_mode).
+  const bloques = nuevos.map((item) => {
     const d = datosServicio(item);
-    return `⏰ El tren con destino ${d.destino}, programado para las ${hora(d.prog)} (${d.est.nombre}), sale demorado (~${d.demora} min, estimado ${hora(d.estim)}).${etiquetaGrupoLocal(item)}`;
+    return `🚆 #${d.s.numero ?? "?"} · sentido ${d.destino}\n📍 ${d.est.nombre}: ${hora(d.prog)} → ${hora(d.estim)} (+${d.demora} min)${etiquetaGrupoLocal(item)}`;
   });
+  const textosGrupo = [
+    `⏰ ${nuevos.length === 1 ? "Demora en el Sarmiento" : "Demoras en el Sarmiento"}\n\n` +
+      bloques.join("\n\n") +
+      `\n\nHorarios estimados, pueden variar.`,
+  ];
   return { nuevos, texto, textosGrupo };
 }
 
@@ -264,10 +271,14 @@ export async function chequearCancelacionesProxy() {
     `🚨 La app de Trenes Argentinos informa ${nuevas.length} cancelación(es) nueva(s) de Sarmiento:\n\n` +
     nuevas.map(lineaCancelacion).join("\n") +
     `\n\n(Detectado por el proxy no oficial. Se publicó en el grupo.)`;
-  const textosGrupo = nuevas.map((item) => {
+  // Un solo mensaje para el grupo, aunque haya varias cancelaciones nuevas en el mismo chequeo.
+  const bloquesCan = nuevas.map((item) => {
     const d = datosServicio(item);
-    return `🚨 Se canceló el tren con destino ${d.destino}, programado para las ${hora(d.prog)} (${d.est.nombre}). ${textoCancelacion(d.s.cancelacion)}.${etiquetaGrupoLocal(item)}`;
+    return `🚆 #${d.s.numero ?? "?"} · sentido ${d.destino}\n📍 ${d.est.nombre}: programado ${hora(d.prog)}\n❌ ${textoCancelacion(d.s.cancelacion)}${etiquetaGrupoLocal(item)}`;
   });
+  const textosGrupo = [
+    `🚨 ${nuevas.length === 1 ? "Tren cancelado en el Sarmiento" : "Trenes cancelados en el Sarmiento"}\n\n` + bloquesCan.join("\n\n"),
+  ];
   return { nuevas, texto, textosGrupo };
 }
 
