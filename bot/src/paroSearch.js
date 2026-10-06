@@ -19,7 +19,13 @@ const MODEL = "gemini-3.6-flash";
 const cache = new NodeCache({ stdTTL: 3 * 60 * 60 });
 const CACHE_KEY = "estado_paro_amba";
 
+// SUSPENDIDA a pedido del admin (oct 2026): gasta cuota de Gemini y la gratuita
+// de este modelo es de 20 pedidos por día. Para reactivarla, definir en Render
+// la variable de entorno PARO_BUSQUEDA_EN_VIVO=true (sin tocar el código).
+const BUSQUEDA_ACTIVA = process.env.PARO_BUSQUEDA_EN_VIVO === "true";
+
 export async function consultarParoEnVivo() {
+  if (!BUSQUEDA_ACTIVA) return null; // quien llama ya contempla null: simplemente no suma esa sección al contexto
   const cacheado = cache.get(CACHE_KEY);
   if (cacheado) return { ...cacheado, deCache: true };
 
