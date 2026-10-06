@@ -222,6 +222,32 @@ export async function listarComunicados(horas = 72) {
   }
 }
 
+// Un comunicado sin fecha propia sobre algo del momento (demora, paro, aviso
+// general, etc.) deja de aplicar a las pocas horas: si no, el bot seguiría
+// contestando con un problema ya resuelto durante las 48hs de la ventana.
+// Si el comunicado menciona una fecha: vale mientras esa fecha no haya pasado.
+// Las obras sin fecha conservan la ventana completa.
+const VIGENCIA_TRANSITORIO_MS = 4 * 60 * 60 * 1000;
+const TIPOS_TRANSITORIOS = new Set(["paro", "demora", "normalizacion", "aviso general", "otro"]);
+
+function hoyAR() {
+  const partes = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "numeric" }).formatToParts(new Date());
+  return { d: Number(partes.find((p) => p.type === "day").value), m: Number(partes.find((p) => p.type === "month").value) };
+}
+
+export function comunicadoSigueVigente(c, ahoraMs = Date.now()) {
+  const clave = c.fecha ? claveFecha(c.fecha) : null;
+  const m = clave ? /^(\d{1,2})\/(\d{1,2})$/.exec(clave) : null;
+  if (m) {
+    const hoy = hoyAR();
+    return Number(m[2]) * 100 + Number(m[1]) >= hoy.m * 100 + hoy.d; // fecha ya pasada -> vencido
+  }
+  if (TIPOS_TRANSITORIOS.has(sinAcentos(c.tipo))) {
+    return ahoraMs - new Date(c.timestamp).getTime() < VIGENCIA_TRANSITORIO_MS;
+  }
+  return true;
+}
+
 // Comunicados recientes (48hs por defecto) para sumar al contexto del bot.
 export async function comunicadosRecientes(horas = 48) {
   const firestore = ensureInit();
@@ -231,7 +257,7 @@ export async function comunicadosRecientes(horas = 48) {
     const snap = await firestore.collection("comunicados").where("timestamp", ">=", desde).get();
     return snap.docs
       .map((d) => d.data())
-      .filter((d) => d.esComunicadoRelevante)
+      .filter((d) => d.esComunicadoRelevante && comunicadoSigueVigente(d))
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   } catch (err) {
     console.error("Error trayendo comunicados recientes:", err.message);
