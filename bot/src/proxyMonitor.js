@@ -171,6 +171,63 @@ export async function chequearOrigenesInusuales() {
     if (firestore) firestore.collection(COLECCION_ORIGEN).doc(clave).set({ timestamp: FieldValue.serverTimestamp() }).catch((err) => console.error("Error guardando origen inusual:", err.message));
     nuevos.push(item);
   }
+  if (!nuevos.length) return { nuevos: [], texto: null };
+
+  const lineas = nuevos.map((item) => {
+    const d = datosServicio(item);
+    return `• #${d.s.numero ?? "?"} → ${d.destino} | sale de ${d.origenReal} (se lo vio en ${d.est.nombre}) · prog ${hora(d.prog)}${d.anden ? ` · andén ${d.anden}` : ""}`;
+  });
+  const texto =
+    `🔀 ${nuevos.length} tren(es) con estación de origen distinta a la habitual (Once/Flores/Merlo/Moreno):\n\n` +
+    lineas.join("\n") +
+    `\n\n(Esto es lo que declara el proxy como estación de salida — se detecta antes de que el tren realmente salga, en cuanto figura "Programado". Sin confirmar todavía si "origen" es 100% ese campo — revisar con /apptrenes get si algo no cierra.)`;
+  return { nuevos, texto };
+}
+
+// Trenes que aparecen demorados 10+ min. Igual mecánica que las
+// cancelaciones: una vez avisado un tren para un día, no se repite aunque la
+// demora fluctúe un poco. Si al chequeo siguiente la demora creció mucho
+// más, sí conviene poder volver a avisar — no implementado todavía (queda
+// para pulir si hace falta).
+export async function chequearDemorasProxy() {
+  if (!monitorProxyActivo()) return { nuevas: [], texto: null, desactivado: true };
+  let barrido;
+  try {
+    barrido = await barridoEstructurado(); // comparte caché con el resto de los chequeos
+  } catch (err) {
+    console.error("Error consultando el proxy de la app para demoras:", err.message);
+    return { nuevas: [], texto: null, error: err.message };
+  }
+
+  const demorados = barrido.todos.filter((item) => {
+    const d = datosServicio(item);
+    return !d.s.cancelacion && d.demora != null && d.demora >= UMBRAL_DEMORA_MIN;
+  });
+
+  const nuevos = [];
+  for (const item of demorados) {
+    const clave = claveCancelacion(item); // misma forma de clave (numero-estacion-dia), colección distinta
+    const dia = (() => {
+      const d = datosServicio(item);
+      return d.prog ? new Date(d.prog).toISOString().slice(0, 10) : "s-fecha";
+    })();
+    const claveDia = `${datosServicio(item).s.numero ?? "s-num"}-${dia}`;
+    if (vistosEnMemoria.has(`demora:${claveDia}`)) continue;
+    const firestore = ensureInit();
+    let visto = false;
+    if (firestore) {
+      try {
+        visto = (await firestore.collection(COLECCION_DEMORAS).doc(claveDia).get()).exists;
+      } catch (err) {
+        console.error("Error chequeando demora vista:", err.message);
+      }
+    }
+    if (visto) continue;
+    vistosEnMemoria.add(`demora:${claveDia}`);
+    if (firestore) firestore.collection(COLECCION_DEMORAS).doc(claveDia).set({ timestamp: FieldValue.serverTimestamp() }).catch((err) => console.error("Error guardando demora avisada:", err.message));
+    nuevos.push(item);
+  }
+
   // Resumen para el grupo: todas las demoras activas, a lo sumo 1 vez por hora.
   const textosGrupo = await resumenDemorasParaGrupo(demorados);
 
