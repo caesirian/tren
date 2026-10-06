@@ -48,7 +48,7 @@ import { evaluarEstadoAutomatico, cargarEstadoAuto, setEstadoAuto, estadoAutoAct
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
-import { esOcupacionEnVivo, RESPUESTA_SIN_CAMARAS } from "./ocupacion.js";
+import { esOcupacionEnVivo } from "./ocupacion.js";
 import { esConsultaDeLuz, mencionaEnergia, RESPUESTA_SIN_DATO_LUZ } from "./luz.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
@@ -203,10 +203,25 @@ function opcionesRespuesta(ctx) {
 // una pregunta "al aire" sin que lo mencionen, el bot prefiere quedarse
 // callado antes que meter ruido en el grupo con un "no sé" sin que se lo
 // pidan. Devuelve el texto a enviar, o null si no hay que responder nada.
+// El bot no habla con "Che": se saca si el modelo lo usa de muletilla al
+// arrancar el mensaje o una oración.
+function quitarChe(texto) {
+  return texto
+    .replace(/(^|[.!?¡¿]\s+)che[,!]?\s+(\S)/gi, (_, ini, c) => `${ini}${c.toUpperCase()}`)
+    .replace(/,?\s+che([,.!?])/gi, "$1");
+}
+
+// Respuesta en prosa que en el fondo es "no sé / no tengo el dato". Al aire
+// (sin que lo mencionen) eso es ruido: el bot se queda callado igual que con
+// el sentinel, aunque el modelo no haya usado SIN_RESPUESTA_CONCRETA.
+const RE_NO_SE =
+  /\bno\s+(s[eé]|tengo|cuento\s+con|dispongo\s+de|manejo)(?![\p{L}])[^.!?\n]{0,80}\b(dato|datos|info|informaci[oó]n|fecha|certeza|confirmaci[oó]n|novedad|novedades)\b|\bno\s+s[eé](?![\p{L}])|\bno\s+tengo\s+(forma|manera|c[aá]maras?)|\bno\s+me\s+(consta|figura|llegaron?)/iu;
+
 function manejarSinRespuesta(respuestaCruda, fueEtiquetado) {
   const esSinRespuesta = respuestaCruda.trim() === SIN_RESPUESTA_SENTINEL;
-  if (!esSinRespuesta) return respuestaCruda;
-  return fueEtiquetado ? RESPUESTA_SIN_DATO : null;
+  if (esSinRespuesta) return fueEtiquetado ? RESPUESTA_SIN_DATO : null;
+  if (!fueEtiquetado && RE_NO_SE.test(respuestaCruda)) return null;
+  return quitarChe(respuestaCruda);
 }
 
 // ¿Alguna fuente viva (avisos, semáforo, alertas API, comunicados) habla de
@@ -2093,17 +2108,11 @@ bot.on("text", async (ctx) => {
     const fueEtiquetado = mencionaAlBot(ctx);
 
     // Cuánta gente hay ahora en una estación/tren: quien pregunta espera que
-    // le conteste alguien que esté ahí. El bot no tiene cámaras, así que al
-    // aire NO responde; si le preguntan directo, lo dice con honestidad.
+    // le conteste alguien que esté ahí. El bot no tiene cámaras y, a pedido del
+    // admin (oct 2026), NO contesta estas preguntas: ni al aire ni directo, y
+    // tampoco avisa que "no tiene cámaras". Se queda callado.
     if (esOcupacionEnVivo(textoOriginal)) {
-      if (esGrupo && !fueEtiquetado) {
-        console.log(`Al aire omitida (ocupación en vivo, sin cámaras) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`);
-        return;
-      }
-      const pregunta = limpiarMencion(textoOriginal) || textoOriginal;
-      await ctx.reply(RESPUESTA_SIN_CAMARAS, opcionesRespuesta(ctx));
-      if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: RESPUESTA_SIN_CAMARAS });
-      if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: RESPUESTA_SIN_CAMARAS });
+      console.log(`Omitida (ocupación en vivo, el bot no responde esto) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`);
       return;
     }
 
@@ -2155,7 +2164,7 @@ bot.on("text", async (ctx) => {
       }
       if (excedioLimite(ctx.from?.id)) {
         if (fueEtiquetado || esChatPrivado) {
-          await ctx.reply("Che, me preguntaste bastante seguido 😅 esperá unos minutos y probá de nuevo.", opcionesRespuesta(ctx));
+          await ctx.reply("Me preguntaste bastante seguido 😅 esperá unos minutos y probá de nuevo.", opcionesRespuesta(ctx));
         }
         return;
       }
@@ -2180,7 +2189,7 @@ bot.on("text", async (ctx) => {
     if (excedioLimite(ctx.from?.id)) {
       if (fueEtiquetado) {
         await ctx.reply(
-          "Che, me preguntaste bastante seguido 😅 esperá unos minutos y probá de nuevo.",
+          "Me preguntaste bastante seguido 😅 esperá unos minutos y probá de nuevo.",
           opcionesRespuesta(ctx)
         );
       }
