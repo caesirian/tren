@@ -29,6 +29,14 @@ const COLECCION = "cancelacionesProxyVistas";
 const COLECCION_DEMORAS = "demorasProxyAvisadas";
 const UMBRAL_DEMORA_MIN = 10; // mismo umbral que "anormal" en el resto del bot
 const COLECCION_ORIGEN = "origenesInusualesVistos";
+// Demoras en el GRUPO: un solo resumen con las demoras ACTIVAS como máximo una
+// vez cada 60 min (el aviso privado al admin sigue siendo por tren nuevo).
+// Cuando preguntan por el servicio, el bot igual puede mencionar las demoras
+// vigentes (ver contextoProxyParaBot).
+const INTERVALO_AVISO_DEMORAS_MS = 60 * 60 * 1000;
+const MAX_DEMORAS_EN_AVISO_GRUPO = 6;
+const COLECCION_CONTROL_AVISOS = "controlAvisosGrupo";
+let ultimoAvisoDemorasMs = 0;
 const COLECCION_LOCALES = "localesFueraCronogramaVistos";
 const RETENCION_DIAS = 3;
 
@@ -163,64 +171,10 @@ export async function chequearOrigenesInusuales() {
     if (firestore) firestore.collection(COLECCION_ORIGEN).doc(clave).set({ timestamp: FieldValue.serverTimestamp() }).catch((err) => console.error("Error guardando origen inusual:", err.message));
     nuevos.push(item);
   }
-  if (!nuevos.length) return { nuevos: [], texto: null };
+  // Resumen para el grupo: todas las demoras activas, a lo sumo 1 vez por hora.
+  const textosGrupo = await resumenDemorasParaGrupo(demorados);
 
-  const lineas = nuevos.map((item) => {
-    const d = datosServicio(item);
-    return `• #${d.s.numero ?? "?"} → ${d.destino} | sale de ${d.origenReal} (se lo vio en ${d.est.nombre}) · prog ${hora(d.prog)}${d.anden ? ` · andén ${d.anden}` : ""}`;
-  });
-  const texto =
-    `🔀 ${nuevos.length} tren(es) con estación de origen distinta a la habitual (Once/Flores/Merlo/Moreno):\n\n` +
-    lineas.join("\n") +
-    `\n\n(Esto es lo que declara el proxy como estación de salida — se detecta antes de que el tren realmente salga, en cuanto figura "Programado". Sin confirmar todavía si "origen" es 100% ese campo — revisar con /apptrenes get si algo no cierra.)`;
-  return { nuevos, texto };
-}
-
-// Trenes que aparecen demorados 10+ min. Igual mecánica que las
-// cancelaciones: una vez avisado un tren para un día, no se repite aunque la
-// demora fluctúe un poco. Si al chequeo siguiente la demora creció mucho
-// más, sí conviene poder volver a avisar — no implementado todavía (queda
-// para pulir si hace falta).
-export async function chequearDemorasProxy() {
-  if (!monitorProxyActivo()) return { nuevas: [], texto: null, desactivado: true };
-  let barrido;
-  try {
-    barrido = await barridoEstructurado(); // comparte caché con el resto de los chequeos
-  } catch (err) {
-    console.error("Error consultando el proxy de la app para demoras:", err.message);
-    return { nuevas: [], texto: null, error: err.message };
-  }
-
-  const demorados = barrido.todos.filter((item) => {
-    const d = datosServicio(item);
-    return !d.s.cancelacion && d.demora != null && d.demora >= UMBRAL_DEMORA_MIN;
-  });
-
-  const nuevos = [];
-  for (const item of demorados) {
-    const clave = claveCancelacion(item); // misma forma de clave (numero-estacion-dia), colección distinta
-    const dia = (() => {
-      const d = datosServicio(item);
-      return d.prog ? new Date(d.prog).toISOString().slice(0, 10) : "s-fecha";
-    })();
-    const claveDia = `${datosServicio(item).s.numero ?? "s-num"}-${dia}`;
-    if (vistosEnMemoria.has(`demora:${claveDia}`)) continue;
-    const firestore = ensureInit();
-    let visto = false;
-    if (firestore) {
-      try {
-        visto = (await firestore.collection(COLECCION_DEMORAS).doc(claveDia).get()).exists;
-      } catch (err) {
-        console.error("Error chequeando demora vista:", err.message);
-      }
-    }
-    if (visto) continue;
-    vistosEnMemoria.add(`demora:${claveDia}`);
-    if (firestore) firestore.collection(COLECCION_DEMORAS).doc(claveDia).set({ timestamp: FieldValue.serverTimestamp() }).catch((err) => console.error("Error guardando demora avisada:", err.message));
-    nuevos.push(item);
-  }
-
-  if (!nuevos.length) return { nuevos: [], texto: null };
+  if (!nuevos.length) return { nuevos: [], texto: null, textosGrupo };
   const texto =
     `⏰ La app de Trenes Argentinos informa ${nuevos.length} tren(es) con demora nueva de 10+ min:\n\n` +
     nuevos
@@ -231,19 +185,52 @@ export async function chequearDemorasProxy() {
         return extra ? `${base}\n${extra}` : base;
       })
       .join("\n") +
-    `\n\n(Detectado por el proxy no oficial. Se publicó en el grupo.)`;
-  // Un solo mensaje para el grupo, aunque haya varios trenes demorados en el mismo chequeo.
-  // Texto plano (publicarEnGrupo no usa parse_mode).
-  const bloques = nuevos.map((item) => {
+    `\n\n(Detectado por el proxy no oficial. Al grupo se le informan las demoras activas como máximo una vez por hora.)`;
+  return { nuevos, texto, textosGrupo };
+}
+
+// Un único mensaje para el grupo con las demoras activas ahora, como máximo una
+// vez cada 60 min. La marca de la última publicación se guarda también en
+// Firestore para que un reinicio de Render no la pierda. Texto plano
+// (publicarEnGrupo no usa parse_mode).
+async function resumenDemorasParaGrupo(demorados) {
+  if (!demorados.length) return [];
+  const ahora = Date.now();
+  if (ahora - ultimoAvisoDemorasMs < INTERVALO_AVISO_DEMORAS_MS) return [];
+  ultimoAvisoDemorasMs = ahora; // se marca ya, para que dos chequeos simultáneos no publiquen ambos
+
+  const firestore = ensureInit();
+  if (firestore) {
+    try {
+      const snap = await firestore.collection(COLECCION_CONTROL_AVISOS).doc("demoras").get();
+      const ultimo = Number(snap.data()?.ultimoEnvioMs) || 0;
+      if (ahora - ultimo < INTERVALO_AVISO_DEMORAS_MS) {
+        ultimoAvisoDemorasMs = ultimo;
+        return [];
+      }
+    } catch (err) {
+      console.error("Error leyendo la marca del último aviso de demoras:", err.message);
+    }
+    firestore
+      .collection(COLECCION_CONTROL_AVISOS)
+      .doc("demoras")
+      .set({ ultimoEnvioMs: ahora, actualizado: FieldValue.serverTimestamp() }, { merge: true })
+      .catch((err) => console.error("Error guardando la marca del último aviso de demoras:", err.message));
+  }
+
+  const ordenados = [...demorados].sort((a, b) => (datosServicio(b).demora ?? 0) - (datosServicio(a).demora ?? 0));
+  const mostrados = ordenados.slice(0, MAX_DEMORAS_EN_AVISO_GRUPO);
+  const bloques = mostrados.map((item) => {
     const d = datosServicio(item);
     return `🚆 #${d.s.numero ?? "?"} · sentido ${d.destino}\n📍 ${d.est.nombre}: ${hora(d.prog)} → ${hora(d.estim)} (+${d.demora} min)${etiquetaGrupoLocal(item)}`;
   });
-  const textosGrupo = [
-    `⏰ ${nuevos.length === 1 ? "Demora en el Sarmiento" : "Demoras en el Sarmiento"}\n\n` +
+  const resto = ordenados.length - mostrados.length;
+  return [
+    `⏰ ${mostrados.length === 1 ? "Demora activa en el Sarmiento" : "Demoras activas en el Sarmiento"}\n\n` +
       bloques.join("\n\n") +
+      (resto > 0 ? `\n\n…y ${resto} más.` : "") +
       `\n\nHorarios estimados, pueden variar.`,
   ];
-  return { nuevos, texto, textosGrupo };
 }
 
 export async function chequearCancelacionesProxy() {
@@ -378,7 +365,17 @@ export async function contextoProxyParaBot() {
   // Formaciones en Once/Moreno: si ya salió, si está esperando en la estación (vigiaSalidas.js).
   const bloqueFormaciones = contextoSalidasParaBot();
 
-  const relevantes = barrido.todos.filter((item) => item.r?.servicio?.cancelacion || item.r?.servicio?.leyenda);
+  // Cancelaciones y leyendas primero; después los trenes con demora de 10+ min
+  // (así, si preguntan por el servicio, el bot puede mencionar las demoras vigentes).
+  const conAviso = barrido.todos.filter((item) => item.r?.servicio?.cancelacion || item.r?.servicio?.leyenda);
+  const demoradosAhora = barrido.todos
+    .filter((item) => {
+      if (conAviso.includes(item)) return false;
+      const d = datosServicio(item);
+      return d.demora != null && d.demora >= UMBRAL_DEMORA_MIN;
+    })
+    .sort((a, b) => (datosServicio(b).demora ?? 0) - (datosServicio(a).demora ?? 0));
+  const relevantes = [...conAviso, ...demoradosAhora];
   if (!relevantes.length) return [bloqueRecorrido, bloqueFormaciones].filter(Boolean).join("\n") || null;
 
   const lineas = relevantes.slice(0, 12).map((item) => {
@@ -392,7 +389,7 @@ export async function contextoProxyParaBot() {
   const bloqueCancelaciones =
     `\n== ESTADO EN VIVO — APP TRENES ARGENTINOS (declarada fuente de verdad; consultado ahora mismo) ==\n` +
     lineas.join("\n") +
-    `\nEsto es lo que se detecta EN ESTE MOMENTO (no vencido, no hay que calcular vigencia): tiene la misma prioridad que los avisos de la fuente de verdad por texto. Nunca menciones cómo se obtuvo este dato ni nombres de sistemas o mecanismos internos. Un tren específico cancelado no implica que todo el ramal esté cortado; hablá solo del/de los tren(es) que aparecen acá salvo que haya varios en el mismo tramo y horario.`;
+    `\nEsto es lo que se detecta EN ESTE MOMENTO (no vencido, no hay que calcular vigencia): tiene la misma prioridad que los avisos de la fuente de verdad por texto. Nunca menciones cómo se obtuvo este dato ni nombres de sistemas o mecanismos internos. Si preguntan por el estado del servicio, mencioná también los trenes con demora de 10+ min que aparezcan acá (con su estación y los minutos). Un tren específico cancelado no implica que todo el ramal esté cortado; hablá solo del/de los tren(es) que aparecen acá salvo que haya varios en el mismo tramo y horario.`;
 
   return [bloqueRecorrido, bloqueFormaciones, bloqueCancelaciones].filter(Boolean).join("\n");
 }
