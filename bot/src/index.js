@@ -50,6 +50,7 @@ import { describirVideo } from "./videoIntel.js";
 import { capturaYaProcesada, recordarCaptura, analizarCapturaApp, calcularEventoEn, guardarCaptura, guardarCotejo, cotejarCaptura, armarReporte, proponerEstado, revisarCaptura } from "./capturasApp.js";
 import { esOcupacionEnVivo } from "./ocupacion.js";
 import { esConsultaDeLuz, mencionaEnergia, RESPUESTA_SIN_DATO_LUZ } from "./luz.js";
+import { esConsultaTrenParado, mencionaTrenParado } from "./trenParado.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
@@ -226,13 +227,25 @@ function manejarSinRespuesta(respuestaCruda, fueEtiquetado) {
 
 // ¿Alguna fuente viva (avisos, semáforo, alertas API, comunicados) habla de
 // luz/energía? Sin eso, el bot no sabe si hay luz y no debe contestarlo.
-async function hayDatoDeEnergia() {
+async function textosFuentesVivas() {
   const textos = [];
   try { for (const a of await avisosVigentes()) textos.push(a.resumen, a.textoOriginal); } catch {}
   try { const e = await getEstadoServicio(); if (e) textos.push(e.mensaje, ...e.alertas); } catch {}
   try { const al = await getAlertasTrenes(); if (al) textos.push(JSON.stringify(al)); } catch {}
   try { for (const c of await comunicadosRecientes(48)) textos.push(c.resumen); } catch {}
-  return mencionaEnergia(...textos);
+  return textos;
+}
+
+async function hayDatoDeEnergia() {
+  return mencionaEnergia(...(await textosFuentesVivas()));
+}
+
+// ¿Alguna fuente viva confirma un tren detenido (o una causa que lo explique)?
+// Incluye el estado en vivo de la app (leyendas/cancelaciones del proxy).
+async function hayDatoDeTrenParado() {
+  const textos = await textosFuentesVivas();
+  try { textos.push(await contextoProxyParaBot()); } catch {}
+  return mencionaTrenParado(...textos);
 }
 
 async function armarContexto(pregunta) {
@@ -2128,6 +2141,15 @@ bot.on("text", async (ctx) => {
       await ctx.reply(RESPUESTA_SIN_DATO_LUZ, opcionesRespuesta(ctx));
       if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: RESPUESTA_SIN_DATO_LUZ });
       if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: RESPUESTA_SIN_DATO_LUZ });
+      return;
+    }
+
+    // "¿Por qué hay un tren parado en X?": solo se contesta si alguna fuente
+    // viva confirma un tren detenido. Sin dato, el bot se queda callado (al
+    // aire y también si lo mencionan): a pedido del admin (oct 2026) no quiere
+    // respuestas negativas tipo "no veo ningún tren parado".
+    if (esConsultaTrenParado(textoOriginal) && !(await hayDatoDeTrenParado())) {
+      console.log(`Omitida (tren parado sin dato en las fuentes, el bot no responde esto) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`);
       return;
     }
 
