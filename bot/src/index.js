@@ -29,7 +29,7 @@ import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, horariosLocalesEstacionTodosLosDias, LOCALES, getDayType, infoTransporteEstacion, buscarEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
-import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema, esTemaEspaciado, programarRespuestaDiferida, marcarRespondidoMensaje, marcarRespondidoUsuario } from "./respuestaDedupe.js";
+import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema, esTemaEspaciado, programarRespuestaDiferida, marcarRespondidoMensaje, marcarRespondidoUsuario, enfriandoAlAire, reservarAlAire, ESPERA_AL_AIRE_MS } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
@@ -2074,11 +2074,15 @@ bot.use((ctx, next) => {
   return next();
 });
 
-// `diferida`: segunda pasada de una pregunta al aire de estado/horarios que se
-// había omitido porque el bot ya contestó el tema hace poco; se dispara si a los
-// 10 min el usuario sigue sin respuesta. No repite moderación, logs ni avisos.
+// `diferida` marca una segunda pasada del mismo mensaje (sin repetir moderación,
+// logs ni avisos):
+//   "espera":       el bot esperó ESPERA_AL_AIRE_MS antes de contestar una pregunta al
+//                   aire y recién ahí la responde (si no se volvió repetida mientras tanto).
+//   "sinRespuesta": una pregunta de estado/horarios omitida por repetida sigue sin
+//                   respuesta de nadie a los 10 min: contesta igual.
 async function manejarTexto(ctx, { diferida = false } = {}) {
   let preguntaParaReintento = null;
+  let liberarAlAire = null;
   try {
     if (!esChatAutorizado(ctx)) return;
 
@@ -2185,13 +2189,13 @@ async function manejarTexto(ctx, { diferida = false } = {}) {
 
     const temaDeLaPregunta = detectarTema(textoOriginal);
     const esConsultaAlAire = esGrupo && !fueEtiquetado && pareceConsultaRelevante(textoOriginal);
-    const esRepetida = !diferida && esConsultaAlAire && !esReplyAOtraPersona && yaRespondidoRecientemente(temaDeLaPregunta); // no repetir el mismo tema en poco tiempo
+    const esRepetida = diferida !== "sinRespuesta" && esConsultaAlAire && !esReplyAOtraPersona && (yaRespondidoRecientemente(temaDeLaPregunta) || enfriandoAlAire()); // no repetir el mismo tema en poco tiempo
     const esPreguntaAlAire = esConsultaAlAire && !esReplyAOtraPersona && !esRepetida;
 
     // Log de diagnóstico: una consulta que parecía relevante y el bot NO tomó.
     if (esConsultaAlAire && !esPreguntaAlAire) {
       console.log(
-        `Al aire omitida (${esReplyAOtraPersona ? "es reply a otra persona" : `tema repetido: ${temaDeLaPregunta}`}) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`
+        `Al aire omitida (${esReplyAOtraPersona ? "es reply a otra persona" : `tema repetido o respuesta al aire reciente: ${temaDeLaPregunta ?? "sin tema"}`}) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`
       );
     }
 
@@ -2202,7 +2206,7 @@ async function manejarTexto(ctx, { diferida = false } = {}) {
         chatId: ctx.chat.id,
         msgId: ctx.message.message_id,
         userId: ctx.from?.id,
-        alVencer: () => manejarTexto(ctx, { diferida: true }),
+        alVencer: () => manejarTexto(ctx, { diferida: "sinRespuesta" }),
       });
       if (programada) console.log(`Respuesta diferida programada (${temaDeLaPregunta}, 10 min sin respuesta) usuario=${ctx.from?.id}`);
     }
@@ -2212,8 +2216,20 @@ async function manejarTexto(ctx, { diferida = false } = {}) {
     // entre usuarios (reply a otra persona), no repite el mismo tema en poco
     // tiempo y respeta el límite de uso. Si lo mencionan, siempre contesta.
     if (esConsultaSalidasOnce(textoOriginal) && !esReplyAOtraPersona) {
-      if (!fueEtiquetado && esGrupo && yaRespondidoRecientemente("tablero_once")) {
+      if (!fueEtiquetado && esGrupo && (yaRespondidoRecientemente("tablero_once") || enfriandoAlAire())) {
         console.log(`Al aire omitida (tablero de Once ya compartido hace poco) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`);
+        return;
+      }
+      // Al aire también espera antes de contestar (ver más abajo el mismo criterio).
+      if (!fueEtiquetado && esGrupo && !diferida) {
+        const programada = programarRespuestaDiferida({
+          chatId: ctx.chat.id,
+          msgId: ctx.message.message_id,
+          userId: ctx.from?.id,
+          esperaMs: ESPERA_AL_AIRE_MS,
+          alVencer: () => manejarTexto(ctx, { diferida: "espera" }),
+        });
+        console.log(programada ? `Tablero de Once al aire en espera (${Math.round(ESPERA_AL_AIRE_MS / 1000)} s) usuario=${ctx.from?.id}` : `Tablero de Once al aire omitido (el usuario ya tiene una pregunta en espera) usuario=${ctx.from?.id}`);
         return;
       }
       if (excedioLimite(ctx.from?.id)) {
@@ -2235,6 +2251,22 @@ async function manejarTexto(ctx, { diferida = false } = {}) {
 
     if (!fueEtiquetado && !esPreguntaAlAire) return;
 
+    // Al aire: no contesta al instante. Espera un rato (por si alguien del grupo
+    // se adelanta) y recién ahí responde, volviendo a chequear que no se haya
+    // vuelto repetida. Si lo mencionan directo, contesta de inmediato.
+    if (!fueEtiquetado && !diferida) {
+      const programada = programarRespuestaDiferida({
+        chatId: ctx.chat.id,
+        msgId: ctx.message.message_id,
+        userId: ctx.from?.id,
+        esperaMs: ESPERA_AL_AIRE_MS,
+        alVencer: () => manejarTexto(ctx, { diferida: "espera" }),
+      });
+      console.log(programada ? `Al aire en espera (${Math.round(ESPERA_AL_AIRE_MS / 1000)} s) usuario=${ctx.from?.id}` : `Al aire omitida (el usuario ya tiene una pregunta en espera) usuario=${ctx.from?.id}`);
+      return;
+    }
+    if (!fueEtiquetado) liberarAlAire = reservarAlAire();
+
     const pregunta = limpiarMencion(textoOriginal);
     if (!pregunta) return;
     preguntaParaReintento = pregunta;
@@ -2249,6 +2281,7 @@ async function manejarTexto(ctx, { diferida = false } = {}) {
       }
       // Si fue una pregunta al aire, directamente no contesta nada.
       else console.log(`Al aire omitida (límite de uso) usuario=${ctx.from?.id}`);
+      liberarAlAire?.();
       return;
     }
 
@@ -2261,7 +2294,7 @@ async function manejarTexto(ctx, { diferida = false } = {}) {
         if (esChatPrivado) await registrarChatPrivado({ ctx, pregunta, respuesta: respuestaCacheada });
         if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta: respuestaCacheada });
         if (esGrupo && !fueEtiquetado) registrarRespuestaAlAire(temaDeLaPregunta);
-      }
+      } else liberarAlAire?.();
       return;
     }
 
@@ -2277,11 +2310,13 @@ async function manejarTexto(ctx, { diferida = false } = {}) {
       if (esGrupo) await registrarChatGrupo({ ctx, pregunta, respuesta });
       if (esGrupo && !fueEtiquetado) registrarRespuestaAlAire(temaDeLaPregunta);
     }
+    if (!respuesta) liberarAlAire?.();
     if (!respuesta && !fueEtiquetado) console.log(`Al aire omitida (Gemini sin respuesta concreta): "${pregunta.slice(0, 80)}"`);
     // Si respuesta es null (pregunta al aire sin dato concreto), el bot se
     // queda callado a propósito — no hace falta contestar cada cosa que se
     // dice en el grupo si no tiene algo útil que aportar.
   } catch (err) {
+    liberarAlAire?.();
     console.error("Error respondiendo mensaje:", err);
     if (ctx.chat?.type === "private") {
       await registrarChatPrivado({

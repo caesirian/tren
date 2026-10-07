@@ -15,6 +15,31 @@ const VENTANA_MENSAJES = 10;
 const TEMAS_ESPACIADOS = new Set(["estado", "horarios"]);
 const VENTANA_ESPACIADA_MS = 30 * 60 * 1000;
 const ESPERA_SIN_RESPUESTA_MS = 10 * 60 * 1000;
+// Respuestas al aire en general (cualquier tema): el bot contestaba al
+// instante y una atrás de otra. Ahora espera ESPERA_AL_AIRE_MS antes de
+// contestar (por si alguien del grupo se adelanta) y, tras contestar al aire,
+// no vuelve a hacerlo solo durante COOLDOWN_AL_AIRE_MS. Si lo mencionan, nada de
+// esto aplica.
+export const ESPERA_AL_AIRE_MS = 60 * 1000;
+const COOLDOWN_AL_AIRE_MS = 5 * 60 * 1000;
+let ultimoAlAireMs = 0;
+
+export function enfriandoAlAire() {
+  return Date.now() - ultimoAlAireMs < COOLDOWN_AL_AIRE_MS;
+}
+
+// Reserva el turno al aire mientras se arma la respuesta (evita que dos
+// preguntas que vencen casi juntas contesten ambas). Devuelve una función para
+// liberarlo si al final el bot no contestó nada.
+export function reservarAlAire() {
+  const previo = ultimoAlAireMs;
+  const marca = Date.now();
+  ultimoAlAireMs = marca;
+  return () => {
+    if (ultimoAlAireMs === marca) ultimoAlAireMs = previo;
+  };
+}
+
 const LIMITE_MAX_MS = 90 * 60 * 1000; // pasado esto, contesta igual sin importar mensajes de por medio
 const PODA_MS = LIMITE_MAX_MS; // no podar antes de que el tope de arriba pueda aplicar
 
@@ -63,6 +88,7 @@ export function yaRespondidoRecientemente(tema) {
 }
 
 export function registrarRespuestaAlAire(tema) {
+  ultimoAlAireMs = Date.now(); // cuenta para el enfriamiento general, tenga tema o no
   if (!tema) return;
   historial.push({ tema, ts: Date.now(), seq: contadorMensajes });
 }
@@ -86,7 +112,7 @@ export function esTemaEspaciado(tema) {
 // viven en memoria: si Render reinicia, el pendiente se pierde y el bot queda callado.
 const pendientes = new Map(); // `${chatId}:${msgId}` -> { chatId, userId, timer }
 
-export function programarRespuestaDiferida({ chatId, msgId, userId, alVencer }) {
+export function programarRespuestaDiferida({ chatId, msgId, userId, alVencer, esperaMs = ESPERA_SIN_RESPUESTA_MS }) {
   const clave = `${chatId}:${msgId}`;
   if (pendientes.has(clave)) return false;
   // Un usuario con una pregunta pendiente en el chat no suma otra.
@@ -94,7 +120,7 @@ export function programarRespuestaDiferida({ chatId, msgId, userId, alVencer }) 
   const timer = setTimeout(() => {
     pendientes.delete(clave);
     Promise.resolve(alVencer()).catch((err) => console.error("Error en respuesta diferida:", err.message));
-  }, ESPERA_SIN_RESPUESTA_MS);
+  }, esperaMs);
   timer.unref?.();
   pendientes.set(clave, { chatId, userId, timer });
   return true;
