@@ -34,7 +34,7 @@ const COLECCION_ORIGEN = "origenesInusualesVistos";
 // Cuando preguntan por el servicio, el bot igual puede mencionar las demoras
 // vigentes (ver contextoProxyParaBot).
 const INTERVALO_AVISO_DEMORAS_MS = 60 * 60 * 1000;
-const MAX_DEMORAS_EN_AVISO_GRUPO = 6;
+const MAX_DEMORAS_EN_AVISO_GRUPO = 3; // aviso corto: el detalle completo está en el tablero
 const COLECCION_CONTROL_AVISOS = "controlAvisosGrupo";
 let ultimoAvisoDemorasMs = 0;
 const COLECCION_LOCALES = "localesFueraCronogramaVistos";
@@ -277,17 +277,16 @@ async function resumenDemorasParaGrupo(demorados) {
 
   const ordenados = [...demorados].sort((a, b) => (datosServicio(b).demora ?? 0) - (datosServicio(a).demora ?? 0));
   const mostrados = ordenados.slice(0, MAX_DEMORAS_EN_AVISO_GRUPO);
-  const bloques = mostrados.map((item) => {
+  // Una línea por tren, sin pie ni etiquetas largas (a pedido del admin: los
+  // avisos de demora largos resultaban molestos e invasivos en el grupo).
+  const lineas = mostrados.map((item) => {
     const d = datosServicio(item);
-    return `🚆 #${d.s.numero ?? "?"} · sentido ${d.destino}\n📍 ${d.est.nombre}: ${hora(d.prog)} → ${hora(d.estim)} (+${d.demora} min)${etiquetaGrupoLocal(item)}`;
+    const local = avisoGrupoLocalesActivo() && clasificarServicio(item).esLocal ? " (local)" : "";
+    return `#${d.s.numero ?? "?"} → ${d.destino}${local}: +${d.demora} min en ${d.est.nombre}`;
   });
   const resto = ordenados.length - mostrados.length;
-  return [
-    `⏰ ${mostrados.length === 1 ? "Demora activa en el Sarmiento" : "Demoras activas en el Sarmiento"}\n\n` +
-      bloques.join("\n\n") +
-      (resto > 0 ? `\n\n…y ${resto} más.` : "") +
-      `\n\nHorarios estimados, pueden variar.`,
-  ];
+  const titulo = mostrados.length === 1 ? "⏰ Demora:" : "⏰ Demoras:";
+  return [mostrados.length === 1 ? `${titulo} ${lineas[0]}` : `${titulo}\n${lineas.join("\n")}${resto > 0 ? `\n…y ${resto} más` : ""}`];
 }
 
 export async function chequearCancelacionesProxy() {
