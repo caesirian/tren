@@ -7,6 +7,14 @@
 
 const VENTANA_MS = 10 * 60 * 1000;
 const VENTANA_MENSAJES = 10;
+// Estado general y horarios: el bot respondía demasiado seguido y resultaba
+// molesto (admin, oct 2026). Si ya se contestó el tema en los últimos
+// VENTANA_ESPACIADA_MS, no vuelve a contestar solo al aire; recién si el
+// usuario que preguntó sigue sin respuesta (de nadie) tras ESPERA_SIN_RESPUESTA_MS,
+// el bot contesta igual.
+const TEMAS_ESPACIADOS = new Set(["estado", "horarios"]);
+const VENTANA_ESPACIADA_MS = 30 * 60 * 1000;
+const ESPERA_SIN_RESPUESTA_MS = 10 * 60 * 1000;
 const LIMITE_MAX_MS = 90 * 60 * 1000; // pasado esto, contesta igual sin importar mensajes de por medio
 const PODA_MS = LIMITE_MAX_MS; // no podar antes de que el tope de arriba pueda aplicar
 
@@ -46,6 +54,7 @@ export function yaRespondidoRecientemente(tema) {
   if (!tema) return false;
   const ahora = Date.now();
   historial = historial.filter((h) => ahora - h.ts < PODA_MS);
+  if (TEMAS_ESPACIADOS.has(tema)) return historial.some((h) => h.tema === tema && ahora - h.ts < VENTANA_ESPACIADA_MS);
   return historial.some((h) => {
     if (h.tema !== tema) return false;
     if (ahora - h.ts >= LIMITE_MAX_MS) return false; // pasaron 90+ min: contesta igual
@@ -64,4 +73,47 @@ export function registrarRespuestaAlAire(tema) {
 export function olvidarTema(tema) {
   if (!tema) return;
   historial = historial.filter((h) => h.tema !== tema);
+}
+
+export function esTemaEspaciado(tema) {
+  return TEMAS_ESPACIADOS.has(tema);
+}
+
+// ---- Respuesta diferida: "si ese usuario no tuvo respuesta en 10 minutos, el bot contesta" ----
+// Cada pregunta al aire omitida por tema espaciado queda pendiente. Se resuelve
+// (y el bot NO contesta) si alguien le responde al mensaje (reply de una persona
+// o del bot) o si el bot le contesta a ese usuario por otro camino. Los timers
+// viven en memoria: si Render reinicia, el pendiente se pierde y el bot queda callado.
+const pendientes = new Map(); // `${chatId}:${msgId}` -> { chatId, userId, timer }
+
+export function programarRespuestaDiferida({ chatId, msgId, userId, alVencer }) {
+  const clave = `${chatId}:${msgId}`;
+  if (pendientes.has(clave)) return false;
+  // Un usuario con una pregunta pendiente en el chat no suma otra.
+  for (const p of pendientes.values()) if (p.chatId === chatId && p.userId === userId) return false;
+  const timer = setTimeout(() => {
+    pendientes.delete(clave);
+    Promise.resolve(alVencer()).catch((err) => console.error("Error en respuesta diferida:", err.message));
+  }, ESPERA_SIN_RESPUESTA_MS);
+  timer.unref?.();
+  pendientes.set(clave, { chatId, userId, timer });
+  return true;
+}
+
+export function marcarRespondidoMensaje(chatId, msgId) {
+  const clave = `${chatId}:${msgId}`;
+  const p = pendientes.get(clave);
+  if (!p) return;
+  clearTimeout(p.timer);
+  pendientes.delete(clave);
+}
+
+export function marcarRespondidoUsuario(chatId, userId) {
+  if (userId == null) return;
+  for (const [clave, p] of pendientes) {
+    if (p.chatId === chatId && p.userId === userId) {
+      clearTimeout(p.timer);
+      pendientes.delete(clave);
+    }
+  }
 }

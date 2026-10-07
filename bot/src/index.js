@@ -29,7 +29,7 @@ import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
 import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, horariosLocalesEstacionTodosLosDias, LOCALES, getDayType, infoTransporteEstacion, buscarEstacion } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
-import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema } from "./respuestaDedupe.js";
+import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema, esTemaEspaciado, programarRespuestaDiferida, marcarRespondidoMensaje, marcarRespondidoUsuario } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
@@ -2059,7 +2059,25 @@ async function moderarSpam(ctx, texto) {
   return true;
 }
 
-bot.on("text", async (ctx) => {
+// Cuando el bot le contesta a alguien (por el camino que sea), una pregunta
+// pendiente de ese usuario ya no necesita la respuesta diferida.
+bot.use((ctx, next) => {
+  if (ctx.chat && ctx.message?.message_id != null && typeof ctx.reply === "function") {
+    const replyOriginal = ctx.reply.bind(ctx);
+    ctx.reply = async (...args) => {
+      const r = await replyOriginal(...args);
+      marcarRespondidoMensaje(ctx.chat.id, ctx.message.message_id);
+      marcarRespondidoUsuario(ctx.chat.id, ctx.from?.id);
+      return r;
+    };
+  }
+  return next();
+});
+
+// `diferida`: segunda pasada de una pregunta al aire de estado/horarios que se
+// había omitido porque el bot ya contestó el tema hace poco; se dispara si a los
+// 10 min el usuario sigue sin respuesta. No repite moderación, logs ni avisos.
+async function manejarTexto(ctx, { diferida = false } = {}) {
   let preguntaParaReintento = null;
   try {
     if (!esChatAutorizado(ctx)) return;
@@ -2069,13 +2087,15 @@ bot.on("text", async (ctx) => {
     const esChatPrivado = !esGrupo;
 
     // Spam/promociones en el grupo: no se responde, se borra y se avisa al admin.
-    if (esGrupo && (await moderarSpam(ctx, textoOriginal))) return;
+    if (esGrupo && !diferida && (await moderarSpam(ctx, textoOriginal))) return;
 
     // Alimenta la señal informal de "nadie se queja" — se registra SIEMPRE
     // que sea un mensaje de grupo, aunque no le hablen al bot directamente.
-    if (esGrupo) {
+    if (esGrupo && !diferida) {
       registrarMensajeGrupo(textoOriginal, ctx.from?.id);
       incrementarContadorMensajes();
+      // Si este mensaje le responde a otro, la pregunta de ese otro ya tuvo respuesta.
+      if (ctx.message.reply_to_message?.message_id != null) marcarRespondidoMensaje(ctx.chat.id, ctx.message.reply_to_message.message_id);
 
       // Fuente de verdad (Vivi): lo que escribe sobre el estado del servicio
       // se guarda como aviso con vencimiento y pasa a mandar en el contexto.
@@ -2101,7 +2121,7 @@ bot.on("text", async (ctx) => {
     }
 
     // Aviso al admin ante insultos o groserías, en grupo O privado.
-    if (esInsulto(textoOriginal) && process.env.ADMIN_TELEGRAM_ID) {
+    if (!diferida && esInsulto(textoOriginal) && process.env.ADMIN_TELEGRAM_ID) {
       const from = ctx.from || {};
       const quien = from.username ? `@${from.username}` : [from.first_name, from.last_name].filter(Boolean).join(" ") || `ID ${from.id}`;
       const fechaHora = new Intl.DateTimeFormat("es-AR", {
@@ -2165,7 +2185,7 @@ bot.on("text", async (ctx) => {
 
     const temaDeLaPregunta = detectarTema(textoOriginal);
     const esConsultaAlAire = esGrupo && !fueEtiquetado && pareceConsultaRelevante(textoOriginal);
-    const esRepetida = esConsultaAlAire && !esReplyAOtraPersona && yaRespondidoRecientemente(temaDeLaPregunta); // no repetir el mismo tema en poco tiempo
+    const esRepetida = !diferida && esConsultaAlAire && !esReplyAOtraPersona && yaRespondidoRecientemente(temaDeLaPregunta); // no repetir el mismo tema en poco tiempo
     const esPreguntaAlAire = esConsultaAlAire && !esReplyAOtraPersona && !esRepetida;
 
     // Log de diagnóstico: una consulta que parecía relevante y el bot NO tomó.
@@ -2173,6 +2193,18 @@ bot.on("text", async (ctx) => {
       console.log(
         `Al aire omitida (${esReplyAOtraPersona ? "es reply a otra persona" : `tema repetido: ${temaDeLaPregunta}`}) hilo=${ctx.message.message_thread_id ?? "-"}: "${textoOriginal.slice(0, 80)}"`
       );
+    }
+
+    // Estado general / horarios omitido por repetido: si en 10 min nadie le
+    // respondió a este usuario, el bot contesta (segunda pasada, `diferida`).
+    if (esRepetida && esTemaEspaciado(temaDeLaPregunta)) {
+      const programada = programarRespuestaDiferida({
+        chatId: ctx.chat.id,
+        msgId: ctx.message.message_id,
+        userId: ctx.from?.id,
+        alVencer: () => manejarTexto(ctx, { diferida: true }),
+      });
+      if (programada) console.log(`Respuesta diferida programada (${temaDeLaPregunta}, 10 min sin respuesta) usuario=${ctx.from?.id}`);
     }
 
     // "¿Cómo están saliendo los trenes de Once?" → tablero de Once + ancla del
@@ -2296,7 +2328,9 @@ bot.on("text", async (ctx) => {
         .catch((e) => console.error("Error avisando al admin sobre fallo:", e.message));
     }
   }
-});
+}
+
+bot.on("text", (ctx) => manejarTexto(ctx));
 
 // --- Webhook + healthcheck ---
 const WEBHOOK_PATH = `/webhook/${BOT_TOKEN}`;
