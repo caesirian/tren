@@ -22,6 +22,7 @@ import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { detectarTramoProxy, barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora, recorridoVivo, textoRecorrido } from "./appTrenes.js";
 import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal } from "./locales.js";
+import { resumirDemoras } from "./resumenDemoras.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado } from "./servicioLimitado.js";
 import { contextoSalidasParaBot } from "./vigiaSalidas.js";
 
@@ -34,7 +35,6 @@ const COLECCION_ORIGEN = "origenesInusualesVistos";
 // Cuando preguntan por el servicio, el bot igual puede mencionar las demoras
 // vigentes (ver contextoProxyParaBot).
 const INTERVALO_AVISO_DEMORAS_MS = 60 * 60 * 1000;
-const MAX_DEMORAS_EN_AVISO_GRUPO = 3; // aviso corto: el detalle completo está en el tablero
 const COLECCION_CONTROL_AVISOS = "controlAvisosGrupo";
 let ultimoAvisoDemorasMs = 0;
 const COLECCION_LOCALES = "localesFueraCronogramaVistos";
@@ -275,18 +275,22 @@ async function resumenDemorasParaGrupo(demorados) {
       .catch((err) => console.error("Error guardando la marca del último aviso de demoras:", err.message));
   }
 
-  const ordenados = [...demorados].sort((a, b) => (datosServicio(b).demora ?? 0) - (datosServicio(a).demora ?? 0));
-  const mostrados = ordenados.slice(0, MAX_DEMORAS_EN_AVISO_GRUPO);
-  // Una línea por tren, sin pie ni etiquetas largas (a pedido del admin: los
-  // avisos de demora largos resultaban molestos e invasivos en el grupo).
-  const lineas = mostrados.map((item) => {
+  // Resumen en una oración (no una lista): el barrido repite la misma formación
+  // una vez por estación, así que se agrupa por número de servicio y se informa
+  // la conclusión (cuántos trenes, qué sentido, cuánto, desde cuándo).
+  const registros = demorados.map((item) => {
     const d = datosServicio(item);
-    const local = avisoGrupoLocalesActivo() && clasificarServicio(item).esLocal ? " (local)" : "";
-    return `#${d.s.numero ?? "?"} → ${d.destino}${local}: +${d.demora} min en ${d.est.nombre}`;
+    return {
+      numero: d.s.numero ?? null,
+      destino: d.destino,
+      demora: d.demora,
+      prog: d.prog,
+      estacion: d.est.nombre,
+      esLocal: avisoGrupoLocalesActivo() && clasificarServicio(item).esLocal,
+    };
   });
-  const resto = ordenados.length - mostrados.length;
-  const titulo = mostrados.length === 1 ? "⏰ Demora:" : "⏰ Demoras:";
-  return [mostrados.length === 1 ? `${titulo} ${lineas[0]}` : `${titulo}\n${lineas.join("\n")}${resto > 0 ? `\n…y ${resto} más` : ""}`];
+  const resumen = resumirDemoras(registros);
+  return resumen ? [resumen] : [];
 }
 
 export async function chequearCancelacionesProxy() {
