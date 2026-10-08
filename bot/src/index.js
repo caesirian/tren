@@ -43,7 +43,7 @@ import { iniciarViaje, estadoViaje, ubicacionUsuario, iniciarViajes, hayViajeAct
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
-import { reporteLocales } from "./locales.js";
+import { reporteLocales, clasificarServicio } from "./locales.js";
 import { evaluarEstadoAutomatico, cargarEstadoAuto, setEstadoAuto, estadoAutoActivo } from "./estadoAuto.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
 import { describirVideo } from "./videoIntel.js";
@@ -2475,6 +2475,22 @@ app.get("/api/tablero-mapa", async (req, res) => {
   try {
     const barrido = await barridoEstructurado();
     const trenes = posicionesEnVivo(barrido.todos, new Date());
+    // Marca de "local" (formación que sale de una estación intermedia) para pintarla distinto en el mapa.
+    // Campo aditivo: si algo falla, el mapa sigue funcionando sin la marca.
+    try {
+      const localPorNumero = new Map();
+      for (const item of barrido.todos) {
+        const c = clasificarServicio(item);
+        if (c.esLocal && c.numero != null && !localPorNumero.has(c.numero)) localPorNumero.set(c.numero, c);
+      }
+      for (const t of trenes) {
+        const c = t.numero != null ? localPorNumero.get(t.numero) : null;
+        t.local = !!c;
+        t.origenLocal = c ? c.origen : null;
+      }
+    } catch (e) {
+      console.error("/api/tablero-mapa: no se pudo marcar locales:", e.message);
+    }
     res.json({ estaciones: ESTACIONES_BARRIDO, trenes, horaActual: hora(new Date().toISOString()), consultadoEn: new Date().toISOString(), erroresProxy: barrido.errores });
   } catch (err) {
     console.error("Error en /api/tablero-mapa:", err.message);

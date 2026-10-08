@@ -2714,38 +2714,46 @@ console.log('[Firebase] Listener de estado inicializado');
 
   <style>
     #mapa-vivo .mv-aviso { margin: 0 0 14px; padding: 10px 14px; background: var(--yellow-bg); color: var(--yellow); border-radius: 10px; font-size: .78rem; }
+    #mapa-vivo { --local: #C026D3; }
     #mapa-vivo .mv-leyenda { display: flex; gap: 16px; flex-wrap: wrap; font-size: .78rem; color: var(--muted); margin-bottom: 10px; }
     #mapa-vivo .mv-leyenda span { display: inline-flex; align-items: center; gap: 5px; }
     #mapa-vivo .mv-leyenda i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
     #mapa-vivo .mv-wrap { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px 20px 90px; overflow-x: auto; }
-    #mapa-vivo .mv-stage { position: relative; min-width: 1000px; height: 130px; margin: 0 30px; }
+    #mapa-vivo .mv-stage { position: relative; min-width: 1000px; height: 150px; margin: 0 30px; }
     #mapa-vivo .mv-via { position: absolute; left: -12px; right: -12px; height: 12px; border-radius: 6px; background-repeat: repeat-x; background-position: 0 center; }
     #mapa-vivo .mv-via.ida { top: 30px; background-color: var(--celeste); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='12'%3E%3Cpath d='M8 2.5l3.5 3.5L8 9.5' fill='none' stroke='%23ffffff' stroke-opacity='.85' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
     #mapa-vivo .mv-via.vuelta { top: 90px; background-color: var(--navy); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='12'%3E%3Cpath d='M14 2.5L10.5 6l3.5 3.5' fill='none' stroke='%23ffffff' stroke-opacity='.85' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
     #mapa-vivo .mv-etiqueta { position: absolute; left: -12px; padding: 3px 10px; border-radius: 999px; font-size: .7rem; font-weight: 800; color: #fff; letter-spacing: .2px; white-space: nowrap; }
     #mapa-vivo .mv-etiqueta.ida { top: 2px; background: var(--celeste); }
     #mapa-vivo .mv-etiqueta.vuelta { top: 62px; background: var(--navy); }
-    #mapa-vivo .mv-estacion { position: absolute; top: 0; width: 0; height: 130px; }
+    #mapa-vivo .mv-estacion { position: absolute; top: 0; width: 0; height: 150px; }
     #mapa-vivo .mv-estacion .mv-linea { position: absolute; left: -1px; top: 40px; width: 2px; height: 50px; background: var(--border); }
     #mapa-vivo .mv-estacion .mv-punto { position: absolute; left: -8px; width: 16px; height: 16px; border-radius: 50%; background: var(--card); border: 3px solid var(--blue); box-sizing: border-box; }
     #mapa-vivo .mv-estacion .mv-punto.ida { top: 28px; }
     #mapa-vivo .mv-estacion .mv-punto.vuelta { top: 88px; }
-    #mapa-vivo .mv-estacion .mv-nombre { position: absolute; top: 112px; left: 0; transform-origin: top left; transform: rotate(45deg); font-size: .62rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
+    #mapa-vivo .mv-estacion .mv-nombre { position: absolute; top: 140px; left: 0; transform-origin: top left; transform: rotate(45deg); font-size: .62rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
     #mapa-vivo .mv-estacion.cabecera .mv-nombre { color: var(--navy); font-weight: 800; font-size: .7rem; }
-    #mapa-vivo .mv-tren { position: absolute; width: 26px; height: 26px; margin-left: -13px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .6rem; font-weight: 800; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,43,92,.3); transition: left 1s linear; z-index: 2; }
-    #mapa-vivo .mv-tren.ida { top: 23px; }
-    #mapa-vivo .mv-tren.vuelta { top: 83px; }
-    #mapa-vivo .mv-tren::after { content: ""; position: absolute; top: 50%; margin-top: -5px; border: 5px solid transparent; }
-    #mapa-vivo .mv-tren.ida::after { right: -12px; border-left: 8px solid var(--navy); border-right: 0; }
-    #mapa-vivo .mv-tren.vuelta::after { left: -12px; border-right: 8px solid var(--navy); border-left: 0; }
+    #mapa-vivo .mv-tren { position: absolute; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; color: var(--navy); border: 2px solid #fff; box-sizing: border-box; box-shadow: 0 1px 4px rgba(0,43,92,.35); transition: left 1s linear; z-index: 2; }
+    #mapa-vivo .mv-tren.ida { top: 30px; }
+    #mapa-vivo .mv-tren.vuelta { top: 90px; }
+    #mapa-vivo .mv-tren::after { content: ""; position: absolute; top: 50%; margin-top: -4px; border: 4px solid transparent; }
+    #mapa-vivo .mv-tren.ida::after { right: -9px; border-left: 6px solid var(--navy); border-right: 0; }
+    #mapa-vivo .mv-tren.vuelta::after { left: -9px; border-right: 6px solid var(--navy); border-left: 0; }
+    #mapa-vivo .mv-lbl { position: absolute; top: 100%; left: 50%; margin-top: 6px; transform: translateX(-50%); text-align: center; line-height: 1.15; white-space: nowrap; pointer-events: none; }
+    #mapa-vivo .mv-lbl b { display: block; font-size: .66rem; font-weight: 800; color: var(--navy); }
+    #mapa-vivo .mv-lbl em { display: block; font-style: normal; font-size: .58rem; font-weight: 800; color: var(--local); text-transform: uppercase; letter-spacing: .3px; }
     #mapa-vivo .mv-tren.ok { background: var(--green); }
     #mapa-vivo .mv-tren.demorado { background: var(--yellow); }
     #mapa-vivo .mv-tren.muy-demorado { background: var(--red); }
     #mapa-vivo .mv-tren.cancelado { background: #9CA3AF; }
+    #mapa-vivo .mv-tren.local { background: var(--local); }
+    #mapa-vivo .mv-tren.local.demorado { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--yellow); }
+    #mapa-vivo .mv-tren.local.muy-demorado { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--red); }
+    #mapa-vivo .mv-tren.local.cancelado { background: #9CA3AF; }
     #mapa-vivo .mv-tren.est { border-style: dashed; }
     #mapa-vivo .mv-mio-debug { display: block; white-space: pre-line; margin-top: 6px; font-weight: 500; font-size: .74rem; font-family: ui-monospace, Menlo, Consolas, monospace; opacity: .9; word-break: break-word; }
     #mapa-vivo .mv-tren.origen-inusual { outline: 3px solid #4338CA; outline-offset: 1px; }
-    #mapa-vivo .mv-tren .mv-tip { position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 5px 9px; border-radius: 8px; font-size: .68rem; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
+    #mapa-vivo .mv-tren .mv-tip { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 5px 9px; border-radius: 8px; font-size: .68rem; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
     #mapa-vivo .mv-tren:hover .mv-tip, #mapa-vivo .mv-tren:focus .mv-tip { display: block; }
     #mapa-vivo .mv-vacio { position: absolute; left: 0; right: 0; text-align: center; font-size: .78rem; color: var(--muted); font-weight: 600; }
     #mapa-vivo .mv-vacio.ida { top: 48px; }
@@ -2778,12 +2786,11 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-val.fail { border-color: var(--yellow); color: var(--yellow); background: var(--yellow-bg); }
     #mapa-vivo .mv-val.fail .mv-val-ico { background: var(--yellow); color: #fff; font-size: .95rem; }
     #mapa-vivo .mv-stage.con-mio .mv-tren:not(.mio) { opacity: .3; }
-    #mapa-vivo .mv-tren.mio { width: 34px; height: 34px; margin-left: -17px; z-index: 4; font-size: .72rem; box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); }
-    #mapa-vivo .mv-tren.mio.ida { top: 19px; }
-    #mapa-vivo .mv-tren.mio.vuelta { top: 79px; }
-    #mapa-vivo .mv-mio-tag { position: absolute; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; background: var(--celeste); color: #fff; font-size: .62rem; font-weight: 800; white-space: nowrap; pointer-events: none; }
-    #mapa-vivo .mv-tren.mio.ida .mv-mio-tag { top: 40px; }
-    #mapa-vivo .mv-tren.mio.vuelta .mv-mio-tag { top: -26px; }
+    #mapa-vivo .mv-tren.mio { width: 18px; height: 18px; margin-left: -9px; z-index: 4; box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); }
+    #mapa-vivo .mv-tren.mio.ida { top: 27px; }
+    #mapa-vivo .mv-tren.mio.vuelta { top: 87px; }
+    #mapa-vivo .mv-mio-tag { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; background: var(--celeste); color: #fff; font-size: .62rem; font-weight: 800; white-space: nowrap; pointer-events: none; }
+    #mapa-vivo .mv-tren.mio .mv-mio-tag { bottom: 30px; }
     @media (prefers-reduced-motion: no-preference) { #mapa-vivo .mv-tren.mio { animation: mvMioPulso 1.8s ease-in-out infinite; } }
     @keyframes mvMioPulso { 0%, 100% { box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); } 50% { box-shadow: 0 0 0 4px #fff, 0 0 0 11px rgba(0,149,212,.35), 0 4px 14px rgba(0,43,92,.45); } }
   </style>
@@ -2791,13 +2798,14 @@ console.log('[Firebase] Listener de estado inicializado');
     <div class="container">
       <span class="section-label">🗺️ En vivo</span>
       <h2 class="section-title" id="mapa-vivo-title">Mapa esquemático del ramal</h2>
-      <p class="section-sub">Dos vías: la de arriba va <strong>hacia Moreno ▶</strong> y la de abajo <strong>hacia Once ◀</strong>. La flecha de cada tren indica para dónde va. <span class="last-update-badge" id="mapaVivoEstado">🕐 conectando…</span></p>
+      <p class="section-sub">Dos vías: la de arriba va <strong>hacia Moreno ▶</strong> y la de abajo <strong>hacia Once ◀</strong>. Cada formación es un punto sobre la vía (la flecha indica para dónde va) y debajo tiene su número; si es un <strong>local</strong>, se pinta de fucsia y lo aclara. <span class="last-update-badge" id="mapaVivoEstado">🕐 conectando…</span></p>
       <p class="mv-aviso">📡 La posición sale del GPS de la formación cuando está disponible. Si no, se ESTIMA por horarios entre la última estación confirmada y la siguiente (círculo con borde punteado) y puede estar corrida, sobre todo con demoras grandes.</p>
       <div class="mv-leyenda">
         <span><i style="background:var(--green)"></i> en horario</span>
         <span><i style="background:var(--yellow)"></i> demorado</span>
         <span><i style="background:var(--red)"></i> muy demorado</span>
         <span><i style="background:#9CA3AF"></i> cancelado</span>
+        <span><i style="background:var(--local)"></i> local (sale de Flores, Liniers, Merlo o Castelar)</span>
         <span><i style="background:transparent;border:2px solid #4338CA"></i> origen inusual</span>
         <span><i style="background:var(--green);border:2px dashed #fff;box-shadow:0 0 0 1px var(--muted)"></i> posición estimada (sin GPS)</span>
       </div>
@@ -4324,15 +4332,26 @@ renderStations();
       const via = viaDe(t);
       hacia[via]++;
       const div = document.createElement("div");
-      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "");
+      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.local ? " local" : "") + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "");
       div.tabIndex = 0;
       div.style.left = (t.posicion / (n - 1)) * 100 + "%";
-      div.textContent = t.numero ?? "";
+      // Rótulo debajo de la vía: número de formación y, si es local, la mención.
+      const lbl = document.createElement("span");
+      lbl.className = "mv-lbl";
+      const num = document.createElement("b");
+      num.textContent = t.numero ?? "";
+      lbl.appendChild(num);
+      if (t.local) {
+        const loc = document.createElement("em");
+        loc.textContent = "Local" + (t.origenLocal ? " " + t.origenLocal : "");
+        lbl.appendChild(loc);
+      }
+      div.appendChild(lbl);
       const dem = t.cancelado ? "Cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
       const inusual = t.origenInusual ? " · ⚠ origen inusual" : "";
       const tip = document.createElement("span");
       tip.className = "mv-tip";
-      tip.textContent = "#" + (t.numero ?? "?") + " → " + t.destino + " · " + dem + inusual + (t.fuente === "gps" ? " · 📡 GPS" : t.fuente === "estimada" ? " · ≈ estimada" : "");
+      tip.textContent = "#" + (t.numero ?? "?") + (t.local ? " · LOCAL" + (t.origenLocal ? " " + t.origenLocal : "") : "") + " → " + t.destino + " · " + dem + inusual + (t.fuente === "gps" ? " · 📡 GPS" : t.fuente === "estimada" ? " · ≈ estimada" : "");
       div.appendChild(tip);
       if (mio && mio.tren === t) {
         div.classList.add("mio");
