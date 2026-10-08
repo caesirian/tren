@@ -22,7 +22,7 @@ import { Telegraf, Markup } from "telegraf";
 import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
-import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria, listarAlertasComplementarias, quitarAlertaComplementaria, limpiarAlertasComplementarias, alCambiarEstado, alAgregarAlerta } from "./firestoreStatus.js";
+import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria, listarAlertasComplementarias, quitarAlertaComplementaria, editarAlertaComplementaria, limpiarAlertasComplementarias, alCambiarEstado, alAgregarAlerta } from "./firestoreStatus.js";
 import { enviarPush, ultimaPushId, pushAutoActivo, setPushAuto, cargarPushAuto, iniciarPushAuto, pushPorCambioEstado, pushPorAlerta } from "./pushAuto.js";
 import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
@@ -1470,7 +1470,7 @@ bot.command("alerta", async (ctx) => {
 });
 
 // Ver / limpiar las alertas complementarias que se muestran en el sitio.
-// Uso: /alertas | /alertas quitar <n> | /alertas limpiar
+// Uso: /alertas | /alertas editar <n> <texto> | /alertas quitar <n> | /alertas limpiar
 bot.command("alertas", async (ctx) => {
   if (!esAdminEstado(ctx)) return;
   const args = (ctx.message.text || "").split(" ").slice(1);
@@ -1478,6 +1478,17 @@ bot.command("alertas", async (ctx) => {
     if (args[0]?.toLowerCase() === "limpiar") {
       await limpiarAlertasComplementarias();
       await ctx.reply("✅ Se vaciaron todas las alertas complementarias del sitio.");
+      return;
+    }
+    if (args[0]?.toLowerCase() === "editar") {
+      const n = Number(args[1]);
+      const nuevoTexto = args.slice(2).join(" ").trim();
+      if (!Number.isInteger(n) || n < 1 || !nuevoTexto) {
+        await ctx.reply("Uso: /alertas editar <n> <texto nuevo> (n es el número que muestra /alertas).");
+        return;
+      }
+      const anterior = await editarAlertaComplementaria(n - 1, nuevoTexto);
+      await ctx.reply(`✏️ Alerta ${n} actualizada en el sitio.\n\nAntes:\n"${anterior}"\n\nAhora:\n"${nuevoTexto}"`);
       return;
     }
     if (args[0]?.toLowerCase() === "quitar") {
@@ -1498,7 +1509,7 @@ bot.command("alertas", async (ctx) => {
     await ctx.reply(
       `📋 Alertas complementarias activas (${actuales.length}):\n\n` +
         actuales.map((a, i) => `${i + 1}. ${a}`).join("\n\n") +
-        `\n\n/alertas quitar <n> para sacar una · /alertas limpiar para vaciar todo.`
+        `\n\n/alertas editar <n> <texto> para modificar una · /alertas quitar <n> para sacar una · /alertas limpiar para vaciar todo.`
     );
   } catch (err) {
     console.error("Error en /alertas:", err.message);

@@ -107,6 +107,16 @@ export async function quitarAlertaComplementaria(indice) {
   return actuales[indice];
 }
 
+// Reemplaza el texto de una alerta existente (indice 0-based). No dispara push.
+export async function editarAlertaComplementaria(indice, texto) {
+  const actuales = await listarAlertasComplementarias();
+  if (indice < 0 || indice >= actuales.length) throw new Error(`No hay una alerta en la posición ${indice + 1} (hay ${actuales.length}).`);
+  const nuevas = actuales.map((a, i) => (i === indice ? texto : a));
+  const firestore = ensureInit();
+  await firestore.collection("estadoServicio").doc("actual").set({ alertas: nuevas }, { merge: true });
+  return actuales[indice];
+}
+
 export async function limpiarAlertasComplementarias() {
   const firestore = ensureInit();
   if (!firestore) throw new Error("Firestore no está configurado (faltan credenciales).");
