@@ -52,7 +52,7 @@ import { esOcupacionEnVivo } from "./ocupacion.js";
 import { esConsultaDeLuz, mencionaEnergia, RESPUESTA_SIN_DATO_LUZ } from "./luz.js";
 import { esConsultaTrenParado, mencionaTrenParado } from "./trenParado.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
-import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, textoAvisosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
+import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, avisosProgramados, textoAvisosParaContexto, textoProgramadosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
 import { guardarReporte, listarReportesPendientes, marcarReporteRevisado } from "./reportLogger.js";
@@ -256,6 +256,15 @@ async function armarContexto(pregunta) {
   const avisos = await avisosVigentes();
   if (avisos.length) partes.push(textoAvisosParaContexto(avisos));
 
+  // Eventos programados a futuro (obras, cortes anunciados): van en su propia
+  // sección y NO cuentan como estado actual del servicio.
+  try {
+    const programados = await avisosProgramados();
+    if (programados.length) partes.push(textoProgramadosParaContexto(programados));
+  } catch (err) {
+    console.error("Error armando avisos programados:", err.message);
+  }
+
   // Servicio limitado vigente (tramo donde SÍ circulan trenes): manda sobre el
   // cronograma y sobre los trenes "programados" que el proxy siga listando.
   const tramoLimitado = await getTramoLimitado().catch(() => null);
@@ -274,7 +283,7 @@ async function armarContexto(pregunta) {
   const estado = await getEstadoServicio();
   if (estado) {
     partes.push(
-      `\n== ESTADO EN VIVO (semáforo trensarmientoenlinea.com.ar) ==\nEstado: ${estado.etiqueta}\nMensaje: ${estado.mensaje}${estado.alertas.length ? `\nAlertas activas: ${estado.alertas.join(" | ")}` : ""}${estado.vigencia ? `\nVigente desde ${estado.vigencia.desde} hasta ${estado.vigencia.hasta}` : ""}\nÚltima actualización: ${estado.ultimaActualizacion || estado.actualizado || "desconocida"}`
+      `\n== ESTADO EN VIVO (semáforo trensarmientoenlinea.com.ar) ==\nEstado: ${estado.etiqueta}\nMensaje: ${estado.mensaje}${estado.alertas.length ? `\nAlertas cargadas en el sitio (OJO: pueden ser de una fecha futura; si mencionan un día u horario que todavía no llegó —hoy es ${new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())}— es un evento PROGRAMADO, no el estado de ahora): ${estado.alertas.join(" | ")}` : ""}${estado.vigencia ? `\nVigente desde ${estado.vigencia.desde} hasta ${estado.vigencia.hasta}` : ""}\nÚltima actualización: ${estado.ultimaActualizacion || estado.actualizado || "desconocida"}`
     );
   }
 

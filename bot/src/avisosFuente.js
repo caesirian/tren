@@ -65,6 +65,18 @@ export function esFuenteVerdad(ctx) {
   return lista.includes(id) || (!!user && lista.includes(user));
 }
 
+function fechaHoraARTexto(fecha) {
+  return new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(fecha);
+}
+
+// "YYYY-MM-DDTHH:MM" (reloj de Buenos Aires) -> Date, o null si no es válido.
+function parseFechaAR(txt) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(txt || ""));
+  if (!m) return null;
+  const t = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + AR_OFFSET_MS;
+  return Number.isFinite(t) ? new Date(t) : null;
+}
+
 function horaAR(fecha) {
   return new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false }).format(fecha);
 }
@@ -75,7 +87,7 @@ function limpiarJSON(t) {
 
 async function clasificar(texto, ahora) {
   const prompt = `
-Sos un clasificador. El siguiente mensaje lo escribió en el grupo de Telegram del Tren Sarmiento una persona de confianza que informa sobre el estado del servicio. Hora actual en Buenos Aires: ${horaAR(ahora)}.
+Sos un clasificador. El siguiente mensaje lo escribió en el grupo de Telegram del Tren Sarmiento una persona de confianza que informa sobre el estado del servicio. Fecha y hora actual en Buenos Aires: ${fechaHoraARTexto(ahora)}.
 
 Mensaje: """${texto}"""
 
@@ -87,7 +99,9 @@ Devolvé SOLO un JSON (sin markdown ni texto extra) con esta forma exacta:
   "duracionMin": número de minutos que dice que va a durar, o null si no lo dice,
   "venceHora": "HH:MM" (24hs, hora de Buenos Aires) si dice hasta qué hora dura, o null,
   "tramoDesde": nombre de una estación, o null,
-  "tramoHasta": nombre de la otra estación, o null
+  "tramoHasta": nombre de la otra estación, o null,
+  "comienzaEn": "YYYY-MM-DDTHH:MM" (hora de Buenos Aires) si el aviso habla de algo que EMPIEZA MÁS ADELANTE (ej. "este sábado", "mañana a las 10", "el domingo 11/10", "desde las 22 hs"), o null si está pasando ahora o no dice cuándo empieza,
+  "terminaEn": "YYYY-MM-DDTHH:MM" (hora de Buenos Aires) si dice hasta cuándo dura un evento programado (ej. "hasta el domingo a las 18"), o null
 }
 
 Criterios:
@@ -99,6 +113,7 @@ Criterios:
 - "otro_relevante": otro dato operativo útil para pasajeros (obra, desvío, cambio de andén).
 - Si es charla común, una pregunta, un saludo, un comentario sin dato del servicio: esAviso=false, tipo="ninguno".
 - No inventes duraciones: si no las dice, null.
+- comienzaEn / terminaEn: calculalas a partir de la fecha y hora actual de arriba (ej. si hoy es jueves 08/10 y dice "este fin de semana", sábado = 2026-10-10). Si dice "fin de semana" sin horario, usá el sábado 00:00 y el domingo 23:59. SOLO completalas si el evento NO está ocurriendo todavía; si ya está pasando, null.
 - tramoDesde / tramoHasta: SOLO si el mensaje dice entre qué dos estaciones circula el servicio limitado (ej. "servicio limitado entre Moreno y Liniers" → tramoDesde "Liniers", tramoHasta "Moreno"; "solo circulan trenes Haedo–Moreno" → "Haedo" y "Moreno"). Son las dos puntas del tramo donde los trenes SÍ circulan. Si el mensaje solo nombra el lugar de un accidente o una estación suelta, o no habla de tramo: null en ambos.
 `.trim();
 
@@ -146,12 +161,14 @@ export function calcularVencimiento({ tipo, duracionMin, venceHora }, ahora = ne
 async function cerrarAvisosAbiertos(ahora) {
   await limpiarTramoLimitado().catch(() => {}); // si se normalizó, también se cierra el servicio limitado
   const iso = ahora.toISOString();
-  enMemoria = enMemoria.map((a) => (a.venceEn > iso ? { ...a, cerrado: true } : a));
+  // Los eventos programados que todavía no empezaron NO se cierran con una normalización.
+  const yaEmpezo = (a) => !a.desdeEn || a.desdeEn <= iso;
+  enMemoria = enMemoria.map((a) => (a.venceEn > iso && yaEmpezo(a) ? { ...a, cerrado: true } : a));
   const firestore = ensureInit();
   if (!firestore) return;
   try {
     const snap = await firestore.collection(COLECCION).where("venceEn", ">", iso).get();
-    const abiertos = snap.docs.filter((d) => !d.data().cerrado);
+    const abiertos = snap.docs.filter((d) => !d.data().cerrado && yaEmpezo(d.data()));
     await Promise.all(abiertos.map((d) => d.ref.update({ cerrado: true, cerradoEn: iso })));
   } catch (err) {
     console.error("Error cerrando avisos:", err.message);
@@ -199,12 +216,28 @@ export async function procesarMensajeFuente({ texto, quien, userId, origen = "te
     return "normalizado";
   }
 
-  const { venceEn, estimado } = calcularVencimiento(clasif, ahora);
+  let { venceEn, estimado } = calcularVencimiento(clasif, ahora);
+
+  // Evento PROGRAMADO (todavía no empezó): no es el estado de ahora. Se guarda
+  // con desdeEn y recién se considera vigente cuando llega esa hora.
+  let desdeEn = null;
+  const comienza = parseFechaAR(clasif.comienzaEn);
+  if (comienza && comienza.getTime() > ahora.getTime() + 15 * 60 * 1000) {
+    desdeEn = comienza;
+    const termina = parseFechaAR(clasif.terminaEn);
+    if (termina && termina.getTime() > comienza.getTime()) {
+      venceEn = termina;
+      estimado = false;
+    } else {
+      venceEn = new Date(comienza.getTime() + TTL_MAX_MIN * 60 * 1000);
+      estimado = true;
+    }
+  }
 
   // Si ya hay un aviso vigente del mismo tipo que dice lo mismo (la fuente
   // repite o reconfirma), no se duplica: se renueva su vigencia.
   const resumenNuevo = String(clasif.resumen || limpio).slice(0, 300);
-  const vigentes = await avisosVigentes();
+  const vigentes = await avisosAbiertos();
   const igual = vigentes.find((a) => a.tipo === clasif.tipo && similitud(a.resumen, resumenNuevo) >= 0.5);
   if (igual) {
     const nuevoVence = new Date(Math.max(new Date(igual.venceEn).getTime(), venceEn.getTime())).toISOString();
@@ -230,6 +263,7 @@ export async function procesarMensajeFuente({ texto, quien, userId, origen = "te
     creadoPor: quien,
     userId: userId ?? null,
     timestamp: ahora.toISOString(),
+    desdeEn: desdeEn ? desdeEn.toISOString() : null,
     venceEn: venceEn.toISOString(),
     vigenciaEstimada: estimado,
     cerrado: false,
@@ -250,8 +284,8 @@ export async function procesarMensajeFuente({ texto, quien, userId, origen = "te
   return aviso;
 }
 
-// Avisos que siguen vigentes ahora (no vencidos ni cerrados), el más nuevo primero.
-export async function avisosVigentes() {
+// Todos los avisos abiertos (no vencidos ni cerrados), hayan empezado o no.
+async function avisosAbiertos() {
   const iso = new Date().toISOString();
   const firestore = ensureInit();
   let lista = enMemoria.filter((a) => a.venceEn > iso && !a.cerrado);
@@ -263,7 +297,22 @@ export async function avisosVigentes() {
       console.error("Error trayendo avisos vigentes:", err.message);
     }
   }
+  return lista;
+}
+
+// Avisos que valen AHORA (ya empezaron y no vencieron), el más nuevo primero.
+// Los programados a futuro quedan afuera: no son el estado actual.
+export async function avisosVigentes() {
+  const iso = new Date().toISOString();
+  const lista = (await avisosAbiertos()).filter((a) => !a.desdeEn || a.desdeEn <= iso);
   return lista.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+}
+
+// Eventos programados que todavía NO empezaron (obras, cortes anunciados), el más próximo primero.
+export async function avisosProgramados() {
+  const iso = new Date().toISOString();
+  const lista = (await avisosAbiertos()).filter((a) => a.desdeEn && a.desdeEn > iso);
+  return lista.sort((a, b) => new Date(a.desdeEn) - new Date(b.desdeEn));
 }
 
 // Para el admin (/avisos limpiar): cierra todo lo abierto a mano.
@@ -282,6 +331,15 @@ export function textoAvisosParaContexto(avisos, ahora = new Date()) {
     return `- [${a.tipo.replace("_", " ")}] Informado hace ${hace} min (${horaAR(new Date(a.timestamp))}): ${a.resumen}\n  Texto original: "${a.textoOriginal}"\n  ${vigencia}`;
   });
   return `\n== AVISOS VIGENTES DE LA FUENTE DE VERDAD (información más confiable y actual; manda sobre todo lo demás) ==\n${lineas.join("\n")}\nEstos avisos son TEMPORALES, nunca indefinidos: pasada la hora de vigencia dejan de aplicar y vuelve a regir el estado oficial.`;
+}
+
+function fechaCortaAR(fecha) {
+  return new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(fecha);
+}
+
+export function textoProgramadosParaContexto(avisos, ahora = new Date()) {
+  const lineas = avisos.map((a) => `- [${a.tipo.replace("_", " ")}] COMIENZA ${fechaCortaAR(new Date(a.desdeEn))} (todavía NO empezó) y va hasta ${fechaCortaAR(new Date(a.venceEn))}${a.vigenciaEstimada ? " (fin estimado)" : ""}: ${a.resumen}`);
+  return `\n== EVENTOS PROGRAMADOS A FUTURO (todavía NO están ocurriendo; hoy es ${fechaCortaAR(ahora)}) ==\n${lineas.join("\n")}\nEstos eventos NO son el estado actual del servicio: ante "¿cómo anda el servicio?" NO los cuentes como algo que pasa ahora. Mencionalos solo si preguntan por ese día/fecha, por obras o cortes próximos, o como una aclaración aparte al final ("ojo que el [día] hay [evento]"), siempre en futuro.`;
 }
 
 // Transcribe una nota de voz / audio con Gemini. Devuelve el texto, o null si
