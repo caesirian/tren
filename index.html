@@ -1029,6 +1029,7 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .noticia-card:last-child { border-bottom: none; }
 .noticia-card:hover { background: var(--cel-bg); }
 .noticia-card:hover .noticia-card-titulo { color: var(--celeste); }
+a.noticia-card { text-decoration: none; color: inherit; }
 
 .noticia-card-foto {
   width: 100px; height: 72px; border-radius: 10px;
@@ -1729,12 +1730,13 @@ function copete(html) {
 
 // URL directa a una noticia — para compartir (bot, redes, etc.)
 function urlNoticia(id) {
-  return `https://trensarmientoenlinea.com.ar/?noticia=${id}`;
+  return `https://trensarmientoenlinea.com.ar/noticias/${id}/`;
 }
 
 function buildCard(n) {
-  const btn = document.createElement('button');
+  const btn = document.createElement('a');
   btn.className = 'noticia-card';
+  btn.href = `/noticias/${n.id}/`;
   btn.setAttribute('aria-label', `Leer noticia: ${n.titulo}`);
   btn.innerHTML = `
     ${n.foto
@@ -1748,7 +1750,12 @@ function buildCard(n) {
       <div class="noticia-card-copete">${copete(n.contenido)}</div>
       <span class="noticia-card-leer">Leer nota →</span>
     </div>`;
-  btn.addEventListener('click', () => abrirArticulo(n.id));
+  btn.addEventListener('click', e => {
+    // Click normal → modal; Ctrl/Cmd/botón central → abre el link propio de la noticia
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+    e.preventDefault();
+    abrirArticulo(n.id);
+  });
   return btn;
 }
 
