@@ -429,6 +429,50 @@ export async function columnasCabecera(nombreEstacion, cantidad = 5) {
   return { estacion: nombreCabecera, columnas, servicioLimitado: limitado };
 }
 
+// Pantalla de estación (app lite): próximos trenes de CUALQUIER estación del ramal, separados por
+// sentido, con horario programado, estimado y minutos que faltan. Es aditivo: no toca lo existente.
+export async function proximosPorEstacion(nombreEstacion, cantidad = 4) {
+  const vacio = { moreno: [], once: [] };
+  const { servicios, candidatas } = await serviciosSarmiento(nombreEstacion);
+  if (!candidatas.length) return { estacion: nombreEstacion, sentidos: vacio };
+  const tramo = await getTramoLimitado();
+  const limitado = resumenTramo(tramo);
+  const nombre = candidatas[0]?.nombre || nombreEstacion;
+  if (estacionFueraDelTramoVivo(nombre, tramo)) {
+    return { estacion: nombre, sentidos: vacio, servicioLimitado: { ...limitado, sinSalidas: true, textoSinSalidas: textoSinSalidasPorTramo(nombre, tramo) } };
+  }
+  const idxEst = indiceEstacionRamal(nombre);
+  const ultimo = ESTACIONES_BARRIDO.length - 1;
+  const ahora = Date.now();
+  const items = aplicarTramo([...servicios], tramo).map((item) => {
+    const d = datosServicio(item);
+    const destino = destinoEnTramo(d.destino, tramo);
+    const idd = indiceEstacionRamal(destino);
+    const sentido = idd >= 0 && idxEst >= 0 && idd !== idxEst ? (idd > idxEst ? "moreno" : "once")
+      : idxEst === 0 ? "moreno" : idxEst === ultimo ? "once" : /once/i.test(destino || "") ? "once" : "moreno";
+    const t = d.estim || d.prog;
+    return {
+      numero: d.s.numero ?? null,
+      destino,
+      sentido,
+      prog: d.prog || null,
+      estim: d.estim || null,
+      demoraMin: d.demora,
+      minutos: t ? Math.round((new Date(t).getTime() - ahora) / 60000) : null,
+      estado: d.estado,
+      anden: d.anden,
+      cancelado: !!d.s.cancelacion,
+      motivoCancelacion: d.s.cancelacion ? textoCancelacion(d.s.cancelacion) : null,
+    };
+  }).filter((x) => x.minutos == null || x.minutos >= -2);
+  const orden = (a, b) => (a.estim || a.prog || "").localeCompare(b.estim || b.prog || "");
+  const sentidos = {
+    moreno: items.filter((x) => x.sentido === "moreno").sort(orden).slice(0, cantidad),
+    once: items.filter((x) => x.sentido === "once").sort(orden).slice(0, cantidad),
+  };
+  return { estacion: nombre, sentidos, servicioLimitado: limitado };
+}
+
 // ---------------------------------------------------------------------------
 // Mapa esquemático: posición interpolada de cada tren entre estaciones
 // ---------------------------------------------------------------------------

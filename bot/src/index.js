@@ -33,7 +33,7 @@ import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgent
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema, esTemaEspaciado, programarRespuestaDiferida, marcarRespondidoMensaje, marcarRespondidoUsuario, enfriandoAlAire, reservarAlAire, ESPERA_AL_AIRE_MS } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
-import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
+import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, proximosPorEstacion, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { imagenMapaDemoras, mapaDemorasModo } from "./mapaDemorasImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
@@ -2721,6 +2721,28 @@ app.get("/api/tablero-cabecera", async (req, res) => {
     res.json({ ...data, horaActual: hora(new Date().toISOString()), estaciones: ESTACIONES_BARRIDO, consultadoEn: new Date().toISOString() });
   } catch (err) {
     console.error("Error en /api/tablero-cabecera:", err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Pantalla de estación de la app lite (/lite): próximos trenes por sentido, con minutos.
+const cacheEstacionLite = new Map(); // estacion -> { momento, data }
+app.get("/api/tablero-estacion", async (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+  if (!claveTableroValida(req)) return res.status(403).json({ error: "forbidden" });
+  const estacion = (req.query.estacion || "Once").toString().slice(0, 40);
+  try {
+    const c = cacheEstacionLite.get(estacion);
+    let data;
+    if (c && Date.now() - c.momento < 15000) data = c.data;
+    else {
+      data = await proximosPorEstacion(estacion);
+      cacheEstacionLite.set(estacion, { momento: Date.now(), data });
+    }
+    res.json({ ...data, estaciones: ESTACIONES_BARRIDO, consultadoEn: new Date().toISOString() });
+  } catch (err) {
+    console.error("Error en /api/tablero-estacion:", err.message);
     res.status(502).json({ error: err.message });
   }
 });

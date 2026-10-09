@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tren Sarmiento Lite</title>
+<meta name="description" content="Tableros de cabecera, pantallas de estación y mapa de formaciones del Sarmiento, en vivo.">
+<meta name="theme-color" content="#002B5C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tren Sarmiento">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+:root {
+  --navy:#002B5C; --blue:#0055A4; --celeste:#0095D4; --cel-light:#D6EDF7; --bg:#F2F7FB; --card:#fff;
+  --text:#1A2C42; --muted:#5A7A99; --border:#CDDAEA;
+  --green:#15803D; --green-bg:#DCFCE7; --red:#DC2626; --red-bg:#FEE2E2; --yellow:#D97706; --yellow-bg:#FEF3C7; --fucsia:#C026D3;
+  --nav-h:62px; --head-h:56px;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { margin:0; height:100%; }
+body {
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text); background:var(--bg);
+  overscroll-behavior-y:contain; -webkit-user-select:none; user-select:none; font-size:16px;
+}
+/* ── Cabecera ── */
+header {
+  position:fixed; top:0; left:0; right:0; z-index:20; background:var(--navy); color:#fff;
+  padding:calc(var(--safe-t) + 8px) 14px 8px; display:flex; align-items:center; gap:10px; min-height:calc(var(--head-h) + var(--safe-t));
+}
+header img { width:34px; height:34px; border-radius:8px; }
+header .tit { flex:1; min-width:0; line-height:1.15; }
+header .tit b { display:block; font-size:16px; letter-spacing:.2px; }
+header .tit span { font-size:12px; opacity:.8; display:flex; align-items:center; gap:6px; }
+.dot { width:8px; height:8px; border-radius:50%; background:#facc15; flex:none; }
+.dot.on { background:#4ade80; animation:pulso 2s infinite; }
+.dot.off { background:#f87171; animation:none; }
+@keyframes pulso { 50% { opacity:.35; } }
+#btnInstalar { display:none; background:var(--celeste); color:#fff; border:0; border-radius:20px; padding:8px 14px; font-weight:700; font-size:13px; }
+/* ── Vistas ── */
+main { padding:calc(var(--head-h) + var(--safe-t) + 12px) 12px calc(var(--nav-h) + var(--safe-b) + 16px); }
+.vista { display:none; } .vista.activa { display:block; animation:entra .18s ease-out; }
+@keyframes entra { from { opacity:0; transform:translateY(6px); } }
+.aviso { border-radius:12px; padding:10px 12px; font-size:14px; font-weight:600; margin-bottom:12px; background:var(--yellow-bg); color:#92400E; border:1px solid #FCD34D; }
+.aviso.err { background:var(--red-bg); color:#991B1B; border-color:#FCA5A5; }
+.vacio { text-align:center; color:var(--muted); padding:36px 16px; font-size:15px; }
+/* ── Selector (pastillas) ── */
+.seg { display:flex; background:#fff; border:1px solid var(--border); border-radius:14px; padding:4px; gap:4px; margin-bottom:12px; }
+.seg button { flex:1; border:0; background:none; padding:11px 8px; border-radius:10px; font-size:15px; font-weight:700; color:var(--muted); }
+.seg button[aria-pressed="true"] { background:var(--navy); color:#fff; }
+/* ── Tablero de cabecera ── */
+.board { background:var(--navy); border-radius:16px; overflow:hidden; box-shadow:0 8px 28px rgba(0,43,92,.25); }
+.board-head { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; background:#001C3D; color:#fff; }
+.board-head .est { font-size:20px; font-weight:800; letter-spacing:1px; }
+.board-head .sub { font-size:11px; opacity:.7; letter-spacing:.8px; text-transform:uppercase; }
+.board-head .reloj { font:700 26px/1 ui-monospace,Menlo,Consolas,monospace; color:#fde047; }
+.fila { display:grid; grid-template-columns:40px 84px 1fr; gap:10px; align-items:center; padding:12px 14px; border-top:1px solid rgba(255,255,255,.1); color:#fff; }
+.fila .anden { text-align:center; } .fila .anden i { display:block; font-style:normal; font-size:9px; letter-spacing:.8px; opacity:.65; text-transform:uppercase; }
+.fila .anden b { font-size:24px; color:#fde047; }
+.fila .hora { font:800 24px/1 ui-monospace,Menlo,Consolas,monospace; }
+.fila .dest b { display:block; font-size:16px; letter-spacing:.4px; text-transform:uppercase; }
+.fila .est { display:inline-block; margin-top:4px; font-size:12px; font-weight:700; padding:2px 9px; border-radius:20px; background:rgba(255,255,255,.14); }
+.fila .est.confirmado { background:var(--green); } .fila .est.cancelado { background:var(--red); }
+.fila .raro { display:block; margin-top:3px; font-size:12px; color:#fcd34d; }
+.fila.cancel .hora, .fila.cancel .dest b { text-decoration:line-through; opacity:.6; }
+.board-pie { padding:10px 14px; font-size:12px; color:#cfe3f5; background:#001C3D; }
+/* ── Estaciones ── */
+.chips { display:flex; gap:8px; overflow-x:auto; padding:2px 2px 10px; margin:0 -12px 6px; padding-left:12px; padding-right:12px; scroll-snap-type:x proximity; scrollbar-width:none; }
+.chips::-webkit-scrollbar { display:none; }
+.chip { flex:none; scroll-snap-align:center; border:1px solid var(--border); background:#fff; color:var(--text); border-radius:20px; padding:9px 14px; font-size:14px; font-weight:600; }
+.chip[aria-pressed="true"] { background:var(--navy); color:#fff; border-color:var(--navy); }
+.chip.cerca { background:var(--cel-light); border-color:var(--celeste); color:var(--blue); }
+.est-nombre { font-size:22px; font-weight:800; color:var(--navy); margin:4px 2px 12px; display:flex; align-items:baseline; justify-content:space-between; }
+.est-nombre small { font-size:12px; font-weight:600; color:var(--muted); }
+.panel { background:#fff; border:1px solid var(--border); border-radius:16px; margin-bottom:12px; overflow:hidden; box-shadow:0 2px 12px rgba(0,43,92,.07); }
+.panel h3 { margin:0; padding:10px 14px; background:var(--cel-light); color:var(--navy); font-size:13px; text-transform:uppercase; letter-spacing:.7px; display:flex; justify-content:space-between; }
+.tren { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; padding:12px 14px; border-top:1px solid #E6EEF6; }
+.tren:first-of-type { border-top:0; }
+.tren .dst { font-weight:700; font-size:16px; } .tren .det { font-size:13px; color:var(--muted); margin-top:2px; }
+.tren .min { text-align:right; line-height:1; } .tren .min b { font-size:30px; color:var(--navy); } .tren .min span { display:block; font-size:12px; font-weight:700; color:var(--muted); margin-top:3px; }
+.tren.primero .min b { color:var(--blue); font-size:36px; }
+.tren.demora .min span { color:var(--yellow); } .tren.cancel .min b { color:var(--red); font-size:20px; }
+.tren.cancel .dst { text-decoration:line-through; opacity:.6; }
+.etq { display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:10px; background:var(--red-bg); color:var(--red); margin-left:6px; }
+/* ── Mapa ── */
+.mapa-resumen { display:flex; gap:8px; margin-bottom:10px; }
+.mapa-resumen div { flex:1; background:#fff; border:1px solid var(--border); border-radius:12px; padding:8px 10px; font-size:12px; color:var(--muted); }
+.mapa-resumen b { display:block; font-size:22px; color:var(--navy); }
+.mapa-wrap { background:#fff; border:1px solid var(--border); border-radius:16px; padding:6px 0 6px; box-shadow:0 2px 12px rgba(0,43,92,.07); }
+.mapa-cab { position:relative; height:34px; font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
+.mapa-cab span { position:absolute; top:10px; width:48px; text-align:center; line-height:1.15; font-size:10px; }
+#mapaStage { position:relative; margin:0; }
+.rail { position:absolute; width:4px; border-radius:2px; background:#E1EAF3; top:12px; }
+.m-est { position:absolute; left:0; right:0; height:48px; display:flex; align-items:center; pointer-events:none; }
+.m-est i { position:absolute; width:12px; height:12px; border-radius:50%; background:#fff; border:3px solid var(--blue); left:22px; }
+.m-est i.d2 { left:70px; } .m-est.cab i { border-color:var(--navy); background:var(--navy); }
+.m-est span { position:absolute; left:112px; font-size:14px; color:var(--text); } .m-est.cab span { font-weight:800; color:var(--navy); }
+.m-tren { position:absolute; width:46px; height:26px; margin:-13px 0 0 0; border-radius:13px; border:2px solid #fff; color:#fff; font:800 11px/22px ui-monospace,Menlo,Consolas,monospace; text-align:center; box-shadow:0 2px 6px rgba(0,43,92,.35); transition:top 1s linear; z-index:3; padding:0; }
+.m-tren.ok { background:var(--green); } .m-tren.demorado { background:var(--yellow); } .m-tren.muy-demorado { background:var(--red); } .m-tren.cancelado { background:#6B7280; }
+.m-tren.local { background:var(--fucsia); } .m-tren.est { opacity:.78; border-style:dashed; }
+.leyenda { display:flex; flex-wrap:wrap; gap:6px 12px; font-size:12px; color:var(--muted); padding:10px 4px 0; }
+.leyenda i { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; vertical-align:-1px; }
+/* ── Hoja de detalle ── */
+#hoja { position:fixed; left:0; right:0; bottom:calc(var(--nav-h) + var(--safe-b)); z-index:30; background:#fff; border-radius:18px 18px 0 0; box-shadow:0 -8px 30px rgba(0,43,92,.25); padding:16px 18px 18px; transform:translateY(120%); visibility:hidden; pointer-events:none; transition:transform .22s ease, visibility 0s .22s; }
+#hoja.abierta { transform:none; visibility:visible; pointer-events:auto; transition:transform .22s ease; }
+#hoja h4 { margin:0 0 4px; font-size:18px; color:var(--navy); } #hoja p { margin:3px 0; font-size:14px; color:var(--text); }
+#hoja button { position:absolute; right:12px; top:10px; border:0; background:#EEF3F8; border-radius:50%; width:32px; height:32px; font-size:16px; }
+/* ── Barra inferior ── */
+nav { position:fixed; left:0; right:0; bottom:0; z-index:25; height:calc(var(--nav-h) + var(--safe-b)); padding-bottom:var(--safe-b); background:#fff; border-top:1px solid var(--border); display:flex; }
+nav button { flex:1; border:0; background:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; color:var(--muted); font-size:12px; font-weight:700; }
+nav svg { width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+nav button[aria-selected="true"] { color:var(--blue); }
+#ios { display:none; position:fixed; left:12px; right:12px; bottom:calc(var(--nav-h) + var(--safe-b) + 10px); z-index:40; background:var(--navy); color:#fff; border-radius:14px; padding:14px 16px; font-size:14px; line-height:1.4; box-shadow:0 8px 30px rgba(0,0,0,.35); }
+#ios button { float:right; background:none; border:0; color:#fff; font-size:18px; margin:-6px -6px 0 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="icons/icon-192.png" alt="">
+  <div class="tit"><b>Tren Sarmiento</b><span><i class="dot" id="dot"></i><span id="estadoTxt">conectando…</span></span></div>
+  <button id="btnInstalar" type="button">Instalar</button>
+</header>
+
+<main>
+  <div id="aviso"></div>
+
+  <!-- CABECERAS -->
+  <section class="vista" id="v-cabeceras" aria-label="Tableros de cabecera">
+    <div class="seg" id="segCab"><button type="button" data-e="Once" aria-pressed="true">Once</button><button type="button" data-e="Moreno" aria-pressed="false">Moreno</button></div>
+    <div id="cabBoard"></div>
+  </section>
+
+  <!-- ESTACIONES -->
+  <section class="vista" id="v-estaciones" aria-label="Pantallas de estación">
+    <div class="chips" id="chips"></div>
+    <div id="estPaneles"></div>
+  </section>
+
+  <!-- MAPA -->
+  <section class="vista" id="v-mapa" aria-label="Mapa de formaciones">
+    <div class="mapa-resumen"><div><b id="nIda">–</b>hacia Moreno</div><div><b id="nVuelta">–</b>hacia Once</div></div>
+    <div class="mapa-wrap">
+      <div class="mapa-cab"><span style="left:2px">▲ A Once</span><span style="left:50px">▼ A Moreno</span></div>
+      <div id="mapaStage"></div>
+    </div>
+    <div class="leyenda">
+      <span><i style="background:var(--green)"></i>En horario</span><span><i style="background:var(--yellow)"></i>Demora 10+</span>
+      <span><i style="background:var(--red)"></i>Demora 20+</span><span><i style="background:var(--fucsia)"></i>Local</span><span><i style="background:#6B7280"></i>Cancelado</span>
+    </div>
+    <p class="leyenda" style="padding-top:6px">Posición real por GPS cuando el tren lo informa; si no, estimada por horario (borde punteado). Tocá una formación para ver el detalle.</p>
+  </section>
+</main>
+
+<div id="hoja" role="dialog" aria-live="polite"><button type="button" id="hojaX" aria-label="Cerrar">✕</button><div id="hojaTxt"></div></div>
+<div id="ios"><button type="button" id="iosX" aria-label="Cerrar">✕</button><b>Instalá la app</b><br>Tocá <b>Compartir</b> (el cuadrado con la flecha) y elegí <b>“Agregar a pantalla de inicio”</b>.</div>
+
+<nav role="tablist">
+  <button type="button" role="tab" data-v="cabeceras" aria-selected="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M7 9h10M7 13h6M8 21l1.5-4M16 21l-1.5-4"/></svg>Cabeceras</button>
+  <button type="button" role="tab" data-v="estaciones" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Estaciones</button>
+  <button type="button" role="tab" data-v="mapa" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg>Mapa</button>
+</nav>
+
+<script>
+(function () {
+  "use strict";
+  var API = "https://trenbot.onrender.com/api/";
+  var ESTACIONES = ["Once","Caballito","Flores","Floresta","Villa Luro","Liniers","Ciudadela","Ramos Mejía","Haedo","Morón","Castelar","Ituzaingó","Padua","Merlo","Paso del Rey","Moreno"];
+  var COORDS = [[-34.6083,-58.4103],[-34.6187,-58.4417],[-34.6273,-58.4613],[-34.6307,-58.4807],[-34.6313,-58.5003],[-34.6367,-58.5213],[-34.6397,-58.5380],[-34.6433,-58.5617],[-34.6448,-58.5830],[-34.6487,-58.6183],[-34.6513,-58.6487],[-34.6583,-58.6717],[-34.6647,-58.7030],[-34.6700,-58.7283],[-34.6637,-58.7567],[-34.6503,-58.7917]];
+  var FILA = 48; // alto de cada estación en el mapa
+  function $(id) { return document.getElementById(id); }
+  function esc(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) { return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]; }); }
+  function bonito(n) { return n === "Padua" ? "San A. de Padua" : n; }
+  function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  var fmt = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false });
+  function hhmm(iso) { return iso ? fmt.format(new Date(iso)) : "--:--"; }
+
+  var estado = { vista: "cabeceras", cab: "Once", est: lsGet("lite.est", "Once"), datos: {}, ok: 0, pedido: 0 };
+  var timer = null;
+
+  // ── Red ──
+  function pedir(ruta) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var to = setTimeout(function () { if (ctl) ctl.abort(); }, 15000);
+    return fetch(API + ruta, { cache: "no-store", signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (d) { clearTimeout(to); return d; }, function (e) { clearTimeout(to); throw e; });
+  }
+  function marcar(ok, txt) {
+    var d = $("dot"); d.className = "dot " + (ok === true ? "on" : ok === false ? "off" : "");
+    $("estadoTxt").textContent = txt;
+  }
+  function avisar(txt, err) { $("aviso").innerHTML = txt ? '<div class="aviso' + (err ? " err" : "") + '">' + esc(txt) + "</div>" : ""; }
+
+  // ── Cabeceras ──
+  function pintarCab(d) {
+    var lim = d.servicioLimitado;
+    var cols = d.columnas || [];
+    var h = '<div class="board"><div class="board-head"><div><div class="est">' + esc((d.estacion || estado.cab).toUpperCase()) + '</div><div class="sub">Próximas salidas</div></div><div class="reloj" id="reloj">' + fmt.format(new Date()) + "</div></div>";
+    if (!cols.length) {
+      h += '<div class="vacio" style="color:#cfe3f5">' + esc(lim && lim.textoSinSalidas ? lim.textoSinSalidas : "No hay próximas salidas para mostrar en este momento.") + "</div>";
+    } else {
+      h += cols.map(function (c) {
+        var clase = c.cancelado ? "cancelado" : /en\s*and[eé]n|confirmado|parti[oó]/i.test(c.estado || "") ? "confirmado" : "";
+        return '<div class="fila' + (c.cancelado ? " cancel" : "") + '"><div class="anden"><i>Andén</i><b>' + esc(c.anden || "–") + '</b></div><div class="hora">' + esc(c.horaSalida || "--:--") + '</div><div class="dest"><b>' + esc(c.destino || "?") + '</b>' +
+          '<span class="est ' + clase + '">' + esc(c.cancelado ? "Cancelado" : c.estado || "Programado") + "</span>" +
+          (c.origenInusual ? '<span class="raro">⚠ Sale de ' + esc(c.origen) + "</span>" : "") + "</div></div>";
+      }).join("");
+    }
+    var motivos = cols.filter(function (c) { return c.cancelado && c.motivoCancelacion; }).map(function (c) { return c.motivoCancelacion; });
+    h += '<div class="board-pie">' + (lim || motivos.length ? "⚠️ " + esc((lim ? [lim.texto].concat(motivos) : motivos).join(" · ")) : "Las personas con CUD pueden viajar en tren sin costo con SUBE.") + "</div></div>";
+    $("cabBoard").innerHTML = h;
+  }
+
+  // ── Estaciones ──
+  function minutosDe(t) { var ref = t.estim || t.prog; return ref ? Math.round((new Date(ref).getTime() - Date.now()) / 60000) : null; }
+  function filaTren(t, i) {
+    var m = minutosDe(t);
+    var dem = t.demoraMin && t.demoraMin >= 3;
+    var min = t.cancelado ? "Cancelado" : m == null ? "–" : m <= 0 ? "Ahora" : m;
+    var unidad = t.cancelado ? "" : m != null && m > 0 ? "min" : "";
+    var det = t.cancelado ? esc(t.motivoCancelacion || "Servicio cancelado") : "Sale " + hhmm(t.estim || t.prog) + (dem ? " · +" + t.demoraMin + " min de demora" : " · en horario") + (t.anden ? " · andén " + esc(t.anden) : "");
+    return '<div class="tren' + (i === 0 && !t.cancelado ? " primero" : "") + (dem ? " demora" : "") + (t.cancelado ? " cancel" : "") + '"><div><div class="dst">' + esc(t.destino || "?") + (t.cancelado ? '<span class="etq">CANCELADO</span>' : "") + '</div><div class="det">' + det + '</div></div><div class="min"><b>' + min + "</b>" + (unidad ? "<span>" + unidad + "</span>" : "") + "</div></div>";
+  }
+  function pintarEst(d) {
+    var s = d.sentidos || { moreno: [], once: [] };
+    var h = '<div class="est-nombre">' + esc(bonito(d.estacion || estado.est)) + "<small>actualizado " + hhmm(d.consultadoEn) + "</small></div>";
+    if (d.servicioLimitado && d.servicioLimitado.textoSinSalidas) h += '<div class="aviso">' + esc(d.servicioLimitado.textoSinSalidas) + "</div>";
+    [["moreno", "▼ Hacia Moreno"], ["once", "▲ Hacia Once"]].forEach(function (x) {
+      var arr = s[x[0]] || [];
+      h += '<div class="panel"><h3>' + x[1] + "</h3>" + (arr.length ? arr.map(filaTren).join("") : '<div class="vacio" style="padding:18px">Sin próximos trenes en este sentido</div>') + "</div>";
+    });
+    $("estPaneles").innerHTML = h;
+  }
+  function pintarChips() {
+    $("chips").innerHTML = '<button class="chip cerca" type="button" data-cerca="1">📍 Cerca mío</button>' + ESTACIONES.map(function (e) {
+      return '<button class="chip" type="button" data-e="' + esc(e) + '" aria-pressed="' + (e === estado.est) + '">' + esc(bonito(e)) + "</button>";
+    }).join("");
+  }
+  function elegirEst(e) {
+    estado.est = e; lsSet("lite.est", e);
+    Array.prototype.forEach.call($("chips").querySelectorAll("[data-e]"), function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-e") === e); });
+    var sel = $("chips").querySelector('[aria-pressed="true"]'); if (sel && sel.scrollIntoView) sel.scrollIntoView({ inline: "center", block: "nearest" });
+    $("estPaneles").innerHTML = '<div class="vacio">Cargando ' + esc(bonito(e)) + "…</div>";
+    cargar();
+  }
+  function cercana() {
+    if (!navigator.geolocation) return avisar("Tu navegador no permite ubicarte.", true);
+    navigator.geolocation.getCurrentPosition(function (p) {
+      var mejor = 0, md = 1e9;
+      COORDS.forEach(function (c, i) { var dx = (c[1] - p.coords.longitude) * 0.82, dy = c[0] - p.coords.latitude, d = dx * dx + dy * dy; if (d < md) { md = d; mejor = i; } });
+      avisar(""); elegirEst(ESTACIONES[mejor]);
+    }, function () { avisar("No pudimos ubicarte: revisá el permiso de ubicación.", true); }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 });
+  }
+
+  // ── Mapa ──
+  function claseDemora(t) { return t.cancelado ? "cancelado" : t.demoraMax >= 20 ? "muy-demorado" : t.demoraMax >= 10 ? "demorado" : "ok"; }
+  function viaDe(t) {
+    var d = (t.destino || "").toLowerCase();
+    if (d.indexOf("once") !== -1) return "vuelta";
+    if (d.indexOf("moreno") !== -1) return "ida";
+    return t.sentido === "Moreno-Once" ? "vuelta" : "ida";
+  }
+  var mapaListo = false, ultimoMapa = null;
+  function armarMapa(nombres) {
+    var n = nombres.length, alto = (n - 1) * FILA + FILA;
+    var h = '<div class="rail" style="left:' + 26 + 'px;height:' + ((n - 1) * FILA) + 'px"></div><div class="rail" style="left:' + 74 + 'px;height:' + ((n - 1) * FILA) + 'px"></div>';
+    nombres.forEach(function (nom, i) {
+      h += '<div class="m-est' + (i === 0 || i === n - 1 ? " cab" : "") + '" style="top:' + i * FILA + 'px"><i></i><i class="d2"></i><span>' + esc(bonito(nom)) + "</span></div>";
+    });
+    var st = $("mapaStage"); st.style.height = alto + "px"; st.innerHTML = h; mapaListo = true;
+  }
+  function pintarMapa(d) {
+    ultimoMapa = d;
+    var nombres = d.estaciones && d.estaciones.length > 1 ? d.estaciones : ESTACIONES;
+    if (!mapaListo) armarMapa(nombres);
+    var st = $("mapaStage"); Array.prototype.forEach.call(st.querySelectorAll(".m-tren"), function (x) { x.remove(); });
+    var cuenta = { ida: 0, vuelta: 0 };
+    (d.trenes || []).forEach(function (t, i) {
+      var via = viaDe(t); cuenta[via]++;
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "m-tren " + claseDemora(t) + (t.local ? " local" : "") + (t.fuente === "estimada" ? " est" : "");
+      b.style.left = (via === "ida" ? 51 : 3) + "px";
+      b.style.top = (t.posicion * FILA + FILA / 2) + "px";
+      b.textContent = t.numero != null ? t.numero : "?";
+      b.setAttribute("data-i", i);
+      st.appendChild(b);
+    });
+    $("nIda").textContent = cuenta.ida; $("nVuelta").textContent = cuenta.vuelta;
+  }
+  function detalleTren(i) {
+    var t = ultimoMapa && ultimoMapa.trenes[i]; if (!t) return;
+    var dem = t.cancelado ? "Cancelado" : t.demoraMax ? "+" + t.demoraMax + " min de demora" : "En horario";
+    $("hojaTxt").innerHTML = "<h4>Formación " + esc(t.numero != null ? "#" + t.numero : "") + (t.local ? ' <span class="etq" style="background:#FAE8FF;color:var(--fucsia)">LOCAL' + (t.origenLocal ? " " + esc(t.origenLocal) : "") + "</span>" : "") + "</h4>" +
+      "<p><b>Destino:</b> " + esc(t.destino || "?") + "</p><p><b>Próxima estación:</b> " + esc(bonito(t.proximaEstacion || "–")) + "</p><p><b>Estado:</b> " + dem + "</p>" +
+      "<p style='color:var(--muted);font-size:13px'>" + (t.fuente === "gps" ? "📡 Posición por GPS del tren" : "≈ Posición estimada por horario") + (t.origenInusual ? " · ⚠ origen inusual" : "") + "</p>";
+    $("hoja").classList.add("abierta");
+  }
+
+  // ── Carga por vista ──
+  function cargar() {
+    if (document.hidden) return Promise.resolve();
+    var v = estado.vista, mio = ++estado.pedido, ruta, pintar;
+    if (v === "cabeceras") { ruta = "tablero-cabecera?estacion=" + encodeURIComponent(estado.cab); pintar = pintarCab; }
+    else if (v === "estaciones") { ruta = "tablero-estacion?estacion=" + encodeURIComponent(estado.est); pintar = pintarEst; }
+    else { ruta = "tablero-mapa"; pintar = pintarMapa; }
+    return pedir(ruta).then(function (d) {
+      if (mio !== estado.pedido) return;
+      estado.ok = Date.now(); estado.datos[v] = d; pintar(d);
+      avisar(""); marcar(true, "en vivo · " + hhmm(d.consultadoEn));
+    }).catch(function () {
+      if (mio !== estado.pedido) return;
+      var seg = estado.ok ? Math.round((Date.now() - estado.ok) / 1000) : null;
+      marcar(false, seg ? "sin conexión hace " + (seg > 90 ? Math.round(seg / 60) + " min" : seg + " s") : "sin conexión");
+      if (!estado.datos[v]) {
+        var vacio = '<div class="vacio">No pudimos cargar los datos ahora.<br>Reintentamos solos en unos segundos.</div>';
+        if (v === "cabeceras") $("cabBoard").innerHTML = vacio; else if (v === "estaciones") $("estPaneles").innerHTML = vacio;
+      }
+    });
+  }
+  function repintarLocal() {
+    // Entre consulta y consulta se actualiza lo que depende del reloj (minutos y hora del tablero) sin pedir nada.
+    var rel = $("reloj"); if (rel) rel.textContent = fmt.format(new Date());
+    if (estado.vista === "estaciones" && estado.datos.estaciones) pintarEst(estado.datos.estaciones);
+  }
+
+  function irA(v, sinCargar) {
+    estado.vista = v;
+    Array.prototype.forEach.call(document.querySelectorAll(".vista"), function (s) { s.classList.toggle("activa", s.id === "v-" + v); });
+    Array.prototype.forEach.call(document.querySelectorAll("nav button"), function (b) { b.setAttribute("aria-selected", b.getAttribute("data-v") === v); });
+    $("hoja").classList.remove("abierta"); window.scrollTo(0, 0);
+    if (estado.datos[v]) { var d = estado.datos[v]; (v === "cabeceras" ? pintarCab : v === "estaciones" ? pintarEst : pintarMapa)(d); }
+    if (!sinCargar) cargar();
+  }
+
+  // ── Eventos ──
+  document.querySelector("nav").addEventListener("click", function (e) { var b = e.target.closest("button[data-v]"); if (b) irA(b.getAttribute("data-v")); });
+  $("segCab").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-e]"); if (!b || b.getAttribute("data-e") === estado.cab) return;
+    estado.cab = b.getAttribute("data-e");
+    Array.prototype.forEach.call($("segCab").children, function (x) { x.setAttribute("aria-pressed", x === b); });
+    delete estado.datos.cabeceras; $("cabBoard").innerHTML = '<div class="vacio">Cargando tablero de ' + esc(estado.cab) + "…</div>"; cargar();
+  });
+  $("chips").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    if (b.hasAttribute("data-cerca")) cercana(); else elegirEst(b.getAttribute("data-e"));
+  });
+  $("mapaStage").addEventListener("click", function (e) { var b = e.target.closest(".m-tren"); if (b) detalleTren(+b.getAttribute("data-i")); });
+  $("hojaX").addEventListener("click", function () { $("hoja").classList.remove("abierta"); });
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) { repintarLocal(); cargar(); } });
+  window.addEventListener("online", cargar);
+
+  // ── Instalación (Android/Chrome: botón; iPhone: instrucción) ──
+  var pedidoInstalar = null;
+  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); pedidoInstalar = e; $("btnInstalar").style.display = "block"; });
+  $("btnInstalar").addEventListener("click", function () {
+    if (!pedidoInstalar) return; pedidoInstalar.prompt();
+    pedidoInstalar.userChoice.then(function () { pedidoInstalar = null; $("btnInstalar").style.display = "none"; });
+  });
+  window.addEventListener("appinstalled", function () { $("btnInstalar").style.display = "none"; });
+  var standalone = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone;
+  var esIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  if (esIOS && !standalone && lsGet("lite.iosVisto", "") !== "1") { setTimeout(function () { $("ios").style.display = "block"; }, 2500); }
+  $("iosX").addEventListener("click", function () { $("ios").style.display = "none"; lsSet("lite.iosVisto", "1"); });
+
+  if ("serviceWorker" in navigator) window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(function () {}); });
+
+  // ── Arranque ──
+  var q = new URLSearchParams(location.search);
+  if (q.get("e") && ESTACIONES.indexOf(q.get("e")) >= 0) { if (q.get("e") === "Moreno") { estado.cab = "Moreno"; Array.prototype.forEach.call($("segCab").children, function (x) { x.setAttribute("aria-pressed", x.getAttribute("data-e") === "Moreno"); }); } }
+  pintarChips();
+  irA(["cabeceras", "estaciones", "mapa"].indexOf(q.get("v")) >= 0 ? q.get("v") : "cabeceras");
+  setInterval(function () { cargar(); }, 20000);
+  setInterval(repintarLocal, 1000 * 15);
+  setInterval(function () { var rel = $("reloj"); if (rel) rel.textContent = fmt.format(new Date()); }, 5000);
+})();
+</script>
+</body>
+</html>

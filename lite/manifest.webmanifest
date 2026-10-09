@@ -1,0 +1,23 @@
+{
+  "name": "Tren Sarmiento en Línea",
+  "short_name": "Tren Sarmiento",
+  "description": "Tableros de cabecera, pantallas de estación y mapa de formaciones del Sarmiento, en vivo.",
+  "id": "/lite/",
+  "start_url": "/lite/?utm_source=pwa",
+  "scope": "/lite/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#002B5C",
+  "theme_color": "#002B5C",
+  "lang": "es-AR",
+  "categories": ["travel", "navigation"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Tablero Once", "short_name": "Once", "url": "/lite/?v=cabeceras&e=Once", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Mapa de formaciones", "short_name": "Mapa", "url": "/lite/?v=mapa", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
