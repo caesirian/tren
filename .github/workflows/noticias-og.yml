@@ -2,7 +2,7 @@ name: Generar páginas de noticias (Open Graph)
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/15 * * * *'   # respaldo; la corrida normal la dispara el bot al publicar
   workflow_dispatch:
 
 permissions:

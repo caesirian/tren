@@ -845,7 +845,9 @@ document.getElementById("publicarBtn").addEventListener("click", async () => {
     const linkNoticia=urlNoticia(nuevaRef.id);
     let copiado=false;
     try{await navigator.clipboard.writeText(linkNoticia);copiado=true;}catch{}
-    alert(`✅ Noticia publicada correctamente\n\nLink: ${linkNoticia}${copiado?"  (copiado)":""}\n\nLa vista previa para compartir (WhatsApp, Facebook, X) puede tardar unos minutos en estar lista.`);
+    pedirSyncNoticias();
+    showToast(`✅ Publicada${copiado?" · link copiado":""} · generando vista previa…`);
+    esperarLinkNoticia(nuevaRef.id);
   }catch(e){alert("Error al guardar en Firestore: "+e.message);}
   btn.disabled=false; btn.textContent="🚀 Publicar noticia";
 });
@@ -856,6 +858,21 @@ document.getElementById("publicarBtn").addEventListener("click", async () => {
 let _cache={},_editId=null,_lstIniciado=false;
 function fmtF(s){if(!s)return"—";try{const d=new Date(s),p=n=>String(n).padStart(2,"0");return`${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;}catch{return s;}}
 function urlNoticia(id){return `https://trensarmientoenlinea.com.ar/noticias/${id}/`;}
+const BOT_SYNC="https://trenbot.onrender.com/api/noticias/sync";
+// Pide al bot que regenere las páginas de noticias (text/plain: sin preflight de CORS). Si falla, queda el cron de respaldo.
+function pedirSyncNoticias(){
+  try{fetch(BOT_SYNC,{method:"POST",headers:{"Content-Type":"text/plain"},body:"{}",keepalive:true}).catch(()=>{});}catch{}
+}
+// Espera a que el link de la noticia esté online (GitHub Pages) y avisa.
+async function esperarLinkNoticia(id){
+  const url=urlNoticia(id);
+  for(let i=0;i<48;i++){ // ~4 min
+    await new Promise(r=>setTimeout(r,5000));
+    try{const r=await fetch(url+"?_="+Date.now(),{cache:"no-store"});if(r.ok){showToast("✅ Link con vista previa listo");return true;}}catch{}
+  }
+  showToast("⏳ El link aún no está listo; probá en unos minutos","err");
+  return false;
+}
 window.copiarLinkNoticia=async function(id){
   const url=urlNoticia(id);
   try{await navigator.clipboard.writeText(url);alert("🔗 Link copiado:\n"+url);}catch{prompt("Copiá el link:",url);}
@@ -918,7 +935,7 @@ window.guardarEdit=async function(id){
       publicado:document.getElementById("epub-"+id).checked,
       editadoPor:currentUser.email,editadoEn:serverTimestamp()
     });
-    togEdit(id);alert("✅ Noticia actualizada");
+    togEdit(id);pedirSyncNoticias();showToast("✅ Noticia actualizada");
   }catch(e){alert("Error: "+e.message);}
   btn.disabled=false;btn.textContent="💾 Guardar cambios";
 };
@@ -926,7 +943,7 @@ window.guardarEdit=async function(id){
 window.eliminar=async function(id){
   if(!isAdmin())return;
   if(!confirm(`¿Eliminar "${_cache[id]?.titulo||"esta noticia"}"?\n\nEsta acción no se puede deshacer.`))return;
-  try{await deleteDoc(doc(db,"noticias",id));if(_editId===id)_editId=null;}catch(e){alert("Error: "+e.message);}
+  try{await deleteDoc(doc(db,"noticias",id));if(_editId===id)_editId=null;pedirSyncNoticias();}catch(e){alert("Error: "+e.message);}
 };
 
 function initLst(){

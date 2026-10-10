@@ -6,6 +6,7 @@
 
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { solicitarSyncNoticias } from "./noticiasSync.js";
 
 let db = null;
 function ensureInit() {
@@ -47,4 +48,5 @@ export async function publicarNoticia({ titulo, contenido, creadoPor }) {
     creadoPor,
     creadoEn: FieldValue.serverTimestamp(),
   });
+  solicitarSyncNoticias(); // genera la página con Open Graph al instante
 }

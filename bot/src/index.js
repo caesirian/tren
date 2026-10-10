@@ -57,6 +57,7 @@ import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
 import { guardarReporte, listarReportesPendientes, marcarReporteRevisado } from "./reportLogger.js";
 import { publicarNoticia } from "./noticiaPublisher.js";
+import { solicitarSyncNoticias } from "./noticiasSync.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { consultarColectivoEnVivo } from "./colectivoSearch.js";
 import { chequearYNotificar } from "./monitor.js";
@@ -2590,6 +2591,25 @@ app.get("/api/tablero-vivo", async (req, res) => {
     console.error("Error en /api/tablero-vivo:", err.message);
     res.status(502).json({ error: err.message });
   }
+});
+
+// Aviso del panel (mod.html) al publicar/editar/borrar una noticia: despierta al bot y pide a GitHub
+// que regenere las páginas /noticias/<id>/. No recibe datos ni credenciales: solo dispara una
+// regeneración que lee Firestore (público), así que es inocua; igual se limita por origen y por frecuencia.
+app.options("/api/noticias/sync", (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  }
+  res.sendStatus(204);
+});
+app.post("/api/noticias/sync", (req, res) => {
+  const origin = req.headers.origin;
+  if (!origin || !ORIGENES_TABLERO_PERMITIDOS.has(origin)) return res.status(403).json({ error: "forbidden" });
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.json({ ok: true, ...solicitarSyncNoticias() });
 });
 
 // Registro de la "Validación de Usuario" del mapa del sitio. El navegador manda solo datos derivados
