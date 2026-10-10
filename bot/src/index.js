@@ -52,6 +52,7 @@ import { esOcupacionEnVivo } from "./ocupacion.js";
 import { esConsultaDeLuz, mencionaEnergia, RESPUESTA_SIN_DATO_LUZ } from "./luz.js";
 import { esConsultaTrenParado, mencionaTrenParado } from "./trenParado.js";
 import { instalarSilencio, cargarSilencio, setSilencio, estaSilenciado } from "./silencio.js";
+import { servicioSuspendido, setSinServicio, limpiarSinServicio, textoSuspendidoParaContexto, finDelDiaAR } from "./sinServicio.js";
 import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes, avisosProgramados, textoAvisosParaContexto, textoProgramadosParaContexto, cerrarTodosLosAvisos } from "./avisosFuente.js";
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
@@ -255,6 +256,12 @@ async function armarContexto(pregunta) {
   // el semáforo, las alertas y la señal informal. Siempre con vencimiento.
   const avisos = await avisosVigentes();
   if (avisos.length) partes.push(textoAvisosParaContexto(avisos));
+
+  // Servicio suspendido (corte total / paro / jornada sin trenes): estado actual.
+  try {
+    const susp = await servicioSuspendido();
+    if (susp) partes.push(textoSuspendidoParaContexto(susp));
+  } catch {}
 
   // Eventos programados a futuro (obras, cortes anunciados): van en su propia
   // sección y NO cuentan como estado actual del servicio.
@@ -1050,6 +1057,37 @@ bot.command("validaciones", async (ctx) => {
     await ctx.reply("⚠️ No pude leer las validaciones: " + err.message);
   }
 });
+
+// Interruptor de "servicio suspendido" (solo admin): con él activo el bot NO publica
+// cancelaciones, demoras ni locales fuera de cronograma en el grupo (ya se sabe que no hay trenes).
+// Uso: /sinservicio [horas] [motivo] → activa (por defecto hasta fin del día) | /sinservicio off | /sinservicio (ver estado)
+bot.command("sinservicio", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  const args = (ctx.message.text || "").replace(/^\/sinservicio(@\w+)?\s*/i, "").trim();
+  const horaAR = (iso) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "long", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+  try {
+    if (/^(off|fin|normal|normalizado|apagar|cerrar)\b/i.test(args)) {
+      await limpiarSinServicio();
+      await ctx.reply("✅ Servicio suspendido levantado: el bot vuelve a publicar cancelaciones y demoras en el grupo.");
+      return;
+    }
+    if (!args) {
+      const s = await servicioSuspendido();
+      await ctx.reply(s ? `🔇 Servicio suspendido (${s.fuente}).${s.motivo ? `\nMotivo: ${s.motivo}` : ""}${s.hasta ? `\nRige hasta: ${horaAR(s.hasta)}` : ""}\n\nEl bot no publica cancelaciones/demoras/locales en el grupo. /sinservicio off para levantarlo.` : "No hay servicio suspendido: el bot publica cancelaciones normalmente.\nUso: /sinservicio [horas] [motivo]");
+      return;
+    }
+    const m = /^(\d{1,2})\s*(?:h|hs|horas?)?\b\s*(.*)$/i.exec(args);
+    const horas = m ? Math.min(Number(m[1]), 72) : null;
+    const motivo = (m ? m[2] : args).trim();
+    const hasta = horas ? new Date(Date.now() + horas * 3600 * 1000) : finDelDiaAR();
+    const doc = await setSinServicio({ motivo, hasta, fuente: "manual", quien: ctx.from?.username || String(ctx.from?.id) });
+    await ctx.reply(`🔇 Servicio marcado como suspendido hasta ${horaAR(doc.hasta)}. El bot no publica cancelaciones, demoras ni locales fuera de cronograma en el grupo y, si le preguntan, dice que no hay servicio.\n/sinservicio off para levantarlo.`);
+  } catch (err) {
+    console.error("Error en /sinservicio:", err.message);
+    await ctx.reply("No pude gestionar /sinservicio: " + err.message);
+  }
+});
+
 
 // Servicio limitado a mano. El bot y el tablero dejan de mostrar trenes fuera
 // del tramo. Uso:
@@ -2663,6 +2701,7 @@ async function sugerirEstado({ origen, detalle, alerta }) {
 async function sugerirEstadoDesdeAviso(resultado, origen) {
   if (!resultado) return;
   if (resultado === "normalizado") {
+    await limpiarSinServicio().catch(() => {});
     await sugerirEstado({ origen, detalle: "La fuente de verdad informó que el servicio se normalizó.", alerta: { estado: "normalizado", texto: "Servicio normalizado." } });
     return;
   }
@@ -2675,6 +2714,12 @@ async function sugerirEstadoDesdeAviso(resultado, origen) {
     detalle: `Aviso de fuente de verdad [${resultado.tipo}]: ${resultado.resumen}`,
     alerta: { estado, texto: resultado.resumen, lugar: null },
   });
+}
+
+// Clave para contar trenes distintos cuando el barrido no trae número de servicio.
+function claveFallback(item) {
+  const d = datosServicio(item);
+  return `${d.destino}-${hora(d.prog)}`;
 }
 
 async function chequeoPeriodicoProxy(origen) {
@@ -2700,7 +2745,20 @@ async function chequeoPeriodicoProxy(origen) {
     if (cancelProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, cancelProxy.texto).catch((err) => console.error("Error avisando cancelaciones del proxy:", err.message));
     }
-    for (const t of cancelProxy.textosGrupo || []) await publicarEnGrupo(t);
+    // Si ya se sabe que no hay servicio, no se publican cancelaciones tren por tren (spam).
+    let susp = await servicioSuspendido().catch(() => null);
+    const trenesNuevos = new Set((cancelProxy.nuevas || []).map((it) => datosServicio(it).s.numero ?? claveFallback(it))).size;
+    const UMBRAL_MASIVO = Number(process.env.CANCELACIONES_MASIVAS_MIN || 6);
+    if (!susp && trenesNuevos >= UMBRAL_MASIVO) {
+      // Ola de cancelaciones en un solo chequeo = jornada sin servicio: UN solo aviso y a callarse el resto del día.
+      susp = await setSinServicio({ motivo: `${trenesNuevos} trenes cancelados detectados juntos por la app`, fuente: "auto" });
+      await publicarEnGrupo(`🚫 Se canceló la mayor parte del servicio del Sarmiento: la app de Trenes Argentinos informa ${trenesNuevos} trenes cancelados. Para no llenar el grupo con avisos uno por uno, hoy no voy a publicar cada cancelación. Cualquier novedad del servicio la sigo informando.`);
+      if (process.env.ADMIN_TELEGRAM_ID) await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, `🔇 Detecté ${trenesNuevos} cancelaciones juntas: marqué el servicio como suspendido hasta fin del día y silencié las cancelaciones/demoras/locales en el grupo.\n/sinservicio off si fue un error.`).catch(() => {});
+    } else if (susp) {
+      console.log(`Chequeo proxy (${origen}): servicio suspendido (${susp.fuente}); no publico ${cancelProxy.textosGrupo?.length || 0} aviso(s) de cancelación en el grupo`);
+    } else {
+      for (const t of cancelProxy.textosGrupo || []) await publicarEnGrupo(t);
+    }
     for (const item of cancelProxy.nuevas || []) {
       const d = datosServicio(item);
       await sugerirEstado({
@@ -2719,7 +2777,7 @@ async function chequeoPeriodicoProxy(origen) {
     if (demorasProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, demorasProxy.texto).catch((err) => console.error("Error avisando demoras del proxy:", err.message));
     }
-    for (const t of demorasProxy.textosGrupo || []) await publicarEnGrupo(t);
+    if (!(await servicioSuspendido().catch(() => null))) for (const t of demorasProxy.textosGrupo || []) await publicarEnGrupo(t);
     for (const item of demorasProxy.nuevos || []) {
       const d = datosServicio(item);
       await sugerirEstado({
@@ -2764,7 +2822,7 @@ async function chequeoPeriodicoProxy(origen) {
     if (localesProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, localesProxy.texto).catch((err) => console.error("Error avisando locales fuera de cronograma:", err.message));
     }
-    for (const t of localesProxy.textosGrupo || []) await publicarEnGrupo(t);
+    if (!(await servicioSuspendido().catch(() => null))) for (const t of localesProxy.textosGrupo || []) await publicarEnGrupo(t);
   } catch (err) {
     console.error(`Error chequeando locales fuera de cronograma (${origen}):`, err.message);
   }
