@@ -1060,26 +1060,36 @@ bot.command("validaciones", async (ctx) => {
 
 // Interruptor de "servicio suspendido" (solo admin): con él activo el bot NO publica
 // cancelaciones, demoras ni locales fuera de cronograma en el grupo (ya se sabe que no hay trenes).
-// Uso: /sinservicio [horas] [motivo] → activa (por defecto hasta fin del día) | /sinservicio off | /sinservicio (ver estado)
+// Uso: /sinservicio [horas|hasta DD/MM [HH:MM]] [motivo] → activa (por defecto hasta fin del día) | /sinservicio off | /sinservicio (ver estado)
 bot.command("sinservicio", async (ctx) => {
   if (!esAdminEstado(ctx)) return;
   const args = (ctx.message.text || "").replace(/^\/sinservicio(@\w+)?\s*/i, "").trim();
   const horaAR = (iso) => new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "long", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
   try {
     if (/^(off|fin|normal|normalizado|apagar|cerrar)\b/i.test(args)) {
-      await limpiarSinServicio();
-      await ctx.reply("✅ Servicio suspendido levantado: el bot vuelve a publicar cancelaciones y demoras en el grupo.");
+      await limpiarSinServicio({ manual: true });
+      await ctx.reply("✅ Servicio suspendido levantado (también la ventana programada, si había una): el bot vuelve a publicar cancelaciones y demoras en el grupo.");
       return;
     }
     if (!args) {
       const s = await servicioSuspendido();
-      await ctx.reply(s ? `🔇 Servicio suspendido (${s.fuente}).${s.motivo ? `\nMotivo: ${s.motivo}` : ""}${s.hasta ? `\nRige hasta: ${horaAR(s.hasta)}` : ""}\n\nEl bot no publica cancelaciones/demoras/locales en el grupo. /sinservicio off para levantarlo.` : "No hay servicio suspendido: el bot publica cancelaciones normalmente.\nUso: /sinservicio [horas] [motivo]");
+      await ctx.reply(s ? `🔇 Servicio suspendido (${s.fuente}).${s.motivo ? `\nMotivo: ${s.motivo}` : ""}${s.hasta ? `\nRige hasta: ${horaAR(s.hasta)}` : ""}\n\nEl bot no publica cancelaciones/demoras/locales en el grupo. /sinservicio off para levantarlo.` : "No hay servicio suspendido: el bot publica cancelaciones normalmente.\nUso: /sinservicio [horas | hasta DD/MM] [motivo]");
       return;
     }
-    const m = /^(\d{1,2})\s*(?:h|hs|horas?)?\b\s*(.*)$/i.exec(args);
+    // "hasta 13/10" = vuelve a la normalidad el 13/10 a las 00:00; "hasta 13/10 04:30" fija la hora.
+    const mf = /^hasta\s+(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?\s*(.*)$/i.exec(args);
+    const m = mf ? null : /^(\d{1,2})\s*(?:h|hs|horas?)?\b\s*(.*)$/i.exec(args);
     const horas = m ? Math.min(Number(m[1]), 72) : null;
-    const motivo = (m ? m[2] : args).trim();
-    const hasta = horas ? new Date(Date.now() + horas * 3600 * 1000) : finDelDiaAR();
+    const motivo = (mf ? mf[5] : m ? m[2] : args).trim();
+    let hasta = horas ? new Date(Date.now() + horas * 3600 * 1000) : finDelDiaAR();
+    if (mf) {
+      const anio = new Date(Date.now() - 3 * 3600 * 1000).getUTCFullYear();
+      hasta = new Date(Date.UTC(anio, Number(mf[2]) - 1, Number(mf[1]), Number(mf[3] || 0), Number(mf[4] || 0)) + 3 * 3600 * 1000);
+      if (Number.isNaN(hasta.getTime()) || hasta.getTime() <= Date.now()) {
+        await ctx.reply("La fecha de fin no es válida o ya pasó. Ej: /sinservicio hasta 13/10 corte programado");
+        return;
+      }
+    }
     const doc = await setSinServicio({ motivo, hasta, fuente: "manual", quien: ctx.from?.username || String(ctx.from?.id) });
     await ctx.reply(`🔇 Servicio marcado como suspendido hasta ${horaAR(doc.hasta)}. El bot no publica cancelaciones, demoras ni locales fuera de cronograma en el grupo y, si le preguntan, dice que no hay servicio.\n/sinservicio off para levantarlo.`);
   } catch (err) {
