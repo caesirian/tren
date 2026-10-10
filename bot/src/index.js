@@ -59,7 +59,7 @@ import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
 import { guardarReporte, listarReportesPendientes, marcarReporteRevisado } from "./reportLogger.js";
 import { publicarNoticia } from "./noticiaPublisher.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
-import { consultarColectivoEnVivo } from "./colectivoSearch.js";
+import { RE_CONSULTA_COLECTIVO, contextoAlternativas } from "./alternativas.js";
 import { chequearYNotificar } from "./monitor.js";
 import { chequearYEnviarInformeDiario, generarInformeTexto, listarFallidosRecientes, reintentarFallidosGuardados, listarUsuariosPrivados, getHistorialUsuario, getUltimaPreguntaUsuario } from "./dailyReport.js";
 import { encolarReintento, listaPendientes, marcarIntento, quitarDeCola } from "./retryQueue.js";
@@ -332,15 +332,11 @@ async function armarContexto(pregunta) {
     }
   }
 
-  // Preguntas sobre líneas de colectivo: no tenemos esa info cargada a
-  // mano, así que acá sí vale una búsqueda web real (cacheada).
-  if (/\bcolectivo\b|colectivos|bondi(s)?\b|\bl[ií]nea\s*\d+\b|\bmicro\b|\bmicros\b/i.test(pregunta)) {
-    const colectivo = await consultarColectivoEnVivo(pregunta);
-    if (colectivo) {
-      partes.push(
-        `\n== BÚSQUEDA WEB EN VIVO — COLECTIVOS (${colectivo.deCache ? "resultado en caché, buscado" : "recién buscado"} el ${colectivo.buscadoEn}) ==\n${colectivo.texto}\nEsto viene de una búsqueda web real (no es un dato fijo cargado a mano). Aclará que conviene confirmar recorrido/frecuencia exacta antes de viajar, porque esto puede cambiar.`
-      );
-    }
+  // Preguntas sobre colectivos/alternativas: el bot habla SOLO con la lista
+  // verificada de data/alternativas.json (nada de búsqueda web ni de memoria
+  // del modelo, que inventaba recorridos). Sin lista vigente -> sin respuesta.
+  if (RE_CONSULTA_COLECTIVO.test(pregunta)) {
+    partes.push(contextoAlternativas(new Date(), SIN_RESPUESTA_SENTINEL));
   }
 
   // Si preguntan por el Diferencial, calculamos la próxima salida real.

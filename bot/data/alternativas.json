@@ -1,0 +1,13 @@
+[
+  {
+    "id": "corte-merlo-once-ejemplo",
+    "tramo": "Merlo - Once",
+    "desde": "2026-10-10T00:00:00-03:00",
+    "hasta": "2026-10-12T23:59:00-03:00",
+    "verificado": false,
+    "alternativas": [
+      "COMPLETAR: línea, desde dónde, hasta dónde llega realmente",
+      "COMPLETAR: combinación posible (ej. línea X hasta Y, luego subte/otra línea)"
+    ]
+  }
+]
