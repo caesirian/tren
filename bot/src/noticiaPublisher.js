@@ -7,8 +7,12 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { solicitarSyncNoticias } from "./noticiasSync.js";
+import { programarAvisoNoticia } from "./noticiasAviso.js";
 
 let db = null;
+export function dbNoticias() {
+  return ensureInit();
+}
 function ensureInit() {
   if (db) return db;
   if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
@@ -37,7 +41,7 @@ export async function publicarNoticia({ titulo, contenido, creadoPor }) {
   if (!firestore) throw new Error("Firestore no está configurado (faltan credenciales).");
 
   const ahora = new Date();
-  await firestore.collection("noticias").add({
+  const ref = await firestore.collection("noticias").add({
     titulo,
     contenido,
     foto: "",
@@ -49,4 +53,6 @@ export async function publicarNoticia({ titulo, contenido, creadoPor }) {
     creadoEn: FieldValue.serverTimestamp(),
   });
   solicitarSyncNoticias(); // genera la página con Open Graph al instante
+  programarAvisoNoticia(ref.id); // avisa en el grupo cuando el link ya tiene vista previa
+  return ref.id;
 }

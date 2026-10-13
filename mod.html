@@ -344,6 +344,18 @@
             <label>Fecha</label>
             <input type="date" id="nFecha"/>
           </div>
+          <div class="form-group" id="ogPrevWrap">
+            <label>Así se verá al compartir (WhatsApp / Facebook)</label>
+            <div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;max-width:420px;background:rgba(255,255,255,.04)">
+              <div id="ogPrevImg" style="aspect-ratio:1200/630;background:linear-gradient(135deg,#002B5C,#0A4A8A);color:#fff;display:flex;flex-direction:column;justify-content:center;padding:6% 7%;box-sizing:border-box;background-size:cover;background-position:center"></div>
+              <div style="padding:10px 12px">
+                <div style="font-size:11px;color:var(--muted);text-transform:uppercase">trensarmientoenlinea.com.ar</div>
+                <div id="ogPrevTit" style="font-weight:700;font-size:14px;margin:2px 0"></div>
+                <div id="ogPrevDesc" style="font-size:12px;color:var(--muted)"></div>
+              </div>
+            </div>
+          </div>
+          <label class="check-row" style="margin-bottom:10px"><input type="checkbox" id="nBorrador"/> Guardar como borrador (no se publica en el sitio)</label>
           <div class="btn-row">
             <button class="btn btn-primary" id="publicarBtn">📤 Publicar noticia</button>
           </div>
@@ -815,6 +827,26 @@ document.getElementById("nTitulo").addEventListener("input",function(){
 })();
 
 // ── Publicar ───────────────────────────────────────────────────
+// ── Vista previa de cómo se comparte ───────────────────────
+function actualizarOgPrev(){
+  const box=document.getElementById("ogPrevImg"); if(!box)return;
+  const t=document.getElementById("nTitulo").value.trim()||"Título de la noticia";
+  const c=document.getElementById("nContenido").value.replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim();
+  const fp=document.getElementById("finalPreview"),fi=document.getElementById("finalImg");
+  const hayImg=!!(fp&&fi&&fi.getAttribute("src")&&getComputedStyle(fp).display!=="none");
+  const clave=t+"|"+c+"|"+(hayImg?fi.src:"");
+  if(box.dataset.k===clave)return; box.dataset.k=clave;
+  if(hayImg){box.style.backgroundImage=`url("${fi.src}")`;box.innerHTML="";}
+  else{
+    box.style.backgroundImage="";
+    box.innerHTML='<div style="font-size:9px;letter-spacing:2px;color:#7CC8EE;font-weight:700">NOTICIAS · TREN SARMIENTO</div><div style="font-size:15px;font-weight:700;line-height:1.2;margin-top:6px"></div>';
+    box.lastChild.textContent=t.slice(0,100);
+  }
+  document.getElementById("ogPrevTit").textContent=t;
+  document.getElementById("ogPrevDesc").textContent=(c.length>160?c.slice(0,157)+"…":c)||"Texto de la noticia…";
+}
+setInterval(actualizarOgPrev,800);
+
 document.getElementById("publicarBtn").addEventListener("click", async () => {
   if(!isAdmin())return;
   const titulo   =document.getElementById("nTitulo").value.trim();
@@ -823,6 +855,9 @@ document.getElementById("publicarBtn").addEventListener("click", async () => {
   if(!titulo)   {alert("El título es obligatorio");return;}
   if(!contenido){alert("El contenido es obligatorio");return;}
   if(!fecha)    {alert("La fecha es obligatoria");return;}
+  const borrador=document.getElementById("nBorrador").checked;
+  const dudoso=/prueba|test|t[ií]tulo de noticia|otro t[ií]tulo|lorem/i.test(titulo)||titulo.length<12||contenido.length<40;
+  if(!borrador&&dudoso&&!confirm("El título o el texto parecen de prueba o son muy cortos.\n\n¿Publicar igual? (también podés guardarla como borrador)"))return;
   const btn=document.getElementById("publicarBtn");
   btn.disabled=true; btn.textContent="⏳ Publicando…";
   let foto="";
@@ -835,19 +870,23 @@ document.getElementById("publicarBtn").addEventListener("click", async () => {
       titulo,contenido,foto,
       piedefoto:document.getElementById("nPieFoto").value.trim(),
       fecha,fechaMs:new Date(fecha).getTime(),
-      publicado:true,creadoPor:currentUser.email,creadoEn:serverTimestamp()
+      publicado:!borrador,creadoPor:currentUser.email,creadoEn:serverTimestamp()
     });
     ["nTitulo","nContenido","nPieFoto"].forEach(id=>document.getElementById(id).value="");
     document.getElementById("nTituloChars").textContent="0 / 120";
     quitarImg();
     const now=new Date(); now.setMinutes(now.getMinutes()-now.getTimezoneOffset());
     document.getElementById("nFecha").value=now.toISOString().slice(0,16);
-    const linkNoticia=urlNoticia(nuevaRef.id);
-    let copiado=false;
-    try{await navigator.clipboard.writeText(linkNoticia);copiado=true;}catch{}
-    pedirSyncNoticias();
-    showToast(`✅ Publicada${copiado?" · link copiado":""} · generando vista previa…`);
-    esperarLinkNoticia(nuevaRef.id);
+    document.getElementById("nBorrador").checked=false;
+    if(borrador){showToast("📝 Guardada como borrador (no se publicó)");}
+    else{
+      const linkNoticia=urlNoticia(nuevaRef.id,titulo);
+      let copiado=false;
+      try{await navigator.clipboard.writeText(linkNoticia);copiado=true;}catch{}
+      pedirSyncNoticias(nuevaRef.id);
+      showToast(`✅ Publicada${copiado?" · link copiado":""} · generando vista previa…`);
+      esperarLinkNoticia(nuevaRef.id,titulo);
+    }
   }catch(e){alert("Error al guardar en Firestore: "+e.message);}
   btn.disabled=false; btn.textContent="🚀 Publicar noticia";
 });
@@ -857,15 +896,16 @@ document.getElementById("publicarBtn").addEventListener("click", async () => {
 // ══════════════════════════════════════════════════════════════
 let _cache={},_editId=null,_lstIniciado=false;
 function fmtF(s){if(!s)return"—";try{const d=new Date(s),p=n=>String(n).padStart(2,"0");return`${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;}catch{return s;}}
-function urlNoticia(id){return `https://trensarmientoenlinea.com.ar/noticias/${id}/`;}
+function slugNoticia(t){const full=String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");if(full.length<=60)return full;const cut=full.slice(0,60);return(full[60]==="-"?cut:cut.slice(0,Math.max(cut.lastIndexOf("-"),20))).replace(/-+$/,"");}
+function urlNoticia(id,titulo){const s=slugNoticia(titulo);return `https://trensarmientoenlinea.com.ar/noticias/${s?s+"-":""}${id}/`;}
 const BOT_SYNC="https://trenbot.onrender.com/api/noticias/sync";
 // Pide al bot que regenere las páginas de noticias (text/plain: sin preflight de CORS). Si falla, queda el cron de respaldo.
-function pedirSyncNoticias(){
-  try{fetch(BOT_SYNC,{method:"POST",headers:{"Content-Type":"text/plain"},body:"{}",keepalive:true}).catch(()=>{});}catch{}
+function pedirSyncNoticias(id){
+  try{fetch(BOT_SYNC,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(id?{id}:{}),keepalive:true}).catch(()=>{});}catch{}
 }
 // Espera a que el link de la noticia esté online (GitHub Pages) y avisa.
-async function esperarLinkNoticia(id){
-  const url=urlNoticia(id);
+async function esperarLinkNoticia(id,titulo){
+  const url=urlNoticia(id,titulo);
   for(let i=0;i<48;i++){ // ~4 min
     await new Promise(r=>setTimeout(r,5000));
     try{const r=await fetch(url+"?_="+Date.now(),{cache:"no-store"});if(r.ok){showToast("✅ Link con vista previa listo");return true;}}catch{}
@@ -874,7 +914,7 @@ async function esperarLinkNoticia(id){
   return false;
 }
 window.copiarLinkNoticia=async function(id){
-  const url=urlNoticia(id);
+  const url=urlNoticia(id,_cache[id]?.titulo);
   try{await navigator.clipboard.writeText(url);alert("🔗 Link copiado:\n"+url);}catch{prompt("Copiá el link:",url);}
 };
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}

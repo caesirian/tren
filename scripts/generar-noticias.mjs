@@ -49,6 +49,9 @@ async function fetchNoticias() {
 }
 
 // ── Helpers ────────────────────────────────────────────────────
+// Mismo criterio que index.html, mod.html y el bot (si difieren, 404.html resuelve igual por el id del final).
+const slugify = t => { const full=String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");if(full.length<=60)return full;const cut=full.slice(0,60);return(full[60]==="-"?cut:cut.slice(0,Math.max(cut.lastIndexOf("-"),20))).replace(/-+$/,""); };
+const rutaDe = n => { const s = slugify(n.titulo); return s ? `${s}-${n.id}` : n.id; };
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function plain(html) {
@@ -134,11 +137,11 @@ async function imagenNoticia(n) {
   if (!sharp) return { url: FALLBACK, sized: false, alt: SITE };
   const hash = createHash('sha1').update(titulo + '|' + (n.fechaMs || '')).digest('hex').slice(0, 8);
   const nombre = `og-${hash}.jpg`;
-  const dir = path.join(OUT_DIR, n.id);
+  const dir = path.join(OUT_DIR, n._ruta);
   await mkdir(dir, { recursive: true });
   for (const f of await readdir(dir)) if (/^og-.*\.jpg$/.test(f) && f !== nombre) await rm(path.join(dir, f));
   await writeFile(path.join(dir, nombre), await tarjeta({ titulo, kicker: 'NOTICIAS · TREN SARMIENTO', fecha: n.fechaMs ? fmtCorta(n.fechaMs) : '' }));
-  return { url: `${BASE}/noticias/${n.id}/${nombre}`, sized: true, type: 'image/jpeg', alt: titulo };
+  return { url: `${BASE}/noticias/${n._ruta}/${nombre}`, sized: true, type: 'image/jpeg', alt: titulo };
 }
 
 // ── Plantillas ─────────────────────────────────────────────────
@@ -160,7 +163,7 @@ ul.lista{list-style:none;margin:0;padding:0}ul.lista li{border-bottom:1px solid 
 ul.lista small{display:block;color:var(--muted)}`;
 
 function paginaNoticia(n) {
-  const url   = `${BASE}/noticias/${n.id}/`;
+  const url   = `${BASE}/noticias/${n._ruta}/`;
   const desc  = n._desc;
   const titulo = plain(n.titulo) || 'Noticia';
   const img   = n._og;
@@ -255,7 +258,7 @@ function paginaIndice(items) {
 <main>
 <h1 style="margin:8px 0 12px;color:var(--navy)">📰 Noticias</h1>
 <ul class="lista">
-${items.map(n => `<li><a href="/noticias/${n.id}/">${n.titulo || 'Noticia'}</a><small>${n.fechaMs ? fmtCorta(n.fechaMs) : ''}</small></li>`).join('\n') || '<li>Todavía no hay noticias.</li>'}
+${items.map(n => `<li><a href="/noticias/${n._ruta}/">${n.titulo || 'Noticia'}</a><small>${n.fechaMs ? fmtCorta(n.fechaMs) : ''}</small></li>`).join('\n') || '<li>Todavía no hay noticias.</li>'}
 </ul>
 <a class="btn volver" href="/">Volver al inicio</a>
 </main>
@@ -265,7 +268,11 @@ ${items.map(n => `<li><a href="/noticias/${n.id}/">${n.titulo || 'Noticia'}</a><
 }
 
 function sitemap(items) {
-  const urls = [{ loc: `${BASE}/noticias/`, lastmod: items[0]?.updateTime }, ...items.map(n => ({ loc: `${BASE}/noticias/${n.id}/`, lastmod: n.updateTime || (n.fechaMs && new Date(n.fechaMs).toISOString()) }))];
+  const urls = [
+    { loc: `${BASE}/`, lastmod: items[0]?.updateTime },
+    { loc: `${BASE}/noticias/`, lastmod: items[0]?.updateTime },
+    ...items.map(n => ({ loc: `${BASE}/noticias/${n._ruta}/`, lastmod: n.updateTime || (n.fechaMs && new Date(n.fechaMs).toISOString()) }))
+  ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `  <url><loc>${u.loc}</loc>${u.lastmod ? `<lastmod>${u.lastmod.slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>\n`;
 }
 
@@ -277,7 +284,8 @@ const items = todas
   .sort((a, b) => (b.fechaMs || 0) - (a.fechaMs || 0));
 
 await mkdir(OUT_DIR, { recursive: true });
-const vivos = new Set(items.map(n => n.id));
+items.forEach(n => { n._ruta = rutaDe(n); });
+const vivos = new Set(items.flatMap(n => [n.id, n._ruta]));
 for (const entry of await readdir(OUT_DIR, { withFileTypes: true })) {
   if (entry.isDirectory() && !vivos.has(entry.name)) await rm(path.join(OUT_DIR, entry.name), { recursive: true, force: true });
 }
@@ -288,9 +296,14 @@ if (sharp) {
 for (const n of items) {
   n._desc = descripcion(n.contenido, n.titulo);
   n._og = await imagenNoticia(n);
-  await mkdir(path.join(OUT_DIR, n.id), { recursive: true });
-  await writeFile(path.join(OUT_DIR, n.id, 'index.html'), paginaNoticia(n));
+  const html = paginaNoticia(n);
+  await mkdir(path.join(OUT_DIR, n._ruta), { recursive: true });
+  await writeFile(path.join(OUT_DIR, n._ruta, 'index.html'), html);
+  if (n._ruta !== n.id) { // link viejo /noticias/<id>/: sigue sirviendo la vista previa y redirige al link con título
+    await mkdir(path.join(OUT_DIR, n.id), { recursive: true });
+    await writeFile(path.join(OUT_DIR, n.id, 'index.html'), html.replace('<meta name="robots" content="index, follow, max-image-preview:large"/>', `<meta name="robots" content="noindex, follow"/>\n<meta http-equiv="refresh" content="0;url=${BASE}/noticias/${n._ruta}/"/>`));
+  }
 }
 await writeFile(path.join(OUT_DIR, 'index.html'), paginaIndice(items));
-await writeFile('sitemap-noticias.xml', sitemap(items));
+await writeFile('sitemap.xml', sitemap(items));
 console.log(`OK: ${items.length} noticia(s) generadas`);

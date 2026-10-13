@@ -13,11 +13,11 @@
         y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
     })(window, document, "clarity", "script", "wu66vbz7d1");
 </script>
-<link rel="canonical" href="https://www.trensarmientoenlinea.com.ar/"/>
+<link rel="canonical" href="https://trensarmientoenlinea.com.ar/"/>
 
 <!-- Open Graph (Facebook / WhatsApp / LinkedIn) -->
 <meta property="og:type"        content="website"/>
-<meta property="og:url"         content="https://www.trensarmientoenlinea.com.ar/"/>
+<meta property="og:url"         content="https://trensarmientoenlinea.com.ar/"/>
 <meta property="og:title"       content="Tren Sarmiento En Línea 2026 — Horarios, Tarifas y Estado del Servicio"/>
 <meta property="og:description" content="Consultá el próximo tren Sarmiento, horarios oficiales, tarifas y colectivos alternativos en caso de paro. Ramal Once–Moreno."/>
 <meta property="og:image"       content="https://trensarmientoenlinea.com.ar/og-sitio.jpg"/>
@@ -120,8 +120,8 @@
   "@graph": [
     {
       "@type": "WebSite",
-      "@id": "https://www.trensarmientoenlinea.com.ar/#website",
-      "url": "https://www.trensarmientoenlinea.com.ar/",
+      "@id": "https://trensarmientoenlinea.com.ar/#website",
+      "url": "https://trensarmientoenlinea.com.ar/",
       "name": "Tren Sarmiento En Línea",
       "description": "Horarios, tarifas y estado del servicio del Ferrocarril Sarmiento. Ramal Once–Moreno 2026.",
       "inLanguage": "es-AR",
@@ -129,14 +129,14 @@
         "@type": "SearchAction",
         "target": {
           "@type": "EntryPoint",
-          "urlTemplate": "https://www.trensarmientoenlinea.com.ar/?desde={origen}&hasta={destino}"
+          "urlTemplate": "https://trensarmientoenlinea.com.ar/?desde={origen}&hasta={destino}"
         },
         "query-input": "required name=origen"
       }
     },
     {
       "@type": "PublicTransportation",
-      "@id": "https://www.trensarmientoenlinea.com.ar/#line",
+      "@id": "https://trensarmientoenlinea.com.ar/#line",
       "name": "Línea Sarmiento",
       "alternateName": "Ferrocarril Sarmiento",
       "description": "Servicio ferroviario metropolitano que une Once con Moreno, pasando por 16 estaciones en la zona oeste del AMBA.",
@@ -1731,14 +1731,22 @@ function copete(html) {
 }
 
 // URL directa a una noticia — para compartir (bot, redes, etc.)
-function urlNoticia(id) {
-  return `https://trensarmientoenlinea.com.ar/noticias/${id}/`;
+// Mismo criterio que scripts/generar-noticias.mjs (si difiere, 404.html igual resuelve por el id del final)
+function slugNoticia(t) {
+  const full=String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");if(full.length<=60)return full;const cut=full.slice(0,60);return(full[60]==="-"?cut:cut.slice(0,Math.max(cut.lastIndexOf("-"),20))).replace(/-+$/,"");
+}
+function rutaNoticia(id, titulo) {
+  const s = slugNoticia(titulo);
+  return s ? `${s}-${id}` : id;
+}
+function urlNoticia(id, titulo) {
+  return `https://trensarmientoenlinea.com.ar/noticias/${rutaNoticia(id, titulo)}/`;
 }
 
 function buildCard(n) {
   const btn = document.createElement('a');
   btn.className = 'noticia-card';
-  btn.href = `/noticias/${n.id}/`;
+  btn.href = `/noticias/${rutaNoticia(n.id, n.titulo)}/`;
   btn.setAttribute('aria-label', `Leer noticia: ${n.titulo}`);
   btn.innerHTML = `
     ${n.foto
@@ -1794,7 +1802,7 @@ async function abrirArticulo(id) {
       <div class="noticias-articulo-cuerpo">${n.contenido || ''}</div>
       ${n.piedefoto ? `<p class="noticias-articulo-pie">📷 ${n.piedefoto}</p>` : ''}
       <div class="noticias-articulo-compartir">
-        <button class="noticias-copiar-link" data-url="${urlNoticia(n.id)}">🔗 Copiar link a esta noticia</button>
+        <button class="noticias-copiar-link" data-url="${urlNoticia(n.id, n.titulo)}">🔗 Copiar link a esta noticia</button>
       </div>
     </div>`;
 
@@ -1813,7 +1821,7 @@ async function abrirArticulo(id) {
   }
 
   // Actualizar la URL sin recargar la página (permite compartir desde el navegador)
-  const nuevaUrl = urlNoticia(n.id);
+  const nuevaUrl = urlNoticia(n.id, n.titulo);
   if (window.location.href !== nuevaUrl) {
     history.pushState({ noticia: n.id }, '', `/?noticia=${n.id}`);
   }

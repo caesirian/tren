@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /mod.html
+Disallow: /Admin/
+Disallow: /index_prueba.html
+Disallow: /testsub.html
+
+Sitemap: https://trensarmientoenlinea.com.ar/sitemap.xml

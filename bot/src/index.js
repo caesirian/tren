@@ -57,7 +57,8 @@ import { esFuenteVerdad, procesarMensajeFuente, transcribirAudio, avisosVigentes
 import { registrarChatPrivado } from "./privateChatLogger.js";
 import { registrarChatGrupo, listarTemasRecientes } from "./groupChatLogger.js";
 import { guardarReporte, listarReportesPendientes, marcarReporteRevisado } from "./reportLogger.js";
-import { publicarNoticia } from "./noticiaPublisher.js";
+import { publicarNoticia, dbNoticias } from "./noticiaPublisher.js";
+import { configurarAvisoNoticias, programarAvisoNoticia, urlNoticia } from "./noticiasAviso.js";
 import { solicitarSyncNoticias } from "./noticiasSync.js";
 import { consultarParoEnVivo } from "./paroSearch.js";
 import { RE_CONSULTA_COLECTIVO, contextoAlternativas } from "./alternativas.js";
@@ -1584,12 +1585,12 @@ bot.command("noticia", async (ctx) => {
   }
 
   try {
-    await publicarNoticia({
+    const idNoticia = await publicarNoticia({
       titulo,
       contenido,
       creadoPor: `Telegram (${ctx.from?.username ? "@" + ctx.from.username : ctx.from?.id})`,
     });
-    await ctx.reply(`✅ Noticia publicada: "${titulo}"\n\n(si no aparece en el sitio, revisá que "mostrarTitulares" esté activo)`);
+    await ctx.reply(`✅ Noticia publicada: "${titulo}"\n${urlNoticia(idNoticia, titulo)}\n\n(la vista previa del link tarda ~1 min en estar lista; si no aparece en el sitio, revisá que "mostrarTitulares" esté activo)`);
   } catch (err) {
     console.error("Error publicando noticia:", err.message);
     await ctx.reply("No pude publicar la noticia: " + err.message);
@@ -2649,11 +2650,21 @@ app.options("/api/noticias/sync", (req, res) => {
   }
   res.sendStatus(204);
 });
-app.post("/api/noticias/sync", (req, res) => {
+configurarAvisoNoticias({
+  getDb: dbNoticias,
+  enviar: (texto) => {
+    const tema = Number(process.env.TEMA_NOTICIAS_ID || 0);
+    return bot.telegram.sendMessage(process.env.ALLOWED_GROUP_ID, texto, tema ? { message_thread_id: tema } : undefined);
+  },
+});
+app.post("/api/noticias/sync", express.text({ type: "*/*", limit: "2kb" }), (req, res) => {
   const origin = req.headers.origin;
   if (!origin || !ORIGENES_TABLERO_PERMITIDOS.has(origin)) return res.status(403).json({ error: "forbidden" });
   res.setHeader("Access-Control-Allow-Origin", origin);
-  res.json({ ok: true, ...solicitarSyncNoticias() });
+  let id = null;
+  try { id = JSON.parse(req.body || "{}").id || null; } catch {}
+  // Con id (noticia recién publicada) además avisa al grupo cuando su página ya esté online.
+  res.json({ ok: true, ...solicitarSyncNoticias(), aviso: id ? programarAvisoNoticia(id) : false });
 });
 
 // Registro de la "Validación de Usuario" del mapa del sitio. El navegador manda solo datos derivados
