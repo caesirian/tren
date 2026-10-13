@@ -1,6 +1,11 @@
 name: Generar páginas de noticias (Open Graph)
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/generar-noticias.mjs'
+      - '.github/workflows/noticias-og.yml'
   schedule:
     - cron: '*/15 * * * *'   # respaldo; la corrida normal la dispara el bot al publicar
   workflow_dispatch:
