@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>Importar noticias — Tren Sarmiento</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:20px;max-width:640px;margin-inline:auto}
+  h1{font-size:20px;margin:0 0 4px}
+  p.sub{color:#94a3b8;font-size:13px;margin:0 0 16px}
+  .card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:14px;margin-bottom:12px}
+  .card h2{font-size:15px;margin:0 0 4px}
+  .card small{color:#94a3b8}
+  .card p{font-size:13px;line-height:1.45;margin:8px 0 0;color:#cbd5e1}
+  button{width:100%;padding:14px;border:0;border-radius:10px;background:#16a34a;color:#fff;font-weight:700;font-size:15px}
+  button:disabled{opacity:.5}
+  #estado{margin:12px 0;font-size:14px}
+  .ok{color:#4ade80}.err{color:#f87171}
+</style>
+</head>
+<body>
+<h1>📰 Importar 4 noticias</h1>
+<p class="sub">Usa la sesión de admin de mod.html (mismo dominio). Publica en la colección <code>noticias</code>.</p>
+<div id="estado">Verificando sesión…</div>
+<div id="lista"></div>
+<button id="btn" disabled>📤 Publicar las 4 noticias</button>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey:"AIzaSyAZ83BcBLEvVJ1G7hFvI_cqhLSKJpRsH7c",
+  authDomain:"tren-sarmiento-en-linea.firebaseapp.com",
+  projectId:"tren-sarmiento-en-linea",
+  storageBucket:"tren-sarmiento-en-linea.firebasestorage.app",
+  messagingSenderId:"712333767897",
+  appId:"1:712333767897:web:c9557e3f2299c9806dfac8"
+};
+const admins = ["hernan.garbarino@gmail.com","trensarmientoenlinea@gmail.com","otroadmin@gmail.com"];
+
+const NOTICIAS = [
+  {
+    titulo: "Sarmiento sin servicio el finde largo: vuelve el martes 13",
+    contenido: "El tren Sarmiento no prestó servicio en ninguno de sus ramales el sábado 10, el domingo 11 y el lunes 12 de octubre, por un conjunto de obras de señalamiento, vías e infraestructura. Según la última actualización informada, el martes 13 los servicios eléctricos y diésel vuelven a circular con sus horarios habituales (el anuncio original hablaba del miércoles 14). En el ramal Merlo–Lobos, la reanudación se hace dentro del tramo que está habilitado actualmente.\n\nFuente: Perfil.",
+    fecha: "2026-10-09T12:00"
+  },
+  {
+    titulo: "Qué obras se hicieron en el corte: nueva mesa de señales en Haedo",
+    contenido: "El corte total se aprovechó para renovar la mesa de mando de señales de Haedo, una estructura de más de 40 años que completa la renovación de las tres mesas previstas para la línea. También hubo trabajos en la vía sexta de la playa de maniobras de Once, señalamiento en el paso a nivel Rojas, el andén central de Ramos Mejía, el andén 2 de Morón, la cabina de señales de Castelar y el andén central de Ciudadela, además de desmalezado y limpieza de plataformas en el ramal Once–Moreno y en los diésel Moreno–Mercedes y Merlo–Lobos. Las tareas se enmarcan en el plan de Emergencia Ferroviaria del Gobierno nacional.\n\nFuente: Perfil y El Cronista.",
+    fecha: "2026-10-09T11:00"
+  },
+  {
+    titulo: "La Ciudad propone eliminar 20 barreras entre Villa Luro y Caballito",
+    contenido: "El Gobierno porteño presentó a la Nación una propuesta más acotada para reactivar el soterramiento del Sarmiento: retomar la excavación entre Villa Luro y Caballito con la tuneladora que sigue bajo tierra, sumar una única estación intermedia y eliminar unas 20 barreras. Sobre la traza liberada se armaría el Corredor Verde del Oeste, con un parque lineal y un trambús o Metrobús eléctrico con carril exclusivo. La obra original se frenó en 2018, después de excavar unos 7,2 km de túnel entre Haedo y Villa Luro.\n\nFuente: Canal 26 y Perfil.",
+    fecha: "2026-08-05T09:00"
+  },
+  {
+    titulo: "Habilitaron el paso bajo nivel García Lorca, en Caballito",
+    contenido: "Tras un año y medio de trabajos, quedó habilitado el paso bajo nivel de la calle García Lorca, el primero construido sobre las vías del Sarmiento en ese sector y que según datos oficiales beneficiaría a más de 55 mil vecinos. Es un paso más en la eliminación de barreras de la línea, que todavía conserva alrededor de 20 pasos a nivel entre Liniers y Caballito. Siguen las obras en otros cruces, como el de Irigoyen en Villa Luro.\n\nFuente: Canal 26.",
+    fecha: "2026-06-19T12:00"
+  }
+];
+
+const lista = document.getElementById("lista");
+lista.innerHTML = NOTICIAS.map(n =>
+  `<div class="card"><h2></h2><small>${n.fecha.slice(0,10)}</small><p></p></div>`).join("");
+[...lista.children].forEach((el,i)=>{
+  el.querySelector("h2").textContent = NOTICIAS[i].titulo;
+  el.querySelector("p").textContent  = NOTICIAS[i].contenido;
+});
+
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+const estado = document.getElementById("estado");
+const btn    = document.getElementById("btn");
+
+onAuthStateChanged(auth, user => {
+  if (user && admins.includes(user.email)) {
+    estado.innerHTML = `<span class="ok">Sesión de admin: ${user.email}</span>`;
+    btn.disabled = false;
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = "⏳ Publicando…";
+      try {
+        for (const n of NOTICIAS) {
+          await addDoc(collection(db,"noticias"), {
+            titulo: n.titulo,
+            contenido: n.contenido,
+            foto: "",
+            piedefoto: "",
+            fecha: n.fecha,
+            fechaMs: new Date(n.fecha).getTime(),
+            publicado: true,
+            creadoPor: user.email,
+            creadoEn: serverTimestamp()
+          });
+        }
+        estado.innerHTML = `<span class="ok">✅ Las 4 noticias quedaron publicadas. No vuelvas a tocar el botón (duplica).</span>`;
+        btn.textContent = "Listo";
+      } catch (e) {
+        estado.innerHTML = `<span class="err">Error: ${e.message}</span>`;
+        btn.disabled = false; btn.textContent = "📤 Reintentar";
+      }
+    };
+  } else {
+    estado.innerHTML = `<span class="err">No hay sesión de admin. Entrá primero a mod.html, iniciá sesión con Google y volvé a abrir esta página.</span>`;
+    btn.disabled = true;
+  }
+});
+</script>
+</body>
+</html>
