@@ -33,6 +33,7 @@ import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, r
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
+import { imagenMapaDemoras, mapaDemorasModo } from "./mapaDemorasImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
 import { registrarSnapshot, snapshotHaceMinutos, rangoRegistrado } from "./tableroHistorial.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
@@ -1003,6 +1004,22 @@ bot.command("apptrenes", async (ctx) => {
 // Estado en vivo de las formaciones en Once y Moreno: si ya llegó y espera, si ya salió
 // (y a qué hora) o si está en camino. Lo alimenta la vigilancia de salidas (vigiaSalidas.js).
 // /formaciones informe [hoy|ayer|AAAA-MM-DD|DD/MM] → informe por formación del día (informeFormaciones.js).
+// Mapa vertical de las vías con las formaciones demoradas resaltadas (mapaDemorasImagen.js).
+// Solo el admin; siempre se lo manda por privado, sin importar MAPA_DEMORAS_MODO.
+bot.command("mapademoras", async (ctx) => {
+  if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
+  try {
+    const { png, trenes, demorados } = await imagenMapaDemoras();
+    const caption = demorados
+      ? `Formaciones con demora de 10+ min: ${demorados} (de ${trenes.length} en vía).`
+      : `Sin formaciones con demora de 10+ min (${trenes.length} en vía).`;
+    await bot.telegram.sendPhoto(process.env.ADMIN_TELEGRAM_ID, { source: png }, { caption: `${caption}\n🧪 Prueba privada (modo: ${mapaDemorasModo()}).` });
+  } catch (err) {
+    console.error("Error en /mapademoras:", err.message);
+    await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, `No pude armar el mapa: ${err.message}`).catch(() => {});
+  }
+});
+
 bot.command("formaciones", async (ctx) => {
   if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
   try {
@@ -2814,7 +2831,28 @@ async function chequeoPeriodicoProxy(origen) {
     if (demorasProxy.texto && process.env.ADMIN_TELEGRAM_ID) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, demorasProxy.texto).catch((err) => console.error("Error avisando demoras del proxy:", err.message));
     }
-    if (!(await servicioSuspendido().catch(() => null))) for (const t of demorasProxy.textosGrupo || []) await publicarEnGrupo(t);
+    const suspendidoDemoras = await servicioSuspendido().catch(() => null);
+    const modoMapa = mapaDemorasModo(); // "privado" (por defecto) | "grupo" | "off"
+    let mapaDemoras = null;
+    if (modoMapa !== "off" && (demorasProxy.textosGrupo || []).length && !suspendidoDemoras) {
+      mapaDemoras = await imagenMapaDemoras().catch((err) => { console.error("Error armando el mapa de demoras:", err.message); return null; });
+    }
+    if (!suspendidoDemoras) {
+      for (const t of demorasProxy.textosGrupo || []) {
+        if (mapaDemoras && modoMapa === "grupo" && process.env.ALLOWED_GROUP_ID) {
+          // Modo grupo: el mismo resumen sale como foto con el mapa (un solo mensaje).
+          await bot.telegram.sendPhoto(process.env.ALLOWED_GROUP_ID, { source: mapaDemoras.png }, { caption: t, message_thread_id: TEMA_ALERTAS })
+            .catch(async (err) => { console.error("Error mandando el mapa de demoras al grupo:", err.message); await publicarEnGrupo(t); });
+        } else {
+          await publicarEnGrupo(t);
+        }
+        // Modo privado: el mapa le llega solo al admin, con el mismo texto que salió en el grupo.
+        if (mapaDemoras && modoMapa === "privado" && process.env.ADMIN_TELEGRAM_ID) {
+          await bot.telegram.sendPhoto(process.env.ADMIN_TELEGRAM_ID, { source: mapaDemoras.png }, { caption: `${t}\n\n🧪 Prueba privada: el mapa no se envió al grupo.` })
+            .catch((err) => console.error("Error mandando el mapa de demoras al admin:", err.message));
+        }
+      }
+    }
     for (const item of demorasProxy.nuevos || []) {
       const d = datosServicio(item);
       await sugerirEstado({
