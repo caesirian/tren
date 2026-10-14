@@ -5,27 +5,45 @@
 //   · punto chico sobre la vía; a un costado, el número de la formación
 //   · violeta = local · gris = común
 //   · aro rojo + número en rojo con los minutos = formación con demora
+//   · las formaciones que están en una cabecera (Once/Moreno) se juntan en una
+//     sola línea ("5 en Once"); de ésas solo se detallan las que tienen demora
 //
-// MAPA_DEMORAS_MODO: "privado" (por defecto: solo se lo manda al admin),
-// "grupo" (el aviso del grupo sale con el mapa como foto) u "off".
+// Fuente: Roboto incluida en assets/fonts (el servidor no trae fuentes y sin esto
+// el texto sale en serif y se corta). MAPA_DEMORAS_MODO: "privado" (por defecto:
+// solo se lo manda al admin), "grupo" (el aviso del grupo sale con el mapa como
+// foto) u "off".
 
-import { createCanvas } from "@napi-rs/canvas";
+import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { barridoEstructurado, posicionesEnVivo, hora } from "./appTrenes.js";
 import { clasificarServicio } from "./locales.js";
 
 export const UMBRAL_DEMORA_MIN = 10; // mismo umbral que el aviso de demoras
+
+const DIR_FUENTES = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets", "fonts");
+let FUENTE = "sans-serif";
+try {
+  const a = GlobalFonts.registerFromPath(path.join(DIR_FUENTES, "Roboto_400Regular.ttf"), "MapaRoboto");
+  const b = GlobalFonts.registerFromPath(path.join(DIR_FUENTES, "Roboto_700Bold.ttf"), "MapaRoboto");
+  if (a || b) FUENTE = "MapaRoboto";
+} catch (err) {
+  console.error("mapaDemorasImagen: no pude registrar la fuente Roboto, uso la del sistema:", err.message);
+}
+const fuente = (px, negrita = false) => `${negrita ? "bold " : ""}${px}px ${FUENTE}, sans-serif`;
 
 // Mismo orden que ESTACIONES_BARRIDO / COORDS_ESTACIONES (0 = Once … 15 = Moreno).
 const NOMBRES = ["Once", "Caballito", "Flores", "Floresta", "Villa Luro", "Liniers", "Ciudadela", "Ramos Mejía", "Haedo", "Morón", "Castelar", "Ituzaingó", "San A. de Padua", "Merlo", "Paso del Rey", "Moreno"];
 
 const S = 2; // escala (la imagen sale al doble para que se lea bien en el celu)
 const W = 340;
-const H = 430;
 const X_VIA_ONCE = 112;
 const X_VIA_MORENO = 215;
 const Y0 = 68;
 const PASO = 21;
 const SEPARACION_ETIQUETAS = 14;
+const MARGEN_CABECERA = 0.15; // a menos de esto de una cabecera = "en cabecera"
+const MAX_DEMORADOS_CABECERA = 3;
 
 const C = {
   fondo: "#ffffff",
@@ -77,16 +95,67 @@ function circulo(ctx, x, y, r, relleno, borde, ancho = 1) {
   if (borde) { ctx.strokeStyle = borde; ctx.lineWidth = ancho; ctx.stroke(); }
 }
 
-function etiquetaPartes(t) {
-  const demorado = t.demora >= UMBRAL_DEMORA_MIN;
-  const partes = [{ txt: String(t.numero ?? "?"), color: demorado ? C.textoDemora : C.suave }];
-  if (t.local) partes.push({ txt: " local", color: demorado ? C.textoDemora : C.textoLocal });
-  if (demorado) partes.push({ txt: ` +${t.demora} min`, color: C.textoDemora });
-  return { partes, demorado };
+const esDemorado = (t) => t.demora >= UMBRAL_DEMORA_MIN;
+
+function partesDeTren(t) {
+  const dem = esDemorado(t);
+  const partes = [{ txt: String(t.numero ?? "?"), color: dem ? C.textoDemora : C.suave }];
+  if (t.local) partes.push({ txt: " local", color: dem ? C.textoDemora : C.textoLocal });
+  if (dem) partes.push({ txt: ` +${t.demora} min`, color: C.textoDemora });
+  return partes;
+}
+
+// Arma los elementos de UNA vía: puntos individuales + resumen de cada cabecera.
+function elementosDeVia(trenes) {
+  const items = [];
+  const cabeceras = { 0: [], 15: [] };
+  for (const t of trenes) {
+    const pos = Math.min(Math.max(t.posicion, 0), NOMBRES.length - 1);
+    if (pos <= MARGEN_CABECERA) cabeceras[0].push(t);
+    else if (pos >= NOMBRES.length - 1 - MARGEN_CABECERA) cabeceras[15].push(t);
+    else items.push({ y: Y0 + pos * PASO, demorado: esDemorado(t), local: t.local, partes: partesDeTren(t), punto: true });
+  }
+  for (const [idx, lista] of Object.entries(cabeceras)) {
+    if (!lista.length) continue;
+    const y = Y0 + Number(idx) * PASO;
+    if (lista.length === 1) {
+      const t = lista[0];
+      items.push({ y, demorado: esDemorado(t), local: t.local, partes: partesDeTren(t), punto: true });
+      continue;
+    }
+    const demorados = lista.filter(esDemorado).sort((a, b) => b.demora - a.demora);
+    items.push({
+      y,
+      demorado: demorados.length > 0,
+      local: false,
+      punto: true,
+      partes: [{ txt: `${lista.length} en ${NOMBRES[Number(idx)]}`, color: C.suave }],
+    });
+    for (const t of demorados.slice(0, MAX_DEMORADOS_CABECERA)) {
+      items.push({ y, demorado: true, local: t.local, partes: partesDeTren(t), punto: false });
+    }
+    if (demorados.length > MAX_DEMORADOS_CABECERA) {
+      items.push({ y, demorado: true, local: false, punto: false, partes: [{ txt: `+${demorados.length - MAX_DEMORADOS_CABECERA} más con demora`, color: C.textoDemora }] });
+    }
+  }
+  items.sort((a, b) => a.y - b.y);
+  let previo = -Infinity;
+  for (const it of items) {
+    it.yEtiqueta = Math.max(it.y, previo + SEPARACION_ETIQUETAS);
+    previo = it.yEtiqueta;
+  }
+  return items;
 }
 
 // trenes: salida de trenesParaMapa(). Devuelve un Buffer PNG.
 export function generarImagenMapaDemoras(trenes, horaTexto = "") {
+  const vias = [
+    { x: X_VIA_ONCE, items: elementosDeVia(trenes.filter((t) => /^moreno-once$/i.test(t.sentido || ""))) },
+    { x: X_VIA_MORENO, items: elementosDeVia(trenes.filter((t) => !/^moreno-once$/i.test(t.sentido || ""))) },
+  ];
+  // Alto según lo que haya que dibujar (las etiquetas de las cabeceras pueden bajar del final de la vía).
+  const yUltimaEtiqueta = Math.max(0, ...vias.flatMap((v) => v.items.map((i) => i.yEtiqueta)));
+  const H = Math.ceil(Math.max(Y0 + (NOMBRES.length - 1) * PASO + 24, yUltimaEtiqueta + 16) + 34);
   const canvas = createCanvas(W * S, H * S);
   const ctx = canvas.getContext("2d");
   ctx.scale(S, S);
@@ -97,18 +166,18 @@ export function generarImagenMapaDemoras(trenes, horaTexto = "") {
 
   ctx.textAlign = "left";
   ctx.fillStyle = C.texto;
-  ctx.font = "bold 14px sans-serif";
+  ctx.font = fuente(14, true);
   ctx.fillText("Tren Sarmiento · formaciones", 8, 14);
   if (horaTexto) {
     ctx.textAlign = "right";
     ctx.fillStyle = C.suave;
-    ctx.font = "12px sans-serif";
+    ctx.font = fuente(12);
     ctx.fillText(horaTexto, W - 8, 14);
   }
 
   ctx.textAlign = "center";
   ctx.fillStyle = C.texto;
-  ctx.font = "bold 12px sans-serif";
+  ctx.font = fuente(12, true);
   ctx.fillText("Sentido Once", X_VIA_ONCE, 42);
   ctx.fillText("Sentido Moreno", X_VIA_MORENO, 42);
 
@@ -125,7 +194,7 @@ export function generarImagenMapaDemoras(trenes, horaTexto = "") {
   ctx.lineWidth = 1;
   ctx.textAlign = "left";
   ctx.fillStyle = C.suave;
-  ctx.font = "12px sans-serif";
+  ctx.font = fuente(12);
   NOMBRES.forEach((nombre, i) => {
     const y = Y0 + i * PASO;
     for (const x of [X_VIA_ONCE, X_VIA_MORENO]) {
@@ -137,55 +206,40 @@ export function generarImagenMapaDemoras(trenes, horaTexto = "") {
     ctx.fillText(nombre, 8, y);
   });
 
-  // Separa por vía y acomoda las etiquetas para que no se pisen (los puntos no se mueven).
-  const vias = [
-    { x: X_VIA_ONCE, lista: [] },
-    { x: X_VIA_MORENO, lista: [] },
-  ];
-  for (const t of trenes) {
-    const pos = Math.min(Math.max(t.posicion, 0), NOMBRES.length - 1);
-    const via = /^moreno-once$/i.test(t.sentido || "") ? vias[0] : vias[1];
-    via.lista.push({ ...t, y: Y0 + pos * PASO, yEtiqueta: 0 });
-  }
-  for (const via of vias) {
-    via.lista.sort((a, b) => a.y - b.y);
-    let previo = -Infinity;
-    for (const t of via.lista) {
-      t.yEtiqueta = Math.max(t.y, previo + SEPARACION_ETIQUETAS);
-      previo = t.yEtiqueta;
-    }
-  }
-
-  // Puntos (primero los comunes, arriba de todo los demorados para que el aro no quede tapado).
-  const todos = vias.flatMap((v) => v.lista.map((t) => ({ ...t, x: v.x })));
-  todos.sort((a, b) => Number(a.demora >= UMBRAL_DEMORA_MIN) - Number(b.demora >= UMBRAL_DEMORA_MIN));
-  for (const t of todos) {
-    const colorTipo = t.local ? C.local : C.comun;
-    if (t.demora >= UMBRAL_DEMORA_MIN) {
-      circulo(ctx, t.x, t.y, 10, C.halo, C.demora, 1);
-      circulo(ctx, t.x, t.y, 5, colorTipo, null);
+  // Puntos: primero los comunes, arriba los demorados para que el aro no quede tapado.
+  const puntos = vias.flatMap((v) => v.items.filter((i) => i.punto).map((i) => ({ ...i, x: v.x })));
+  puntos.sort((a, b) => Number(a.demorado) - Number(b.demorado));
+  for (const p of puntos) {
+    const colorTipo = p.local ? C.local : C.comun;
+    if (p.demorado) {
+      circulo(ctx, p.x, p.y, 10, C.halo, C.demora, 1);
+      circulo(ctx, p.x, p.y, 5, colorTipo, null);
     } else {
-      circulo(ctx, t.x, t.y, 4, colorTipo, null);
+      circulo(ctx, p.x, p.y, 4, colorTipo, null);
     }
   }
 
-  // Etiquetas al costado de cada punto (a la derecha de la vía).
-  for (const t of todos) {
-    const { partes, demorado } = etiquetaPartes(t);
-    let x = t.x + (demorado ? 15 : 12);
-    for (const p of partes) {
-      ctx.font = `${demorado ? "bold " : ""}12px sans-serif`;
-      ctx.fillStyle = p.color;
-      ctx.textAlign = "left";
-      ctx.fillText(p.txt, x, t.yEtiqueta);
-      x += ctx.measureText(p.txt).width;
+  // Etiquetas a la derecha de cada vía. Si una no entra en la imagen, se achica la letra.
+  ctx.textAlign = "left";
+  for (const v of vias) {
+    for (const it of v.items) {
+      const x0 = v.x + (it.punto && it.demorado ? 15 : 12);
+      let px = 12;
+      const medir = () => it.partes.reduce((s, p) => { ctx.font = fuente(px, it.demorado); return s + ctx.measureText(p.txt).width; }, 0);
+      while (px > 9 && x0 + medir() > W - 4) px -= 1;
+      let x = x0;
+      for (const p of it.partes) {
+        ctx.font = fuente(px, it.demorado);
+        ctx.fillStyle = p.color;
+        ctx.fillText(p.txt, x, it.yEtiqueta);
+        x += ctx.measureText(p.txt).width;
+      }
     }
   }
 
   // Referencias
   const yLeyenda = H - 20;
-  ctx.textAlign = "left";
-  ctx.font = "12px sans-serif";
+  ctx.font = fuente(12);
   circulo(ctx, 16, yLeyenda, 4, C.comun, null);
   ctx.fillStyle = C.suave;
   ctx.fillText("Común", 26, yLeyenda);
@@ -204,5 +258,5 @@ export function generarImagenMapaDemoras(trenes, horaTexto = "") {
 export async function imagenMapaDemoras() {
   const trenes = await trenesParaMapa();
   const png = generarImagenMapaDemoras(trenes, hora(new Date().toISOString()));
-  return { png, trenes, demorados: trenes.filter((t) => t.demora >= UMBRAL_DEMORA_MIN).length };
+  return { png, trenes, demorados: trenes.filter(esDemorado).length };
 }
