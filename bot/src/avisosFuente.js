@@ -114,11 +114,25 @@ Criterios:
 - Si es charla común, una pregunta, un saludo, un comentario sin dato del servicio: esAviso=false, tipo="ninguno".
 - No inventes duraciones: si no las dice, null.
 - comienzaEn / terminaEn: calculalas a partir de la fecha y hora actual de arriba (ej. si hoy es jueves 08/10 y dice "este fin de semana", sábado = 2026-10-10). Si dice "fin de semana" sin horario, usá el sábado 00:00 y el domingo 23:59. SOLO completalas si el evento NO está ocurriendo todavía; si ya está pasando, null.
+- Si el mensaje es una sugerencia, recomendación o consulta para los pasajeros (ej. "acérquense a Once o Haedo a preguntar por el diferencial", "consultá en boletería", "fijate en la estación"), NO informa el estado del servicio: esAviso=false, tipo="ninguno". El Servicio Diferencial es un servicio normal del ramal: preguntar o hablar del diferencial NO es servicio limitado. Las estaciones que se nombran solo como lugar donde ir a consultar NO son un tramo.
+- Nombrar dos estaciones unidas por "o" o por "y" (ej. "Once o Haedo") NO define un tramo. El tramo solo existe si el mensaje dice que el servicio circula limitado/parcial entre esas estaciones.
 - tramoDesde / tramoHasta: SOLO si el mensaje dice entre qué dos estaciones circula el servicio limitado (ej. "servicio limitado entre Moreno y Liniers" → tramoDesde "Liniers", tramoHasta "Moreno"; "solo circulan trenes Haedo–Moreno" → "Haedo" y "Moreno"). Son las dos puntas del tramo donde los trenes SÍ circulan. Si el mensaje solo nombra el lugar de un accidente o una estación suelta, o no habla de tramo: null en ambos.
 `.trim();
 
   const response = await ai.models.generateContent({ model: MODEL, contents: prompt });
   return JSON.parse(limpiarJSON(response.text.trim()));
+}
+
+// Red de seguridad (oct 2026): Vivi sugirió acercarse a Once o Haedo a consultar por el
+// diferencial y el bot lo tomó como servicio limitado Once–Haedo. Un mensaje que es una
+// sugerencia/consulta y NO menciona ninguna afectación del servicio nunca es un aviso,
+// aunque el clasificador diga otra cosa.
+const normSinAcentos = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const ES_SUGERENCIA_O_CONSULTA = /acerc|acerq|consult|pregunt|averigu|fijate|fijense|vayan a|anda a|boleteria/;
+const INDICIO_DE_AFECTACION = /limitad|parcial|solo (circul|hasta|entre)|unicamente|interrump|suspendid|cortad|sin servicio|no (circula|circulan|llega|llegan|sale|salen)|accident|atropell|descarril|choque|persona en (las )?vias|demora|retras|normaliz|restablec/;
+export function esSugerenciaSinAfectacion(texto) {
+  const t = normSinAcentos(texto);
+  return ES_SUGERENCIA_O_CONSULTA.test(t) && !INDICIO_DE_AFECTACION.test(t);
 }
 
 // Fallback si Gemini falla: heurística simple para no perder un aviso real.
@@ -200,6 +214,11 @@ async function aplicarTramoDelAviso(clasif, textoOriginal, venceEn, quien, resum
 export async function procesarMensajeFuente({ texto, quien, userId, origen = "texto" }) {
   const limpio = (texto || "").trim();
   if (limpio.length < 8 || limpio.startsWith("/")) return null;
+
+  if (esSugerenciaSinAfectacion(limpio)) {
+    console.log("avisosFuente: sugerencia/consulta sin afectación del servicio, no se toma como aviso.");
+    return null;
+  }
 
   const ahora = new Date();
   let clasif;
