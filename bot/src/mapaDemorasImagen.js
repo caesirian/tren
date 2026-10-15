@@ -4,6 +4,7 @@
 // generativo). Dos vías: sentido Once (izquierda) y sentido Moreno (derecha).
 //   · punto chico sobre la vía; a un costado, el número de la formación
 //   · violeta = local · gris = común
+//   · punto lleno = ubicación por GPS · punto hueco = estimada por horarios
 //   · aro rojo + número en rojo con los minutos = formación con demora
 //   · las formaciones que figuran en una cabecera (Once/Moreno) se juntan en una
 //     sola línea ("5 por salir" / "4 llegaron"); de ésas solo se detallan las que
@@ -86,6 +87,7 @@ export async function trenesParaMapa() {
       posicion: t.posicion,
       demora: t.demoraMax || 0,
       local: t.numero != null && locales.has(t.numero),
+      fuente: t.fuente === "gps" ? "gps" : "estimada",
     }));
 }
 
@@ -97,6 +99,7 @@ function circulo(ctx, x, y, r, relleno, borde, ancho = 1) {
 }
 
 const esDemorado = (t) => t.demora >= UMBRAL_DEMORA_MIN;
+const esGps = (t) => t.fuente === "gps";
 
 function partesDeTren(t) {
   const dem = esDemorado(t);
@@ -108,9 +111,10 @@ function partesDeTren(t) {
 
 // Arma los elementos de UNA vía: puntos individuales + resumen de cada cabecera.
 // idxOrigen = estación donde arrancan las formaciones de esa vía (0 = Once, 15 = Moreno).
-// Ojo: una formación que figura "en la cabecera" de origen todavía NO salió (el barrido
-// trae también las próximas salidas); en la de destino ya llegó. Por eso se dice
-// "por salir" / "llegaron" y no "en Once".
+// En una cabecera hay dos casos distintos: con GPS la formación está ahí de verdad
+// ("en Once"); sin GPS solo sabemos por horarios que figura en esa estación (el barrido
+// trae también las próximas salidas), así que en el origen se dice "por salir" y en el
+// destino "llegaron".
 function elementosDeVia(trenes, idxOrigen) {
   const items = [];
   const ultimo = NOMBRES.length - 1;
@@ -119,30 +123,35 @@ function elementosDeVia(trenes, idxOrigen) {
     const pos = Math.min(Math.max(t.posicion, 0), ultimo);
     if (pos <= MARGEN_CABECERA) cabeceras[0].push(t);
     else if (pos >= ultimo - MARGEN_CABECERA) cabeceras[ultimo].push(t);
-    else items.push({ y: Y0 + pos * PASO, demorado: esDemorado(t), local: t.local, partes: partesDeTren(t), punto: true });
+    else items.push({ y: Y0 + pos * PASO, demorado: esDemorado(t), local: t.local, hueco: !esGps(t), partes: partesDeTren(t), punto: true });
   }
   for (const [idx, lista] of Object.entries(cabeceras)) {
     if (!lista.length) continue;
-    const y = Y0 + Number(idx) * PASO;
-    const porSalir = Number(idx) === idxOrigen;
+    const n = Number(idx);
+    const y = Y0 + n * PASO;
+    const porSalir = n === idxOrigen;
+    const conGps = lista.filter(esGps);
+    const estimadas = lista.filter((t) => !esGps(t));
+    const demorados = lista.filter(esDemorado).sort((a, b) => b.demora - a.demora);
+    const hueco = conGps.length === 0;
+
     if (lista.length === 1) {
       const t = lista[0];
       const partes = partesDeTren(t);
-      if (!esDemorado(t)) partes.push({ txt: porSalir ? " por salir" : " llegó", color: C.suave });
-      items.push({ y, demorado: esDemorado(t), local: t.local, partes, punto: true });
+      if (!esDemorado(t)) partes.push({ txt: esGps(t) ? ` en ${NOMBRES[n]}` : porSalir ? " por salir" : " llegó", color: C.suave });
+      items.push({ y, demorado: esDemorado(t), local: t.local, hueco, partes, punto: true });
       continue;
     }
-    const demorados = lista.filter(esDemorado).sort((a, b) => b.demora - a.demora);
-    items.push({
-      y,
-      demorado: demorados.length > 0,
-      negrita: false,
-      local: false,
-      punto: true,
-      partes: [{ txt: `${lista.length} ${porSalir ? "por salir" : "llegaron"}`, color: C.suave }],
-    });
+
+    let primero = true;
+    const resumen = (txt) => {
+      items.push({ y, demorado: demorados.length > 0, negrita: false, local: false, hueco, punto: primero, partes: [{ txt, color: C.suave }] });
+      primero = false;
+    };
+    if (conGps.length) resumen(`${conGps.length} en ${NOMBRES[n]}`);
+    if (estimadas.length) resumen(`${estimadas.length} ${porSalir ? "por salir" : "llegaron"}`);
     for (const t of demorados.slice(0, MAX_DEMORADOS_CABECERA)) {
-      items.push({ y, demorado: true, local: t.local, partes: partesDeTren(t), punto: false });
+      items.push({ y, demorado: true, local: t.local, punto: false, partes: partesDeTren(t) });
     }
     if (demorados.length > MAX_DEMORADOS_CABECERA) {
       items.push({ y, demorado: true, local: false, punto: false, partes: [{ txt: `+${demorados.length - MAX_DEMORADOS_CABECERA} más con demora`, color: C.textoDemora }] });
@@ -219,13 +228,17 @@ export function generarImagenMapaDemoras(trenes, horaTexto = "") {
   // Puntos: primero los comunes, arriba los demorados para que el aro no quede tapado.
   const puntos = vias.flatMap((v) => v.items.filter((i) => i.punto).map((i) => ({ ...i, x: v.x })));
   puntos.sort((a, b) => Number(a.demorado) - Number(b.demorado));
+  const punto = (x, y, r, colorTipo, hueco) => {
+    if (hueco) circulo(ctx, x, y, r, C.fondo, colorTipo, 1.5);
+    else circulo(ctx, x, y, r, colorTipo, null);
+  };
   for (const p of puntos) {
     const colorTipo = p.local ? C.local : C.comun;
     if (p.demorado) {
       circulo(ctx, p.x, p.y, 10, C.halo, C.demora, 1);
-      circulo(ctx, p.x, p.y, 5, colorTipo, null);
+      punto(p.x, p.y, 5, colorTipo, p.hueco);
     } else {
-      circulo(ctx, p.x, p.y, 4, colorTipo, null);
+      punto(p.x, p.y, 4, colorTipo, p.hueco);
     }
   }
 
@@ -251,23 +264,29 @@ export function generarImagenMapaDemoras(trenes, horaTexto = "") {
   // Referencias
   const yLeyenda = H - 20;
   ctx.font = fuente(12);
-  circulo(ctx, 16, yLeyenda, 4, C.comun, null);
+  ctx.textAlign = "left";
   ctx.fillStyle = C.suave;
-  ctx.fillText("Común", 26, yLeyenda);
-  circulo(ctx, 96, yLeyenda, 4, C.local, null);
+  circulo(ctx, 14, yLeyenda, 4, C.comun, null);
   ctx.fillStyle = C.suave;
-  ctx.fillText("Local", 106, yLeyenda);
-  circulo(ctx, 176, yLeyenda, 7, C.halo, C.demora, 1);
-  circulo(ctx, 176, yLeyenda, 3, C.comun, null);
+  ctx.fillText("Común", 23, yLeyenda);
+  circulo(ctx, 76, yLeyenda, 4, C.local, null);
   ctx.fillStyle = C.suave;
-  ctx.fillText("Con demora", 190, yLeyenda);
+  ctx.fillText("Local", 85, yLeyenda);
+  circulo(ctx, 134, yLeyenda, 7, C.halo, C.demora, 1);
+  circulo(ctx, 134, yLeyenda, 3, C.comun, null);
+  ctx.fillStyle = C.suave;
+  ctx.fillText("Demora", 146, yLeyenda);
+  circulo(ctx, 212, yLeyenda, 4, C.fondo, C.comun, 1.5);
+  ctx.fillStyle = C.suave;
+  ctx.fillText("Estimada (hueco)", 221, yLeyenda);
 
   return canvas.toBuffer("image/png");
 }
 
-// Atajo para el bot: barrido + dibujo. Devuelve { png, trenes, demorados }.
+// Atajo para el bot: barrido + dibujo. Devuelve { png, trenes, demorados, porGps, estimadas }.
 export async function imagenMapaDemoras() {
   const trenes = await trenesParaMapa();
   const png = generarImagenMapaDemoras(trenes, hora(new Date().toISOString()));
-  return { png, trenes, demorados: trenes.filter(esDemorado).length };
+  const porGps = trenes.filter(esGps).length;
+  return { png, trenes, demorados: trenes.filter(esDemorado).length, porGps, estimadas: trenes.length - porGps };
 }

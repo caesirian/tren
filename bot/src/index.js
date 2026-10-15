@@ -1017,10 +1017,11 @@ bot.command("apptrenes", async (ctx) => {
 bot.command("mapademoras", async (ctx) => {
   if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
   try {
-    const { png, trenes, demorados } = await imagenMapaDemoras();
-    const caption = demorados
+    const { png, trenes, demorados, porGps, estimadas } = await imagenMapaDemoras();
+    const caption = (demorados
       ? `Formaciones con demora de 10+ min: ${demorados} (de ${trenes.length} en vía).`
-      : `Sin formaciones con demora de 10+ min (${trenes.length} en vía).`;
+      : `Sin formaciones con demora de 10+ min (${trenes.length} en vía).`)
+      + `\n📡 ${porGps} por GPS, ${estimadas} estimadas por horarios.`;
     await bot.telegram.sendPhoto(process.env.ADMIN_TELEGRAM_ID, { source: png }, { caption: `${caption}\n🧪 Prueba privada (modo: ${mapaDemorasModo()}).` });
   } catch (err) {
     console.error("Error en /mapademoras:", err.message);
@@ -2856,7 +2857,7 @@ async function chequeoPeriodicoProxy(origen) {
         }
         // Modo privado: el mapa le llega solo al admin, con el mismo texto que salió en el grupo.
         if (mapaDemoras && modoMapa === "privado" && process.env.ADMIN_TELEGRAM_ID) {
-          await bot.telegram.sendPhoto(process.env.ADMIN_TELEGRAM_ID, { source: mapaDemoras.png }, { caption: `${t}\n\n🧪 Prueba privada: el mapa no se envió al grupo.` })
+          await bot.telegram.sendPhoto(process.env.ADMIN_TELEGRAM_ID, { source: mapaDemoras.png }, { caption: `${t}\n\n🧪 Prueba privada: el mapa no se envió al grupo.\n📡 ${mapaDemoras.porGps} por GPS, ${mapaDemoras.estimadas} estimadas por horarios.` })
             .catch((err) => console.error("Error mandando el mapa de demoras al admin:", err.message));
         }
       }
