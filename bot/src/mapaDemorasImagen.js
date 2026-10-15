@@ -5,8 +5,9 @@
 //   · punto chico sobre la vía; a un costado, el número de la formación
 //   · violeta = local · gris = común
 //   · aro rojo + número en rojo con los minutos = formación con demora
-//   · las formaciones que están en una cabecera (Once/Moreno) se juntan en una
-//     sola línea ("5 en Once"); de ésas solo se detallan las que tienen demora
+//   · las formaciones que figuran en una cabecera (Once/Moreno) se juntan en una
+//     sola línea ("5 por salir" / "4 llegaron"); de ésas solo se detallan las que
+//     tienen demora
 //
 // Fuente: Roboto incluida en assets/fonts (el servidor no trae fuentes y sin esto
 // el texto sale en serif y se corta). MAPA_DEMORAS_MODO: "privado" (por defecto:
@@ -106,30 +107,39 @@ function partesDeTren(t) {
 }
 
 // Arma los elementos de UNA vía: puntos individuales + resumen de cada cabecera.
-function elementosDeVia(trenes) {
+// idxOrigen = estación donde arrancan las formaciones de esa vía (0 = Once, 15 = Moreno).
+// Ojo: una formación que figura "en la cabecera" de origen todavía NO salió (el barrido
+// trae también las próximas salidas); en la de destino ya llegó. Por eso se dice
+// "por salir" / "llegaron" y no "en Once".
+function elementosDeVia(trenes, idxOrigen) {
   const items = [];
-  const cabeceras = { 0: [], 15: [] };
+  const ultimo = NOMBRES.length - 1;
+  const cabeceras = { 0: [], [ultimo]: [] };
   for (const t of trenes) {
-    const pos = Math.min(Math.max(t.posicion, 0), NOMBRES.length - 1);
+    const pos = Math.min(Math.max(t.posicion, 0), ultimo);
     if (pos <= MARGEN_CABECERA) cabeceras[0].push(t);
-    else if (pos >= NOMBRES.length - 1 - MARGEN_CABECERA) cabeceras[15].push(t);
+    else if (pos >= ultimo - MARGEN_CABECERA) cabeceras[ultimo].push(t);
     else items.push({ y: Y0 + pos * PASO, demorado: esDemorado(t), local: t.local, partes: partesDeTren(t), punto: true });
   }
   for (const [idx, lista] of Object.entries(cabeceras)) {
     if (!lista.length) continue;
     const y = Y0 + Number(idx) * PASO;
+    const porSalir = Number(idx) === idxOrigen;
     if (lista.length === 1) {
       const t = lista[0];
-      items.push({ y, demorado: esDemorado(t), local: t.local, partes: partesDeTren(t), punto: true });
+      const partes = partesDeTren(t);
+      if (!esDemorado(t)) partes.push({ txt: porSalir ? " por salir" : " llegó", color: C.suave });
+      items.push({ y, demorado: esDemorado(t), local: t.local, partes, punto: true });
       continue;
     }
     const demorados = lista.filter(esDemorado).sort((a, b) => b.demora - a.demora);
     items.push({
       y,
       demorado: demorados.length > 0,
+      negrita: false,
       local: false,
       punto: true,
-      partes: [{ txt: `${lista.length} en ${NOMBRES[Number(idx)]}`, color: C.suave }],
+      partes: [{ txt: `${lista.length} ${porSalir ? "por salir" : "llegaron"}`, color: C.suave }],
     });
     for (const t of demorados.slice(0, MAX_DEMORADOS_CABECERA)) {
       items.push({ y, demorado: true, local: t.local, partes: partesDeTren(t), punto: false });
@@ -150,8 +160,8 @@ function elementosDeVia(trenes) {
 // trenes: salida de trenesParaMapa(). Devuelve un Buffer PNG.
 export function generarImagenMapaDemoras(trenes, horaTexto = "") {
   const vias = [
-    { x: X_VIA_ONCE, items: elementosDeVia(trenes.filter((t) => /^moreno-once$/i.test(t.sentido || ""))) },
-    { x: X_VIA_MORENO, items: elementosDeVia(trenes.filter((t) => !/^moreno-once$/i.test(t.sentido || ""))) },
+    { x: X_VIA_ONCE, items: elementosDeVia(trenes.filter((t) => /^moreno-once$/i.test(t.sentido || "")), NOMBRES.length - 1) },
+    { x: X_VIA_MORENO, items: elementosDeVia(trenes.filter((t) => !/^moreno-once$/i.test(t.sentido || "")), 0) },
   ];
   // Alto según lo que haya que dibujar (las etiquetas de las cabeceras pueden bajar del final de la vía).
   const yUltimaEtiqueta = Math.max(0, ...vias.flatMap((v) => v.items.map((i) => i.yEtiqueta)));
@@ -225,11 +235,12 @@ export function generarImagenMapaDemoras(trenes, horaTexto = "") {
     for (const it of v.items) {
       const x0 = v.x + (it.punto && it.demorado ? 15 : 12);
       let px = 12;
-      const medir = () => it.partes.reduce((s, p) => { ctx.font = fuente(px, it.demorado); return s + ctx.measureText(p.txt).width; }, 0);
+      const negrita = it.negrita ?? it.demorado;
+      const medir = () => it.partes.reduce((s, p) => { ctx.font = fuente(px, negrita); return s + ctx.measureText(p.txt).width; }, 0);
       while (px > 9 && x0 + medir() > W - 4) px -= 1;
       let x = x0;
       for (const p of it.partes) {
-        ctx.font = fuente(px, it.demorado);
+        ctx.font = fuente(px, negrita);
         ctx.fillStyle = p.color;
         ctx.fillText(p.txt, x, it.yEtiqueta);
         x += ctx.measureText(p.txt).width;
