@@ -23,6 +23,7 @@ import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
 import { esConsultaDeEstado } from "./intencionEstado.js";
+import { registrarUsuario, datosConocidos, buscarUsuario, parsearArgs, aplicarAccion, listarModerados, nombreDe, tecladoModeracion, tecladoRestaurar, textoDuracion } from "./moderacion.js";
 import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria, listarAlertasComplementarias, quitarAlertaComplementaria, editarAlertaComplementaria, limpiarAlertasComplementarias, alCambiarEstado, alAgregarAlerta } from "./firestoreStatus.js";
 import { enviarPush, ultimaPushId, pushAutoActivo, setPushAuto, cargarPushAuto, iniciarPushAuto, pushPorCambioEstado, pushPorAlerta } from "./pushAuto.js";
 import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
@@ -2099,6 +2100,113 @@ bot.on("audio", (ctx) => manejarAudio(ctx, "audio"));
 bot.on("video", (ctx) => reenviarMediaAlAdmin(ctx, "video"));
 bot.on("video_note", (ctx) => reenviarMediaAlAdmin(ctx, "video nota"));
 
+// ---------- Moderación manual (solo admin) ----------
+// /expulsar, /bloquear, /desbloquear, /mutear [2h], /restaurar, /moderados.
+// Se usan respondiendo al mensaje del usuario en el grupo, o por privado con
+// "@usuario" / ID (el bot solo conoce @usuarios que ya escribieron en el
+// grupo). Ver src/moderacion.js. La confirmación llega por privado: en el
+// grupo no se publica nada y se intenta borrar el comando.
+
+// Nunca se actúa sobre los admins del bot (ADMIN_TELEGRAM_ID / ESTADO_ADMIN_IDS).
+function esUsuarioProtegido(u) {
+  const lista = `${process.env.ESTADO_ADMIN_IDS || ""},${process.env.ADMIN_TELEGRAM_ID || ""}`
+    .split(",")
+    .map((x) => x.trim().replace(/^@/, "").toLowerCase())
+    .filter(Boolean);
+  return lista.includes(String(u.id)) || (!!u.username && lista.includes(String(u.username).toLowerCase()));
+}
+
+function grupoDeModeracion(ctx) {
+  if (ctx.chat?.type !== "private") return esChatAutorizado(ctx) ? ctx.chat.id : null;
+  return process.env.ALLOWED_GROUP_ID || null;
+}
+
+async function responderAlAdmin(ctx, texto, extra) {
+  if (ctx.chat?.type === "private") return ctx.reply(texto, extra);
+  return bot.telegram.sendMessage(ctx.from.id, texto, extra).catch(() => confirmarAlAdmin(texto));
+}
+
+async function comandoModeracion(ctx, accion) {
+  if (!esAdminEstado(ctx)) return;
+  const enGrupo = ctx.chat?.type !== "private";
+  if (enGrupo) ctx.deleteMessage().catch(() => {}); // no ensuciar el grupo con el comando
+  const chatId = grupoDeModeracion(ctx);
+  if (!chatId) {
+    return responderAlAdmin(ctx, enGrupo ? "Ese grupo no está autorizado para el bot." : "Falta configurar ALLOWED_GROUP_ID para moderar desde el privado. Mientras tanto, usá el comando respondiendo al mensaje en el grupo.");
+  }
+  const texto = (ctx.message?.text || "").replace(/^\/\w+(@\w+)?\s*/, "");
+  const { duracionMs, objetivo } = parsearArgs(texto);
+
+  let usuario = null;
+  const r = replyReal(ctx);
+  if (r?.from && !r.from.is_bot) {
+    registrarUsuario(r.from);
+    usuario = datosConocidos(r.from.id) || { id: r.from.id, username: (r.from.username || "").toLowerCase(), nombre: nombreDe(r.from) };
+  } else if (objetivo) {
+    usuario = await buscarUsuario(objetivo);
+    if (!usuario) {
+      return responderAlAdmin(ctx, `No conozco a ${objetivo.valor}: el bot solo recuerda a quienes escribieron en el grupo desde que está activo. Respondé a un mensaje suyo con el comando, o usá su ID numérico.`);
+    }
+  }
+  if (!usuario) {
+    return responderAlAdmin(ctx, `Uso: /${accion} respondiendo a un mensaje del usuario en el grupo, o /${accion} @usuario${accion === "mutear" ? " 2h" : ""} (también acepta el ID numérico).`);
+  }
+
+  const res = await aplicarAccion(
+    bot.telegram,
+    { accion, chatId, usuario, por: ctx.from.id, duracionMs: accion === "mutear" ? duracionMs : null },
+    { protegido: esUsuarioProtegido }
+  );
+  const extra = res.ok && ["expulsar", "bloquear", "mutear"].includes(accion) ? { reply_markup: tecladoRestaurar(chatId, usuario.id) } : undefined;
+  await responderAlAdmin(ctx, res.texto, extra);
+}
+
+for (const accion of ["expulsar", "bloquear", "desbloquear", "mutear", "restaurar"]) {
+  bot.command(accion, (ctx) => comandoModeracion(ctx, accion));
+}
+
+bot.command("moderados", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  if (ctx.chat?.type !== "private") ctx.deleteMessage().catch(() => {});
+  const lista = await listarModerados();
+  if (!lista.length) return responderAlAdmin(ctx, "No hay usuarios con restricciones vigentes registradas por el bot.");
+  const etiqueta = { expulsar: "expulsado", bloquear: "bloqueado", mutear: "muteado" };
+  const filas = lista.map((a) => {
+    const fecha = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "short", timeStyle: "short" }).format(a.fecha);
+    return `• ${a.nombre} (ID ${a.userId}) — ${etiqueta[a.accion] || a.accion}${a.accion === "mutear" ? ` ${textoDuracion(a.duracionMs)}` : ""}, ${fecha}`;
+  });
+  await responderAlAdmin(ctx, `Restricciones aplicadas por el bot:\n${filas.join("\n")}\n\nPara devolver permisos: /restaurar @usuario (o su ID).`);
+});
+
+// Botones de los avisos de spam/insulto y de "Restaurar".
+bot.action(/^mod:(m24|x|b|r|ig):(-?\d+):(\d+)$/, async (ctx) => {
+  if (!esAdminEstado(ctx)) return ctx.answerCbQuery();
+  const [, codigo, chatId, userId] = ctx.match;
+  const quitarBotones = () => ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => {});
+  if (codigo === "ig") {
+    await ctx.answerCbQuery("Ignorado.");
+    return void (await quitarBotones());
+  }
+  const accion = { m24: "mutear", x: "expulsar", b: "bloquear", r: "restaurar" }[codigo];
+  const usuario = datosConocidos(userId) || (await buscarUsuario({ tipo: "id", valor: userId }));
+  const res = await aplicarAccion(
+    bot.telegram,
+    { accion, chatId, usuario, por: ctx.from.id, duracionMs: accion === "mutear" ? 24 * 60 * 60 * 1000 : null },
+    { protegido: esUsuarioProtegido }
+  );
+  await ctx.answerCbQuery(res.ok ? "Hecho." : "No se pudo.", { show_alert: !res.ok }).catch(() => {});
+  if (res.ok) {
+    await ctx.editMessageReplyMarkup(accion === "restaurar" ? { inline_keyboard: [] } : tecladoRestaurar(chatId, userId)).catch(() => {});
+  }
+  await ctx.reply(res.texto).catch(() => {});
+});
+
+// Recordar quién escribe en el grupo (para resolver @usuario -> ID).
+bot.use((ctx, next) => {
+  if (ctx.chat && ctx.chat.type !== "private" && ctx.from && !ctx.from.is_bot) registrarUsuario(ctx.from);
+  return next();
+});
+
 // Moderación de spam/promociones en el grupo: el bot NO responde, intenta
 // borrar el mensaje (si es admin del grupo con permiso de borrar) y le avisa
 // al admin por privado. No aplica a: el admin, las fuentes de verdad, los
@@ -2144,7 +2252,8 @@ async function moderarSpam(ctx, texto) {
       .sendMessage(
         process.env.ADMIN_TELEGRAM_ID,
         `🚫 Spam en «${ctx.chat?.title || "grupo"}»${tema}\n👤 ${quien} (ID ${from.id})\n📝 "${texto.slice(0, 400)}"\n🔎 Motivo: ${veredicto.motivo}\n${resultadoBorrado}` +
-          (reg.ocultos ? `\n(+${reg.ocultos} mensaje(s) más de este usuario desde el último aviso)` : "")
+          (reg.ocultos ? `\n(+${reg.ocultos} mensaje(s) más de este usuario desde el último aviso)` : ""),
+        from.id && ctx.chat?.id ? tecladoModeracion(ctx.chat.id, from.id) : undefined
       )
       .catch((err) => console.error("Error avisando al admin sobre spam:", err.message));
   }
@@ -2229,7 +2338,8 @@ async function manejarTexto(ctx, { diferida = false } = {}) {
       bot.telegram
         .sendMessage(
           process.env.ADMIN_TELEGRAM_ID,
-          `⚠️ Lenguaje ofensivo detectado (insulto o grosería)\nUsuario: ${quien}\n${origen}\nFecha y hora: ${fechaHora}\nMensaje: "${textoOriginal}"`
+          `⚠️ Lenguaje ofensivo detectado (insulto o grosería)\nUsuario: ${quien}\n${origen}\nFecha y hora: ${fechaHora}\nMensaje: "${textoOriginal}"`,
+          esGrupo && from.id && ctx.chat?.id ? tecladoModeracion(ctx.chat.id, from.id) : undefined
         )
         .catch((err) => console.error("Error avisando al admin sobre insulto:", err.message));
     }
