@@ -22,6 +22,7 @@ import { Telegraf, Markup } from "telegraf";
 import NodeCache from "node-cache";
 
 import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from "./staticData.js";
+import { esConsultaDeEstado } from "./intencionEstado.js";
 import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria, listarAlertasComplementarias, quitarAlertaComplementaria, editarAlertaComplementaria, limpiarAlertasComplementarias, alCambiarEstado, alAgregarAlerta } from "./firestoreStatus.js";
 import { enviarPush, ultimaPushId, pushAutoActivo, setPushAuto, cargarPushAuto, iniciarPushAuto, pushPorCambioEstado, pushPorAlerta } from "./pushAuto.js";
 import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
@@ -253,7 +254,14 @@ async function hayDatoDeTrenParado() {
 }
 
 async function armarContexto(pregunta) {
-  const partes = [TREN_SARMIENTO_INFO];
+  // Consulta de ESTADO ("cómo anda el servicio"): no se le pasa la ficha del
+  // ramal (horarios de operación, frecuencias, fin de semana) ni cálculos de
+  // horarios por estación — Gemini los usaba de relleno y la gente los leía
+  // como "anda siempre". Solo recibe las secciones de estado en vivo.
+  const soloEstado = esConsultaDeEstado(pregunta);
+  const partes = soloEstado
+    ? [`== CONSULTA DE ESTADO ACTUAL (hora en Buenos Aires: ${horaArgentinaTexto(new Date())}) ==\nLa pregunta es sobre cómo está el servicio AHORA. Respondé solo con las secciones de estado en vivo de abajo. No menciones horarios de operación, "desde la madrugada hasta pasada la medianoche", frecuencias ni cambios de fin de semana. Si no hay nada activo: "Anda normal, sin demoras reportadas."`]
+    : [TREN_SARMIENTO_INFO];
 
   // Avisos de la fuente de verdad (texto de Vivi): van primero y mandan sobre
   // el semáforo, las alertas y la señal informal. Siempre con vencimiento.
@@ -373,7 +381,7 @@ ${
 
   // Si la pregunta menciona una o más estaciones, calculamos horarios reales
   // de HOY para CADA UNA (antes solo tomaba la primera y omitía el resto).
-  const estacionesDetectadas = detectarEstaciones(pregunta);
+  const estacionesDetectadas = soloEstado ? [] : detectarEstaciones(pregunta);
   if (estacionesDetectadas.length) {
     const ahora = new Date();
     for (const estacion of estacionesDetectadas) {
