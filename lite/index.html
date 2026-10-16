@@ -362,8 +362,30 @@ nav button[aria-selected="true"] { color:var(--blue); }
     if (!pedidoInstalar) return; pedidoInstalar.prompt();
     pedidoInstalar.userChoice.then(function () { pedidoInstalar = null; $("btnInstalar").style.display = "none"; });
   });
-  window.addEventListener("appinstalled", function () { $("btnInstalar").style.display = "none"; });
+  // Registro de instalaciones (pedido de Coco): un id aleatorio por instalación, sin datos personales. Ver bot/src/instalacionesLite.js.
+  function idInstalacion() {
+    var id = lsGet("lite.instId", "");
+    if (!/^[a-z0-9]{8,32}$/i.test(id)) {
+      id = ""; var abc = "abcdefghijklmnopqrstuvwxyz0123456789";
+      for (var i = 0; i < 16; i++) id += abc.charAt(Math.floor(Math.random() * abc.length));
+      lsSet("lite.instId", id);
+    }
+    return id;
+  }
+  function avisarInstalacion(evento) {
+    var ua = navigator.userAgent, plat = /iphone|ipad|ipod/i.test(ua) ? "ios" : /android/i.test(ua) ? "android" : /windows|macintosh|linux|cros/i.test(ua) ? "escritorio" : "otro";
+    var nav = /edg\//i.test(ua) ? "edge" : /samsungbrowser/i.test(ua) ? "samsung" : /firefox|fxios/i.test(ua) ? "firefox" : /chrome|crios/i.test(ua) ? "chrome" : /safari/i.test(ua) ? "safari" : "otro";
+    try {
+      fetch(API + "instalacion-lite", { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ evento: evento, id: idInstalacion(), plataforma: plat, navegador: nav, version: "lite-v1" }), keepalive: true }).catch(function () {});
+    } catch (e) {}
+  }
+  window.addEventListener("appinstalled", function () { $("btnInstalar").style.display = "none"; avisarInstalacion("instalada"); });
   var standalone = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone;
+  // Abierta como app (pantalla completa): cubre iPhone, que no emite `appinstalled`. Como mucho una vez por día y por celular.
+  if (standalone) {
+    var hoy = new Date().toISOString().slice(0, 10);
+    if (lsGet("lite.aperturaDia", "") !== hoy) { lsSet("lite.aperturaDia", hoy); avisarInstalacion("apertura_app"); }
+  }
   var esIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
   if (esIOS && !standalone && lsGet("lite.iosVisto", "") !== "1") { setTimeout(function () { $("ios").style.display = "block"; }, 2500); }
   $("iosX").addEventListener("click", function () { $("ios").style.display = "none"; lsSet("lite.iosVisto", "1"); });

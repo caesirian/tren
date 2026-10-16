@@ -42,6 +42,7 @@ import { mapaVivoHTML } from "./mapaVivo.js";
 import { iniciarVigiaSalidas, textoFormaciones, estadoLocalesParaBot } from "./vigiaSalidas.js";
 import { textoInformeFormaciones } from "./informeFormaciones.js";
 import { registrarValidacion, excedioLimiteValidaciones, textoValidaciones } from "./validacionesGps.js";
+import { registrarInstalacion, excedioLimiteInstalaciones, textoInstalaciones } from "./instalacionesLite.js";
 import { iniciarViaje, estadoViaje, ubicacionUsuario, iniciarViajes, hayViajeActivo } from "./viaje.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
@@ -1080,6 +1081,19 @@ bot.command("validaciones", async (ctx) => {
   } catch (err) {
     console.error("Error en /validaciones:", err.message);
     await ctx.reply("⚠️ No pude leer las validaciones: " + err.message);
+  }
+});
+
+// Instalaciones de la app Lite (instalacionesLite.js). /instalaciones [días] → cuántas hay, nuevas del período, plataformas y últimas.
+bot.command("instalaciones", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  try {
+    const dias = parseInt((ctx.message?.text || "").trim().split(/\s+/)[1], 10);
+    const texto = await textoInstalaciones(Number.isFinite(dias) ? dias : 7);
+    for (let i = 0; i < texto.length; i += 3900) await ctx.reply(texto.slice(i, i + 3900));
+  } catch (err) {
+    console.error("Error en /instalaciones:", err.message);
+    await ctx.reply("⚠️ No pude leer las instalaciones: " + err.message);
   }
 });
 
@@ -2849,6 +2863,34 @@ app.post("/api/validacion-gps", express.text({ type: "*/*", limit: "4kb" }), asy
     res.status(r.ok ? 200 : 400).json(r);
   } catch (err) {
     console.error("Error en /api/validacion-gps:", err.message);
+    res.status(400).json({ ok: false, error: "payload inválido" });
+  }
+});
+
+// Registro de instalaciones de la app Lite (/lite). Mismo esquema que la validación GPS: text/plain, sin preflight,
+// solo desde el dominio del sitio, con tope por IP. Ver instalacionesLite.js.
+app.options("/api/instalacion-lite", (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  }
+  res.sendStatus(204);
+});
+app.post("/api/instalacion-lite", express.text({ type: "*/*", limit: "2kb" }), async (req, res) => {
+  const origin = req.headers.origin;
+  if (!origin || !ORIGENES_TABLERO_PERMITIDOS.has(origin)) return res.status(403).json({ error: "forbidden" });
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  const ip = (req.headers["x-forwarded-for"] || req.ip || "").toString().split(",")[0].trim();
+  if (excedioLimiteInstalaciones(ip)) return res.status(429).json({ error: "demasiados envíos" });
+  try {
+    let body = req.body;
+    if (typeof body === "string") body = JSON.parse(body);
+    const r = await registrarInstalacion(body);
+    res.status(r.ok ? 200 : 400).json(r);
+  } catch (err) {
+    console.error("Error en /api/instalacion-lite:", err.message);
     res.status(400).json({ ok: false, error: "payload inválido" });
   }
 });
