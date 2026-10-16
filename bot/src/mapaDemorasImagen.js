@@ -59,7 +59,34 @@ const C = {
   demora: "#e24b4a",
   textoDemora: "#a32d2d",
   halo: "#fceBEB",
+  recuadro: "#f1efe8",
 };
+
+const NOMBRES_LARGOS = NOMBRES.map((n) => (n === "San A. de Padua" ? "San Antonio de Padua" : n));
+
+// Dónde está ahora una formación, en palabras: "en Haedo", "entre Haedo y Morón" o, si solo
+// figura en una cabecera sin GPS, "por salir de Once" / "llegó a Moreno".
+export function ubicacionActual(t) {
+  const ultimo = NOMBRES_LARGOS.length - 1;
+  const pos = Math.min(Math.max(t.posicion, 0), ultimo);
+  const cerca = Math.round(pos);
+  const enEstacion = Math.abs(pos - cerca) <= 0.2;
+  const porGps = t.fuente === "gps";
+  if (enEstacion && (cerca === 0 || cerca === ultimo) && !porGps) {
+    const origen = /^moreno-once$/i.test(t.sentido || "") ? ultimo : 0;
+    return cerca === origen ? `por salir de ${NOMBRES_LARGOS[cerca]} (según horarios)` : `llegó a ${NOMBRES_LARGOS[cerca]} (según horarios)`;
+  }
+  const lugar = enEstacion ? `en ${NOMBRES_LARGOS[cerca]}` : `entre ${NOMBRES_LARGOS[Math.floor(pos)]} y ${NOMBRES_LARGOS[Math.ceil(pos)]}`;
+  return `${lugar} (${porGps ? "GPS" : "estimada por horarios"})`;
+}
+
+// Renglones "📍 #3308: ahora entre Haedo y Morón (GPS)" de las formaciones con demora.
+export function lineasUbicacionDemoradas(trenes, max = 4) {
+  const dem = trenes.filter(esDemorado).sort((a, b) => b.demora - a.demora);
+  const lineas = dem.slice(0, max).map((t) => `📍 #${t.numero ?? "?"}: ahora ${ubicacionActual(t)}`);
+  if (dem.length > max) lineas.push(`…y ${dem.length - max} más con demora.`);
+  return lineas.join("\n");
+}
 
 export function mapaDemorasModo() {
   const m = String(process.env.MAPA_DEMORAS_MODO ?? "privado").trim().toLowerCase();
@@ -145,16 +172,16 @@ function elementosDeVia(trenes, idxOrigen) {
 
     let primero = true;
     const resumen = (txt) => {
-      items.push({ y, demorado: demorados.length > 0, negrita: false, local: false, hueco, punto: primero, partes: [{ txt, color: C.suave }] });
+      items.push({ y, grupo: `cab${n}`, demorado: demorados.length > 0, negrita: false, local: false, hueco, punto: primero, partes: [{ txt, color: C.suave }] });
       primero = false;
     };
     if (conGps.length) resumen(`${conGps.length} en ${NOMBRES[n]}`);
     if (estimadas.length) resumen(`${estimadas.length} ${porSalir ? "por salir" : "llegaron"}`);
     for (const t of demorados.slice(0, MAX_DEMORADOS_CABECERA)) {
-      items.push({ y, demorado: true, local: t.local, punto: false, partes: partesDeTren(t) });
+      items.push({ y, grupo: `cab${n}`, demorado: true, local: t.local, punto: false, partes: partesDeTren(t) });
     }
     if (demorados.length > MAX_DEMORADOS_CABECERA) {
-      items.push({ y, demorado: true, local: false, punto: false, partes: [{ txt: `+${demorados.length - MAX_DEMORADOS_CABECERA} más con demora`, color: C.textoDemora }] });
+      items.push({ y, grupo: `cab${n}`, demorado: true, local: false, punto: false, partes: [{ txt: `+${demorados.length - MAX_DEMORADOS_CABECERA} más con demora`, color: C.textoDemora }] });
     }
   }
   items.sort((a, b) => a.y - b.y);
@@ -243,17 +270,63 @@ export function generarImagenMapaDemoras(trenes, horaTexto = "") {
   }
 
   // Etiquetas a la derecha de cada vía. Si una no entra en la imagen, se achica la letra.
+  // Los renglones de una cabecera van dentro de un recuadro gris (así no se confunden con
+  // el número de otra formación que quede al lado) y, cuando una etiqueta quedó corrida de
+  // su punto para no pisarse, una línea fina la une con su punto.
   ctx.textAlign = "left";
   for (const v of vias) {
+    const haloDeGrupo = {};
+    for (const it of v.items) if (it.grupo && it.punto && it.demorado) haloDeGrupo[it.grupo] = true;
     for (const it of v.items) {
-      const x0 = v.x + (it.punto && it.demorado ? 15 : 12);
+      const conHalo = it.grupo ? !!haloDeGrupo[it.grupo] : it.punto && it.demorado;
+      it.x0 = v.x + (conHalo ? 15 : 12);
+      it.negritaFinal = it.negrita ?? it.demorado;
       let px = 12;
-      const negrita = it.negrita ?? it.demorado;
-      const medir = () => it.partes.reduce((s, p) => { ctx.font = fuente(px, negrita); return s + ctx.measureText(p.txt).width; }, 0);
-      while (px > 9 && x0 + medir() > W - 4) px -= 1;
-      let x = x0;
+      const medir = () => it.partes.reduce((sum, p) => { ctx.font = fuente(px, it.negritaFinal); return sum + ctx.measureText(p.txt).width; }, 0);
+      while (px > 9 && it.x0 + medir() > W - 10) px -= 1;
+      it.px = px;
+      it.ancho = medir();
+    }
+    // recuadros de cabecera
+    const grupos = {};
+    for (const it of v.items) if (it.grupo) (grupos[it.grupo] ||= []).push(it);
+    for (const g of Object.values(grupos)) {
+      const y1 = Math.min(...g.map((i) => i.yEtiqueta)) - 9;
+      const y2 = Math.max(...g.map((i) => i.yEtiqueta)) + 9;
+      const x1 = g[0].x0 - 5;
+      const x2 = Math.max(...g.map((i) => i.x0 + i.ancho)) + 5;
+      ctx.fillStyle = C.recuadro;
+      ctx.beginPath();
+      ctx.roundRect(x1, y1, x2 - x1, y2 - y1, 6);
+      ctx.fill();
+      for (const it of g) it.bordeIzq = x1;
+    }
+    // líneas guía de las etiquetas corridas
+    ctx.strokeStyle = C.tick;
+    ctx.lineWidth = 0.75;
+    for (const it of v.items) {
+      if (!it.punto || Math.abs(it.yEtiqueta - it.y) <= 3) continue;
+      ctx.beginPath();
+      ctx.moveTo(v.x + (it.demorado ? 10 : 5), it.y);
+      ctx.lineTo((it.bordeIzq ?? it.x0 - 2) - 1, it.yEtiqueta);
+      ctx.stroke();
+    }
+  }
+  // puntos otra vez por encima de las líneas guía y los recuadros
+  for (const p of puntos) {
+    const colorTipo = p.local ? C.local : C.comun;
+    if (p.demorado) {
+      circulo(ctx, p.x, p.y, 10, C.halo, C.demora, 1);
+      punto(p.x, p.y, 5, colorTipo, p.hueco);
+    } else {
+      punto(p.x, p.y, 4, colorTipo, p.hueco);
+    }
+  }
+  for (const v of vias) {
+    for (const it of v.items) {
+      let x = it.x0;
       for (const p of it.partes) {
-        ctx.font = fuente(px, negrita);
+        ctx.font = fuente(it.px, it.negritaFinal);
         ctx.fillStyle = p.color;
         ctx.fillText(p.txt, x, it.yEtiqueta);
         x += ctx.measureText(p.txt).width;
@@ -283,10 +356,10 @@ export function generarImagenMapaDemoras(trenes, horaTexto = "") {
   return canvas.toBuffer("image/png");
 }
 
-// Atajo para el bot: barrido + dibujo. Devuelve { png, trenes, demorados, porGps, estimadas }.
+// Atajo para el bot: barrido + dibujo. Devuelve { png, trenes, demorados, porGps, estimadas, ubicaciones }.
 export async function imagenMapaDemoras() {
   const trenes = await trenesParaMapa();
   const png = generarImagenMapaDemoras(trenes, hora(new Date().toISOString()));
   const porGps = trenes.filter(esGps).length;
-  return { png, trenes, demorados: trenes.filter(esDemorado).length, porGps, estimadas: trenes.length - porGps };
+  return { png, trenes, demorados: trenes.filter(esDemorado).length, porGps, estimadas: trenes.length - porGps, ubicaciones: lineasUbicacionDemoradas(trenes) };
 }
