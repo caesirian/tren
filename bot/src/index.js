@@ -2761,7 +2761,9 @@ app.get("/api/tablero-estacion", async (req, res) => {
   const origin = req.headers.origin;
   if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
   if (!claveTableroValida(req)) return res.status(403).json({ error: "forbidden" });
-  const estacion = (req.query.estacion || "Once").toString().slice(0, 40);
+  const estacion = (req.query.estacion || "Once").toString();
+  // Solo las 16 estaciones del ramal: un nombre libre llegaría tal cual al proxy de terceros y llenaría el caché.
+  if (!ESTACIONES_BARRIDO.includes(estacion)) return res.status(400).json({ error: "estación inválida" });
   try {
     const c = cacheEstacionLite.get(estacion);
     let data;
