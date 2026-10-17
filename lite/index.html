@@ -99,9 +99,15 @@ main { padding:calc(var(--head-h) + var(--safe-t) + 12px) 12px calc(var(--nav-h)
 .m-est i { position:absolute; width:12px; height:12px; border-radius:50%; background:#fff; border:3px solid var(--blue); left:22px; }
 .m-est i.d2 { left:70px; } .m-est.cab i { border-color:var(--navy); background:var(--navy); }
 .m-est span { position:absolute; left:112px; font-size:14px; color:var(--text); } .m-est.cab span { font-weight:800; color:var(--navy); }
-.m-tren { position:absolute; width:46px; height:26px; margin:-13px 0 0 0; border-radius:13px; border:2px solid #fff; color:#fff; font:800 11px/22px ui-monospace,Menlo,Consolas,monospace; text-align:center; box-shadow:0 2px 6px rgba(0,43,92,.35); transition:top 1s linear; z-index:3; padding:0; }
+.m-tren { position:absolute; width:46px; height:26px; margin:-13px 0 0 0; border-radius:13px; border:2px solid #fff; color:#fff; font:800 11px/22px ui-monospace,Menlo,Consolas,monospace; text-align:center; box-shadow:0 2px 6px rgba(0,43,92,.35); will-change:top; z-index:3; padding:0; }
 .m-tren.ok { background:var(--green); } .m-tren.demorado { background:var(--yellow); } .m-tren.muy-demorado { background:var(--red); } .m-tren.cancelado { background:#6B7280; }
 .m-tren.local { background:var(--fucsia); } .m-tren.est { opacity:.78; border-style:dashed; }
+#mapaStage.con-mio .m-tren:not(.mio) { opacity:.3; }
+.m-tren.mio { z-index:5; opacity:1; box-shadow:0 0 0 3px #fff, 0 0 0 6px var(--celeste), 0 3px 10px rgba(0,43,92,.45); }
+.mi-barra { display:none; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px 12px; margin-bottom:10px; padding:10px 12px; background:#fff; border:1px solid var(--border); border-radius:12px; font-size:13px; font-weight:600; color:var(--navy); }
+.mi-barra.on { display:flex; }
+.mi-barra button { min-height:36px; padding:0 10px; border:0; background:transparent; color:var(--blue); font:inherit; font-weight:700; text-decoration:underline; }
+#hoja button.btn-mio { position:static; width:auto; height:44px; margin-top:10px; padding:0 18px; border-radius:999px; background:var(--blue); color:#fff; font:700 14px/1 inherit; }
 .leyenda { display:flex; flex-wrap:wrap; gap:6px 12px; font-size:12px; color:var(--muted); padding:10px 4px 0; }
 .leyenda i { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; vertical-align:-1px; }
 /* ── Hoja de detalle ── */
@@ -168,6 +174,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
 
   <!-- MAPA -->
   <section class="vista" id="v-mapa" aria-label="Mapa de formaciones">
+    <div class="mi-barra" id="miBarra" role="status" aria-live="polite"></div>
     <div class="mapa-resumen"><div><b id="nIda">–</b>hacia Moreno</div><div><b id="nVuelta">–</b>hacia Once</div></div>
     <div class="mapa-wrap">
       <div class="mapa-cab"><span style="left:2px">▲ A Once</span><span style="left:50px">▼ A Moreno</span></div>
@@ -301,22 +308,106 @@ nav button[aria-selected="true"] { color:var(--blue); }
     });
     var st = $("mapaStage"); st.style.height = alto + "px"; st.innerHTML = h; mapaListo = true;
   }
+  // ── Mi tren: la formación se marca desde la hoja de detalle y se guarda en el celular (3 h) ──
+  function leerMi() {
+    try { var g = JSON.parse(lsGet("lite.miTren", "null")); if (g && (g.via === "ida" || g.via === "vuelta") && g.num != null && Date.now() - g.t < 3 * 3600 * 1000) return g; } catch (e) {}
+    return null;
+  }
+  var mi = leerMi(), siguiendo = true, sigBarra = "";
+  function esMio(t) { return !!(mi && t && t.numero != null && viaDe(t) === mi.via && String(t.numero) === String(mi.num)); }
+  function buscarMio(trenes) {
+    for (var k = 0; k < trenes.length; k++) if (esMio(trenes[k])) return { tren: trenes[k] };
+    return null;
+  }
+  function nombresMapa() { return ultimoMapa && ultimoMapa.estaciones && ultimoMapa.estaciones.length > 1 ? ultimoMapa.estaciones : ESTACIONES; }
+  function ubicacionTren(t, nombres) {
+    var n = nombres.length, p = Math.min(Math.max(t.posicion, 0), n - 1), k = Math.floor(p), f = p - k;
+    var a = bonito(nombres[k]), b = bonito(nombres[Math.min(k + 1, n - 1)]);
+    return f < 0.12 ? "cerca de " + a : f > 0.88 ? "cerca de " + b : viaDe(t) === "ida" ? "entre " + a + " y " + b : "entre " + b + " y " + a;
+  }
+  function pintarMiBarra(mio, nombres) {
+    var bar = $("miBarra");
+    if (!mi) { bar.className = "mi-barra"; bar.innerHTML = ""; sigBarra = ""; return; }
+    var t = mio && mio.tren, txt;
+    if (t) {
+      var dem = t.cancelado ? "cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
+      txt = "📍 <b>Tu tren #" + esc(t.numero) + "</b> → " + esc(bonito(t.destino || "?")) + " · " + dem + " · " + ubicacionTren(t, nombres) + (t.proximaEstacion && !t.cancelado ? " · próxima: " + esc(bonito(t.proximaEstacion)) : "");
+    } else {
+      txt = "📍 <b>Tu tren #" + esc(mi.num) + "</b>: no lo encontramos en circulación (puede que todavía no haya salido o que ya haya llegado).";
+    }
+    var seg = !!t && !siguiendo, sig = txt + "|" + seg;
+    bar.className = "mi-barra on";
+    if (sig === sigBarra) return; // no se reconstruye si no cambió: no se pierde un toque en curso
+    sigBarra = sig;
+    bar.innerHTML = "<span>" + txt + "</span><span>" + (seg ? '<button type="button" data-acc="seguir">📍 Seguir</button>' : "") + '<button type="button" data-acc="quitar">Dejar de seguir</button></span>';
+  }
+  function refrescarBarra() { if (ultimoMapa) pintarMiBarra(buscarMio(ultimoMapa.trenes || []), nombresMapa()); }
+
+  // ── Movimiento en tiempo real: entre consulta y consulta se extrapola con la velocidad observada
+  // (tope HORIZ_S) y la posición mostrada se acerca suave a la prevista: sin saltos. ──
+  var MAX_V = 0.012, HORIZ_S = 45, movs = {}, elMov = {}, nEstMapa = 16, ultimoFrame = performance.now();
+  function fijarObjetivo(clave, via, t, tData) {
+    var p = Math.min(Math.max(Number(t.posicion) || 0, 0), nEstMapa - 1);
+    var e = movs[clave];
+    if (!e) { e = movs[clave] = { via: via, pos: null, v: 0, t0: 0, tData: 0, disp: null }; }
+    var dir = via === "ida" ? 1 : -1, dt = (tData - e.tData) / 1000;
+    if (e.pos !== null && dt > 0.5) { // solo si es una muestra nueva (no el mismo dato en caché)
+      var v = t.cancelado ? 0 : Math.min(Math.max(((p - e.pos) / dt) * dir, 0), MAX_V);
+      e.v = e.v * 0.5 + v * 0.5;
+    }
+    if (e.pos === null || dt > 0.5) { e.pos = p; e.t0 = performance.now(); e.tData = tData; }
+    if (e.disp === null || Math.abs(e.disp - p) > 1.5) e.disp = p; // primer dato o salto grande: ubicar directo
+  }
+  function cuadroMapa(now) {
+    var dt = Math.min((now - ultimoFrame) / 1000, 0.25);
+    ultimoFrame = now;
+    if (estado.vista === "mapa" && !document.hidden) {
+      Object.keys(movs).forEach(function (k) {
+        var e = movs[k], el = elMov[k];
+        if (!el) return;
+        var dir = e.via === "ida" ? 1 : -1, edad = Math.min((now - e.t0) / 1000, HORIZ_S);
+        var pred = Math.min(Math.max(e.pos + dir * e.v * edad, 0), nEstMapa - 1);
+        var d = e.disp + (pred - e.disp) * (1 - Math.exp(-dt / 1.5));
+        if ((d - e.disp) * dir < 0 && Math.abs(pred - e.disp) < 0.5) d = e.disp; // no retrocede por ruido
+        e.disp = d;
+        el.style.top = (d * FILA + FILA / 2) + "px";
+      });
+      var m = siguiendo ? document.querySelector("#mapaStage .m-tren.mio") : null;
+      if (m) { // modo seguimiento: la pantalla acompaña a tu formación
+        var r = m.getBoundingClientRect(), dy = r.top + r.height / 2 - window.innerHeight / 2;
+        if (Math.abs(dy) > 3) window.scrollBy(0, dy * (1 - Math.exp(-dt / 0.4)));
+      }
+    }
+    requestAnimationFrame(cuadroMapa);
+  }
+
   function pintarMapa(d) {
     ultimoMapa = d;
     var nombres = d.estaciones && d.estaciones.length > 1 ? d.estaciones : ESTACIONES;
+    nEstMapa = nombres.length;
     if (!mapaListo) armarMapa(nombres);
-    var st = $("mapaStage"); Array.prototype.forEach.call(st.querySelectorAll(".m-tren"), function (x) { x.remove(); });
-    var cuenta = { ida: 0, vuelta: 0 };
+    var st = $("mapaStage"), cuenta = { ida: 0, vuelta: 0 }, vivos = {};
+    var tData = d.consultadoEn ? Date.parse(d.consultadoEn) : Date.now();
+    var mio = buscarMio(d.trenes || []);
     (d.trenes || []).forEach(function (t, i) {
       var via = viaDe(t); cuenta[via]++;
-      var b = document.createElement("button");
-      b.type = "button"; b.className = "m-tren " + claseDemora(t) + (t.local ? " local" : "") + (t.fuente === "estimada" ? " est" : "");
+      var clave = via + ":" + (t.numero != null ? t.numero : "i" + i);
+      vivos[clave] = 1;
+      var b = elMov[clave];
+      if (!b) {
+        b = document.createElement("button"); b.type = "button";
+        b.style.top = (t.posicion * FILA + FILA / 2) + "px";
+        st.appendChild(b); elMov[clave] = b;
+      }
+      b.className = "m-tren " + claseDemora(t) + (t.local ? " local" : "") + (t.fuente === "estimada" ? " est" : "") + (mio && mio.tren === t ? " mio" : "");
       b.style.left = (via === "ida" ? 51 : 3) + "px";
-      b.style.top = (t.posicion * FILA + FILA / 2) + "px";
       b.textContent = t.numero != null ? t.numero : "?";
       b.setAttribute("data-i", i);
-      st.appendChild(b);
+      fijarObjetivo(clave, via, t, tData);
     });
+    Object.keys(elMov).forEach(function (k) { if (!vivos[k]) { elMov[k].remove(); delete elMov[k]; delete movs[k]; } });
+    st.classList.toggle("con-mio", !!mio);
+    pintarMiBarra(mio, nombres);
     $("nIda").textContent = cuenta.ida; $("nVuelta").textContent = cuenta.vuelta;
   }
   function detalleTren(i) {
@@ -324,7 +415,8 @@ nav button[aria-selected="true"] { color:var(--blue); }
     var dem = t.cancelado ? "Cancelado" : t.demoraMax ? "+" + t.demoraMax + " min de demora" : "En horario";
     $("hojaTxt").innerHTML = "<h4>Formación " + esc(t.numero != null ? "#" + t.numero : "") + (t.local ? ' <span class="etq" style="background:#FAE8FF;color:var(--fucsia)">LOCAL' + (t.origenLocal ? " " + esc(t.origenLocal) : "") + "</span>" : "") + "</h4>" +
       "<p><b>Destino:</b> " + esc(t.destino || "?") + "</p><p><b>Próxima estación:</b> " + esc(bonito(t.proximaEstacion || "–")) + "</p><p><b>Estado:</b> " + dem + "</p>" +
-      "<p style='color:var(--muted);font-size:13px'>" + (t.fuente === "gps" ? "📡 Posición por GPS del tren" : "≈ Posición estimada por horario") + (t.origenInusual ? " · ⚠ origen inusual" : "") + "</p>";
+      "<p style='color:var(--muted);font-size:13px'>" + (t.fuente === "gps" ? "📡 Posición por GPS del tren" : "≈ Posición estimada por horario") + (t.origenInusual ? " · ⚠ origen inusual" : "") + "</p>" +
+      (t.numero == null ? "" : '<button type="button" class="btn-mio" data-num="' + esc(t.numero) + '" data-via="' + viaDe(t) + '">' + (esMio(t) ? "✕ Dejar de seguir este tren" : "📍 Marcar como mi tren") + "</button>");
     $("hoja").classList.add("abierta");
   }
 
@@ -420,7 +512,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
     estado.vista = v;
     Array.prototype.forEach.call(document.querySelectorAll(".vista"), function (s) { s.classList.toggle("activa", s.id === "v-" + v); });
     Array.prototype.forEach.call(document.querySelectorAll("nav button"), function (b) { b.setAttribute("aria-selected", b.getAttribute("data-v") === v); });
-    $("hoja").classList.remove("abierta"); window.scrollTo(0, 0);
+    $("hoja").classList.remove("abierta"); window.scrollTo(0, 0); if (v === "mapa") siguiendo = true;
     if (estado.datos[v]) { var d = estado.datos[v]; (v === "cabeceras" ? pintarCab : v === "estaciones" ? pintarEst : v === "locales" ? pintarLocales : pintarMapa)(d); }
     else if (v === "locales") { var g = leerLocalesGuardados(); if (g) { estado.datos.locales = g; pintarLocales(g); } }
     if (!sinCargar) cargar();
@@ -449,6 +541,23 @@ nav button[aria-selected="true"] { color:var(--blue); }
   });
   $("mapaStage").addEventListener("click", function (e) { var b = e.target.closest(".m-tren"); if (b) detalleTren(+b.getAttribute("data-i")); });
   $("hojaX").addEventListener("click", function () { $("hoja").classList.remove("abierta"); });
+  $("hojaTxt").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-num]"); if (!b) return;
+    var num = b.getAttribute("data-num"), via = b.getAttribute("data-via");
+    if (mi && String(mi.num) === num && mi.via === via) { mi = null; try { localStorage.removeItem("lite.miTren"); } catch (x) {} }
+    else { mi = { num: num, via: via, t: Date.now() }; lsSet("lite.miTren", JSON.stringify(mi)); siguiendo = true; }
+    $("hoja").classList.remove("abierta");
+    if (ultimoMapa) pintarMapa(ultimoMapa);
+  });
+  $("miBarra").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-acc]"); if (!b) return;
+    if (b.getAttribute("data-acc") === "seguir") { siguiendo = true; refrescarBarra(); return; }
+    mi = null; try { localStorage.removeItem("lite.miTren"); } catch (x) {}
+    if (ultimoMapa) pintarMapa(ultimoMapa);
+  });
+  ["wheel", "touchstart"].forEach(function (ev) { // si el usuario mueve la pantalla a mano, se deja de seguir
+    window.addEventListener(ev, function () { if (estado.vista === "mapa" && siguiendo) { siguiendo = false; refrescarBarra(); } }, { passive: true });
+  });
   document.addEventListener("visibilitychange", function () { if (!document.hidden) { repintarLocal(); cargar(); } });
   window.addEventListener("online", cargar);
 
@@ -494,7 +603,12 @@ nav button[aria-selected="true"] { color:var(--blue); }
   if (q.get("e") && ESTACIONES.indexOf(q.get("e")) >= 0) { if (q.get("e") === "Moreno") { estado.cab = "Moreno"; Array.prototype.forEach.call($("segCab").children, function (x) { x.setAttribute("aria-pressed", x.getAttribute("data-e") === "Moreno"); }); } }
   pintarChips();
   irA(["cabeceras", "estaciones", "locales", "mapa"].indexOf(q.get("v")) >= 0 ? q.get("v") : "cabeceras");
-  setInterval(function () { cargar(); }, 20000);
+  function programar() { // en el mapa se consulta más seguido para que el movimiento sea más fiel
+    clearTimeout(timer);
+    timer = setTimeout(function () { Promise.resolve(cargar()).then(programar, programar); }, estado.vista === "mapa" ? 10000 : 20000);
+  }
+  programar();
+  requestAnimationFrame(cuadroMapa);
   setInterval(repintarLocal, 1000 * 15);
   setInterval(function () { var rel = $("reloj"); if (rel) rel.textContent = fmt.format(new Date()); }, 5000);
 })();
