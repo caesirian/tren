@@ -34,6 +34,8 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema, esTemaEspaciado, programarRespuestaDiferida, marcarRespondidoMensaje, marcarRespondidoUsuario, enfriandoAlAire, reservarAlAire, ESPERA_AL_AIRE_MS } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, proximosPorEstacion, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
+import { COORDS_ESTACIONES } from "./appTrenes.js";
+import { actualizarMarcha } from "./marcha.js";
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { imagenMapaDemoras, mapaDemorasModo } from "./mapaDemorasImagen.js";
 import { tableroVivoHTML } from "./tableroVivo.js";
@@ -2692,6 +2694,8 @@ app.get("/api/tablero-mapa", async (req, res) => {
   try {
     const barrido = await barridoEstructurado();
     const trenes = posicionesEnVivo(barrido.todos, new Date());
+    // Velocidad / marcha (modo registro): campos aditivos; si falla, el mapa sigue igual.
+    try { actualizarMarcha(trenes, COORDS_ESTACIONES); } catch (e) { console.error("/api/tablero-mapa: no se pudo calcular la marcha:", e.message); }
     // Marca de "local" (formación que sale de una estación intermedia) para pintarla distinto en el mapa.
     // Campo aditivo: si algo falla, el mapa sigue funcionando sin la marca.
     try {
