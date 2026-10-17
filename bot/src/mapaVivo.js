@@ -67,7 +67,7 @@ const PLANTILLA_HTML = `<!doctype html>
   .mv-estacion .mv-nombre { position: absolute; top: 140px; left: 0; transform-origin: top left; transform: rotate(45deg); font-size: 10px; color: var(--muted); font-weight: 600; white-space: nowrap; }
   .mv-estacion.cabecera .mv-nombre { color: var(--navy); font-weight: 800; font-size: 11px; }
   :root { --local: #C026D3; }
-  .mv-tren { position: absolute; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; color: var(--navy); border: 2px solid #fff; box-sizing: border-box; box-shadow: 0 1px 4px rgba(0,43,92,.35); transition: left 14s linear; z-index: 2; }
+  .mv-tren { position: absolute; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; color: var(--navy); border: 2px solid #fff; box-sizing: border-box; box-shadow: 0 1px 4px rgba(0,43,92,.35); will-change: left; z-index: 2; }
   .mv-tren.ida { top: 30px; }
   .mv-tren.vuelta { top: 90px; }
   .mv-tren::after { content: ""; position: absolute; top: 50%; margin-top: -4px; border: 4px solid transparent; }
@@ -99,6 +99,12 @@ const PLANTILLA_HTML = `<!doctype html>
   .mv-mio-pin { position: absolute; left: 50%; top: 100%; width: 0; margin-top: 32px; border-left: 2px solid var(--celeste); pointer-events: none; }
   .mv-tren.mio.ida { top: 27px; }
   .mv-tren.mio.vuelta { top: 87px; }
+  .mv-tren::before { content: ""; position: absolute; inset: -12px; border-radius: 50%; }
+  .mv-tren.sel { outline: 3px solid var(--navy); outline-offset: 3px; }
+  .mv-accion { display: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin: 12px 16px 0; padding: 10px 14px; background: var(--card); border-radius: 12px; box-shadow: 0 2px 12px rgba(0,43,92,.09); font-size: 13px; font-weight: 600; color: var(--navy); }
+  .mv-accion.on { display: flex; }
+  .mv-accion button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--celeste); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+  .mv-accion button.sec { background: transparent; color: var(--blue); text-decoration: underline; padding: 0 4px; }
   .mv-tren.mio.ida .mv-mio-pin { height: 128px; }
   .mv-tren.mio.vuelta .mv-mio-pin { height: 68px; }
   .mv-mio-tag { position: absolute; left: 0; top: 100%; transform: translateX(-50%); padding: 3px 10px; border-radius: 999px; background: var(--celeste); color: #fff; font-size: 11px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,43,92,.3); }
@@ -232,6 +238,56 @@ const PLANTILLA_HTML = `<!doctype html>
     dibujadas = true;
   }
 
+  // ── Movimiento en tiempo real ───────────────────────────────────────────
+  // Entre consulta y consulta se extrapola con la velocidad observada (tope HORIZ_S) y la posición
+  // mostrada se acerca suave a la prevista: sin saltos y sin depender de una transición CSS fija.
+  const MAX_V = 0.012;  // estaciones/seg, tope de sanidad
+  const HORIZ_S = 45;   // seg máx. de extrapolación sin datos nuevos
+  const mov = new Map();        // clave → { via, pos, v, t0, tData, disp }
+  const datosTren = new Map();  // clave → último dato del tren
+  let baseEstado = "";
+  let elegidaKey = null;        // formación tocada en el mapa (aún no necesariamente "mi tren")
+  let seguirMio = true;
+  function fijarObjetivo(clave, via, t, n, tData) {
+    const p = Math.min(Math.max(Number(t.posicion) || 0, 0), n - 1);
+    let e = mov.get(clave);
+    if (!e) { e = { via: via, pos: null, v: 0, t0: 0, tData: 0, disp: null }; mov.set(clave, e); }
+    const dir = via === "ida" ? 1 : -1;
+    const dt = (tData - e.tData) / 1000;
+    if (e.pos !== null && dt > 0.5) { // solo si es una muestra nueva (no el mismo dato en caché)
+      const v = t.cancelado ? 0 : Math.min(Math.max(((p - e.pos) / dt) * dir, 0), MAX_V);
+      e.v = e.v * 0.5 + v * 0.5;
+    }
+    if (e.pos === null || dt > 0.5) { e.pos = p; e.t0 = performance.now(); e.tData = tData; }
+    if (e.disp === null || Math.abs(e.disp - p) > 1.5) e.disp = p; // primer dato o salto grande: ubicar directo
+  }
+  let ultimoFrame = performance.now();
+  function cuadro(now) {
+    const dt = Math.min((now - ultimoFrame) / 1000, 0.25);
+    ultimoFrame = now;
+    const n = ultimaData && ultimaData.estaciones ? ultimaData.estaciones.length : 0;
+    if (n > 1 && !document.hidden) {
+      mov.forEach((e, clave) => {
+        const el = elTrenes.get(clave);
+        if (!el) return;
+        const dir = e.via === "ida" ? 1 : -1;
+        const edad = Math.min((now - e.t0) / 1000, HORIZ_S);
+        const pred = Math.min(Math.max(e.pos + dir * e.v * edad, 0), n - 1);
+        let d = e.disp + (pred - e.disp) * (1 - Math.exp(-dt / 1.5));
+        if ((d - e.disp) * dir < 0 && Math.abs(pred - e.disp) < 0.5) d = e.disp; // no retrocede por ruido
+        e.disp = d;
+        el.style.left = (d / (n - 1)) * 100 + "%";
+      });
+      const mioEl = seguirMio ? stage.querySelector(".mv-tren.mio") : null;
+      if (mioEl) { // modo seguimiento: el mapa acompaña a tu formación
+        const r = mioEl.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+        const dx = r.left + r.width / 2 - (w.left + w.width / 2);
+        if (Math.abs(dx) > 2) wrap.scrollLeft += dx * (1 - Math.exp(-dt / 0.4));
+      }
+    }
+    requestAnimationFrame(cuadro);
+  }
+
   let ultimaData = null;
   const elTrenes = new Map(); // clave de formación → su elemento en el mapa
   function render(data) {
@@ -242,12 +298,14 @@ const PLANTILLA_HTML = `<!doctype html>
     const hacia = { ida: 0, vuelta: 0 };
     const mio = buscarMiTren(data.trenes || []);
     const vivos = new Set();
+    const tData = data.consultadoEn ? Date.parse(data.consultadoEn) : Date.now();
     (data.trenes || []).forEach((t, idx) => {
       if (n < 2) return;
       const via = viaDe(t);
       hacia[via]++;
       const clave = via + ":" + (t.numero != null ? t.numero : "i" + idx);
       vivos.add(clave);
+      datosTren.set(clave, t);
       // Se reutiliza el elemento de cada formación: al cambiar solo su "left", el navegador la desliza
       // sobre la vía (transición) en vez de saltar de una posición a otra.
       let div = elTrenes.get(clave);
@@ -256,11 +314,12 @@ const PLANTILLA_HTML = `<!doctype html>
         div = document.createElement("div");
         div.tabIndex = 0;
         div.style.left = pos;
+        div.dataset.k = clave;
         stage.appendChild(div);
         elTrenes.set(clave, div);
       }
-      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.local ? " local" : "") + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "");
-      div.style.left = pos;
+      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.local ? " local" : "") + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "") + (clave === elegidaKey ? " sel" : "");
+      fijarObjetivo(clave, via, t, n, tData);
       // Rótulo debajo de la vía: número de formación y, si es local, la mención.
       div.textContent = "";
       const lbl = document.createElement("span");
@@ -292,29 +351,52 @@ const PLANTILLA_HTML = `<!doctype html>
       }
     });
     elTrenes.forEach((el, clave) => {
-      if (!vivos.has(clave)) { el.remove(); elTrenes.delete(clave); }
+      if (!vivos.has(clave)) { el.remove(); elTrenes.delete(clave); mov.delete(clave); datosTren.delete(clave); }
     });
     stage.classList.toggle("con-mio", !!mio);
     actualizarMio(mio, data);
+    pintarAccion();
     vacioIda.style.display = hacia.ida ? "none" : "block";
     vacioVuelta.style.display = hacia.vuelta ? "none" : "block";
     const hora = data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "";
-    estadoEl.textContent = "🕐 " + hora + " · " + hacia.ida + " hacia Moreno · " + hacia.vuelta + " hacia Once";
+    baseEstado = "🕐 " + hora + " · " + hacia.ida + " hacia Moreno · " + hacia.vuelta + " hacia Once";
+    estadoEl.textContent = baseEstado;
   }
 
-  let ultimoOk = 0;
+  let ultimoOk = 0, enCurso = false, fallas = 0, timer = null;
+  function programar() { // 10 s si el usuario sigue su tren, 15 s si no; con backoff ante fallas
+    clearTimeout(timer);
+    timer = setTimeout(actualizar, Math.min((sel ? 10000 : 15000) * Math.pow(2, Math.min(fallas, 3)), 60000));
+  }
   async function actualizar() {
+    if (enCurso || document.hidden) return;
+    enCurso = true;
+    const ctl = new AbortController();
+    const to = setTimeout(() => ctl.abort(), 12000);
     try {
-      const res = await fetch(urlApi(), { cache: "no-store" });
+      const res = await fetch(urlApi(), { cache: "no-store", signal: ctl.signal });
       if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      render(data);
+      render(await res.json());
       ultimoOk = Date.now();
+      fallas = 0;
     } catch (err) {
+      fallas++;
       const seg = ultimoOk ? Math.round((Date.now() - ultimoOk) / 1000) : null;
       estadoEl.textContent = seg ? "🕐 sin conexión hace " + seg + "s" : "🕐 no se pudo conectar";
+    } finally {
+      clearTimeout(to);
+      enCurso = false;
+      programar();
     }
   }
+  document.addEventListener("visibilitychange", () => { // al volver a la pestaña: dato fresco ya
+    if (!document.hidden) { ultimoFrame = performance.now(); clearTimeout(timer); actualizar(); }
+  });
+  setInterval(() => { // edad del dato, solo si se está demorando
+    if (fallas || !ultimoOk || !baseEstado) return;
+    const seg = Math.round((Date.now() - ultimoOk) / 1000);
+    estadoEl.textContent = seg > 40 ? baseEstado + " · ⚠ datos de hace " + seg + " s" : baseEstado;
+  }, 5000);
 
   document.getElementById("irOnce").addEventListener("click", () => wrap.scrollTo({ left: 0, behavior: "smooth" }));
   document.getElementById("irMoreno").addEventListener("click", () => wrap.scrollTo({ left: wrap.scrollWidth, behavior: "smooth" }));
@@ -432,8 +514,9 @@ const PLANTILLA_HTML = `<!doctype html>
     sel = nueva;
     validacion = null;
     irAlTren = !!nueva;
+    if (nueva) seguirMio = true;
     try {
-      if (nueva) localStorage.setItem(LS_MIO, JSON.stringify({ via: nueva.via, est: nueva.est, dep: nueva.dep, t: Date.now() }));
+      if (nueva) localStorage.setItem(LS_MIO, JSON.stringify({ via: nueva.via, est: nueva.est, dep: nueva.dep, num: nueva.num ?? null, t: Date.now() }));
       else localStorage.removeItem(LS_MIO);
     } catch (e) { /* sin storage: la selección vive solo en esta visita */ }
     quitarMio.style.display = nueva ? "" : "none";
@@ -447,6 +530,10 @@ const PLANTILLA_HTML = `<!doctype html>
   // Horario programado de cada tren en circulación vs. el del tren elegido: gana el de menor diferencia (≤ tolerancia).
   function buscarMiTren(trenes) {
     if (!sel) return null;
+    if (sel.num != null) { // elegido tocando la formación: se la reconoce por su número
+      const f = trenes.find((x) => viaDe(x) === sel.via && String(x.numero) === String(sel.num));
+      return f ? { tren: f, err: 0 } : null;
+    }
     const ref = buscarTren(sel.via, sel.dep, sel.est); // el tren elegido, con su horario en cada estación
     if (!ref) return null;
     let mejor = null;
@@ -613,6 +700,7 @@ const PLANTILLA_HTML = `<!doctype html>
 
   function actualizarMio(mio, data) {
     miTrenActual = mio ? mio.tren : null;
+    pintarSeguir();
     if (validacion && validacion.estado === "ok" && !validacionOk(miTrenActual)) validacion = null; // cambió el tren que coincide: se vuelve a validar
     pintarBotonVal();
     if (!sel) { resMio.style.display = "none"; return; }
@@ -636,7 +724,65 @@ const PLANTILLA_HTML = `<!doctype html>
     }
   }
 
+  const btnSeg = document.createElement("button");
+  btnSeg.type = "button"; btnSeg.className = "mv-mio-quitar"; btnSeg.textContent = "📍 Seguir mi tren"; btnSeg.style.display = "none";
+  function pintarSeguir() { btnSeg.style.display = miTrenActual && !seguirMio ? "" : "none"; }
+  const barra = document.createElement("div");
+  barra.className = "mv-accion"; barra.setAttribute("aria-live", "polite");
+  function pintarAccion() {
+    const t = elegidaKey ? datosTren.get(elegidaKey) : null;
+    if (!t) { barra.className = "mv-accion"; barra.dataset.sig = ""; return; }
+    const esMio = miTrenActual === t;
+    const dem = t.cancelado ? "cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
+    const texto = "Formación #" + (t.numero ?? "?") + " → " + t.destino + " · " + dem;
+    const sig = elegidaKey + "|" + texto + "|" + esMio;
+    barra.className = "mv-accion on";
+    if (barra.dataset.sig === sig) return; // no se reconstruye si no cambió: no se pierde un toque en curso
+    barra.dataset.sig = sig;
+    barra.textContent = "";
+    const sp = document.createElement("span");
+    sp.textContent = (esMio ? "📍 Tu tren · " : "") + texto;
+    const b = document.createElement("button");
+    b.type = "button";
+    if (esMio) { b.className = "sec"; b.textContent = "Dejar de seguir"; b.addEventListener("click", () => { cambiarSeleccion(null); poblarHoras(); elegidaKey = null; pintarAccion(); }); }
+    else { b.textContent = "📍 Marcar como mi tren"; b.addEventListener("click", () => marcarMiTren(elegidaKey)); }
+    barra.appendChild(sp); barra.appendChild(b);
+  }
+  // Toma la formación tocada y la reconoce en el cronograma (la de menor diferencia de horarios) para que el panel quede coherente.
+  function marcarMiTren(clave) {
+    const t = datosTren.get(clave);
+    if (!t) return;
+    const via = viaDe(t);
+    const lo = via === "ida" ? 0 : 1, hi = via === "ida" ? 14 : 15;
+    const ps = (Array.isArray(t.paradas) ? t.paradas : []).filter((p) => p && p.prog);
+    const est = Math.min(Math.max(ps.length ? ps[0].idx : Math.round(t.posicion), lo), hi);
+    let dep = Number(t.numero), mejor = null;
+    trenesEn(via, est).forEach((x) => {
+      const errs = ps.filter((p) => x.t[p.idx] != null).map((p) => Math.abs(difMin(minutosBA(new Date(p.prog)), x.t[p.idx]))).filter(Number.isFinite).sort((a, b) => a - b);
+      if (!errs.length) return;
+      const err = errs[Math.floor(errs.length / 2)];
+      if (err <= TOLERANCIA_MIN && (!mejor || err < mejor.err)) mejor = { n: x.n, err: err };
+    });
+    if (mejor) dep = mejor.n;
+    if (!Number.isFinite(dep)) dep = 0;
+    viaElegida = via; marcarVia(via); poblarEstaciones(via, est);
+    cambiarSeleccion({ via: via, est: est, dep: dep, num: t.numero ?? null });
+    poblarHoras();
+  }
+  function elegirTren(ev) {
+    const el = ev.target && ev.target.closest ? ev.target.closest(".mv-tren") : null;
+    const k = el ? el.dataset.k : null;
+    if (k === elegidaKey) return;
+    elegidaKey = k;
+    if (ultimaData) render(ultimaData); else pintarAccion();
+  }
   function iniciarPanelMio() {
+    quitarMio.parentNode.insertBefore(btnSeg, quitarMio);
+    btnSeg.addEventListener("click", () => { seguirMio = true; pintarSeguir(); });
+    ["pointerdown", "wheel", "touchstart"].forEach((ev) => wrap.addEventListener(ev, () => { if (seguirMio) { seguirMio = false; pintarSeguir(); } }, { passive: true }));
+    wrap.parentNode.insertBefore(barra, wrap);
+    stage.addEventListener("click", elegirTren);
+    stage.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.classList && ev.target.classList.contains("mv-tren")) { ev.preventDefault(); elegirTren(ev); } });
     botonesVia.forEach((b) => b.addEventListener("click", () => {
       viaElegida = b.getAttribute("data-via");
       marcarVia(viaElegida);
@@ -657,9 +803,9 @@ const PLANTILLA_HTML = `<!doctype html>
       const g = JSON.parse(localStorage.getItem(LS_MIO) || "null");
       const estOk = g && (g.via === "ida" ? g.est >= 0 && g.est <= 14 : g.est >= 1 && g.est <= 15);
       if (g && (g.via === "ida" || g.via === "vuelta") && Number.isInteger(g.est) && estOk && Number.isFinite(g.dep) &&
-          Date.now() - g.t < 3 * 3600 * 1000 && buscarTren(g.via, g.dep, g.est)) {
+          Date.now() - g.t < 3 * 3600 * 1000 && (g.num != null || buscarTren(g.via, g.dep, g.est))) {
         viaElegida = g.via;
-        sel = { via: g.via, est: g.est, dep: g.dep };
+        sel = { via: g.via, est: g.est, dep: g.dep, num: g.num ?? null };
         irAlTren = true;
         marcarVia(g.via);
         poblarEstaciones(g.via, g.est);
@@ -672,7 +818,7 @@ const PLANTILLA_HTML = `<!doctype html>
 
   iniciarPanelMio();
   actualizar();
-  setInterval(actualizar, 15000);
+  requestAnimationFrame(cuadro);
 })();
 </script>
 </body>
