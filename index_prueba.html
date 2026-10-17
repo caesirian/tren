@@ -2789,6 +2789,12 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-tren.mio { width: 18px; height: 18px; margin-left: -9px; z-index: 4; box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); }
     #mapa-vivo .mv-tren.mio.ida { top: 27px; }
     #mapa-vivo .mv-tren.mio.vuelta { top: 87px; }
+    #mapa-vivo .mv-tren::before { content: ""; position: absolute; inset: -12px; border-radius: 50%; }
+    #mapa-vivo .mv-tren.sel { outline: 3px solid var(--navy); outline-offset: 3px; }
+    #mapa-vivo .mv-accion { display: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin: 0 0 10px; padding: 10px 14px; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); font-size: .82rem; font-weight: 600; color: var(--navy); }
+    #mapa-vivo .mv-accion.on { display: flex; }
+    #mapa-vivo .mv-accion button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--celeste); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+    #mapa-vivo .mv-accion button.sec { background: transparent; color: var(--blue); text-decoration: underline; padding: 0 4px; }
     #mapa-vivo .mv-mio-tag { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; background: var(--celeste); color: #fff; font-size: .62rem; font-weight: 800; white-space: nowrap; pointer-events: none; }
     #mapa-vivo .mv-tren.mio .mv-mio-tag { bottom: 30px; }
     @media (prefers-reduced-motion: no-preference) { #mapa-vivo .mv-tren.mio { animation: mvMioPulso 1.8s ease-in-out infinite; } }
@@ -4351,6 +4357,7 @@ renderStations();
   }
   let ultimoFrame = performance.now();
   let seguirMio = true;
+  let elegidaKey = null; // formación tocada en el mapa (aún no necesariamente "mi tren")
   function cuadro(now) {
     const dt = Math.min((now - ultimoFrame) / 1000, 0.25);
     ultimoFrame = now;
@@ -4392,8 +4399,9 @@ renderStations();
       const ent = obtener(t, via);
       const div = ent.el;
       div.textContent = "";
-      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.local ? " local" : "") + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "");
+      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.local ? " local" : "") + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "") + (ent.key === elegidaKey ? " sel" : "");
       div.tabIndex = 0;
+      ent.t = t;
       fijarObjetivo(ent, t, via, n, tData);
       // Rótulo debajo de la vía: número de formación y, si es local, la mención.
       const lbl = document.createElement("span");
@@ -4426,6 +4434,7 @@ renderStations();
     purgar(vistos);
     stage.classList.toggle("con-mio", !!mio);
     actualizarMio(mio, data);
+    pintarAccion();
     vacioIda.style.display = hacia.ida ? "none" : "block";
     vacioVuelta.style.display = hacia.vuelta ? "none" : "block";
     const hora = data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -4554,7 +4563,7 @@ renderStations();
     irAlTren = !!nueva;
     if (nueva) seguirMio = true;
     try {
-      if (nueva) localStorage.setItem(LS_MIO, JSON.stringify({ via: nueva.via, est: nueva.est, dep: nueva.dep, t: Date.now() }));
+      if (nueva) localStorage.setItem(LS_MIO, JSON.stringify({ via: nueva.via, est: nueva.est, dep: nueva.dep, num: nueva.num ?? null, t: Date.now() }));
       else localStorage.removeItem(LS_MIO);
     } catch (e) { /* sin storage: la selección vive solo en esta visita */ }
     quitarMio.style.display = nueva ? "" : "none";
@@ -4568,6 +4577,10 @@ renderStations();
   // Salida de cabecera de cada tren en circulación vs. la elegida: gana el de menor diferencia (≤ tolerancia).
   function buscarMiTren(trenes) {
     if (!sel) return null;
+    if (sel.num != null) { // elegido tocando la formación: se la reconoce por su número
+      const f = trenes.find((x) => viaDe(x) === sel.via && String(x.numero) === String(sel.num));
+      return f ? { tren: f, err: 0 } : null;
+    }
     let mejor = null;
     trenes.forEach((t) => {
       if (viaDe(t) !== sel.via || !Array.isArray(t.paradas)) return;
@@ -4760,7 +4773,54 @@ renderStations();
   const btnSeg = document.createElement("button");
   btnSeg.type = "button"; btnSeg.className = "mv-mio-quitar"; btnSeg.textContent = "📍 Seguir mi tren"; btnSeg.style.display = "none";
   function pintarSeguir() { btnSeg.style.display = miTrenActual && !seguirMio ? "" : "none"; }
+  const barra = document.createElement("div");
+  barra.className = "mv-accion"; barra.setAttribute("aria-live", "polite");
+  function pintarAccion() {
+    const e = elegidaKey ? trenes.get(elegidaKey) : null;
+    if (!e || !e.t || !barra.parentNode) { barra.className = "mv-accion"; barra.dataset.sig = ""; return; }
+    const t = e.t, esMio = miTrenActual === t;
+    const dem = t.cancelado ? "cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
+    const texto = "Formación #" + (t.numero ?? "?") + " → " + t.destino + " · " + dem;
+    const sig = texto + "|" + esMio;
+    barra.className = "mv-accion on";
+    if (barra.dataset.sig === sig) return; // no se reconstruye si no cambió: no se pierde un toque en curso
+    barra.dataset.sig = sig;
+    barra.textContent = "";
+    const sp = document.createElement("span");
+    sp.textContent = (esMio ? "📍 Tu tren · " : "") + texto;
+    const b = document.createElement("button");
+    b.type = "button";
+    if (esMio) { b.className = "sec"; b.textContent = "Dejar de seguir"; b.addEventListener("click", () => { cambiarSeleccion(null); poblarHoras(); elegidaKey = null; pintarAccion(); }); }
+    else { b.textContent = "📍 Marcar como mi tren"; b.addEventListener("click", () => marcarMiTren(e)); }
+    barra.appendChild(sp); barra.appendChild(b);
+  }
+  // Deduce la salida de cabecera del tren tocado (igual que buscarMiTren) para que el panel quede coherente.
+  function marcarMiTren(e) {
+    const t = e.t, via = e.via;
+    if (!t) return;
+    const lo = via === "ida" ? 0 : 1, hi = via === "ida" ? 14 : 15;
+    const ps = (Array.isArray(t.paradas) ? t.paradas : []).filter((p) => p && p.prog);
+    const ds = ps.map((p) => ((minutosBA(new Date(p.prog)) - offsetEst(via, p.idx)) % 1440 + 1440) % 1440).filter(Number.isFinite).sort((a, b) => a - b);
+    let dep = ds.length ? ds[Math.floor(ds.length / 2)] : minutosBA(new Date());
+    const cerca = horariosCabecera(via).map((x) => x[0] * 60 + x[1]).sort((a, b) => Math.abs(difMin(a, dep)) - Math.abs(difMin(b, dep)))[0];
+    if (cerca != null && Math.abs(difMin(cerca, dep)) <= TOLERANCIA_MIN) dep = cerca; // ajusta al horario del cronograma más cercano
+    const est = Math.min(Math.max(ps.length ? ps[0].idx : Math.round(t.posicion), lo), hi);
+    viaElegida = via; marcarVia(via); poblarEstaciones(via, est);
+    cambiarSeleccion({ via: via, est: est, dep: dep, num: t.numero ?? null });
+    poblarHoras();
+  }
+  function elegirTren(ev) {
+    const el = ev.target && ev.target.closest ? ev.target.closest(".mv-tren") : null;
+    let key = null;
+    if (el) trenes.forEach((e) => { if (e.el === el) key = e.key; });
+    if (key === elegidaKey) return;
+    elegidaKey = key;
+    if (ultimaData) render(ultimaData); else pintarAccion();
+  }
   function iniciarPanelMio() {
+    if (wrapMapa && wrapMapa.parentNode) wrapMapa.parentNode.insertBefore(barra, wrapMapa);
+    stage.addEventListener("click", elegirTren);
+    stage.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.classList && ev.target.classList.contains("mv-tren")) { ev.preventDefault(); elegirTren(ev); } });
     if (quitarMio && quitarMio.parentNode) quitarMio.parentNode.insertBefore(btnSeg, quitarMio);
     btnSeg.addEventListener("click", () => { seguirMio = true; pintarSeguir(); });
     ["pointerdown", "wheel", "touchstart"].forEach((ev) => wrapMapa && wrapMapa.addEventListener(ev, () => { if (seguirMio) { seguirMio = false; pintarSeguir(); } }, { passive: true }));
@@ -4784,9 +4844,9 @@ renderStations();
       const g = JSON.parse(localStorage.getItem(LS_MIO) || "null");
       const estOk = g && (g.via === "ida" ? g.est >= 0 && g.est <= 14 : g.est >= 1 && g.est <= 15);
       if (g && (g.via === "ida" || g.via === "vuelta") && Number.isInteger(g.est) && estOk && Number.isFinite(g.dep) &&
-          Date.now() - g.t < 3 * 3600 * 1000 && horariosCabecera(g.via).some((x) => x[0] * 60 + x[1] === g.dep)) {
+          Date.now() - g.t < 3 * 3600 * 1000 && (g.num != null || horariosCabecera(g.via).some((x) => x[0] * 60 + x[1] === g.dep))) {
         viaElegida = g.via;
-        sel = { via: g.via, est: g.est, dep: g.dep };
+        sel = { via: g.via, est: g.est, dep: g.dep, num: g.num ?? null };
         irAlTren = true;
         marcarVia(g.via);
         poblarEstaciones(g.via, g.est);
