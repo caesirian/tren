@@ -2733,7 +2733,7 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-estacion .mv-punto.vuelta { top: 88px; }
     #mapa-vivo .mv-estacion .mv-nombre { position: absolute; top: 140px; left: 0; transform-origin: top left; transform: rotate(45deg); font-size: .62rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
     #mapa-vivo .mv-estacion.cabecera .mv-nombre { color: var(--navy); font-weight: 800; font-size: .7rem; }
-    #mapa-vivo .mv-tren { position: absolute; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; color: var(--navy); border: 2px solid #fff; box-sizing: border-box; box-shadow: 0 1px 4px rgba(0,43,92,.35); transition: left 1s linear; z-index: 2; }
+    #mapa-vivo .mv-tren { position: absolute; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; color: var(--navy); border: 2px solid #fff; box-sizing: border-box; box-shadow: 0 1px 4px rgba(0,43,92,.35); will-change: left; z-index: 2; }
     #mapa-vivo .mv-tren.ida { top: 30px; }
     #mapa-vivo .mv-tren.vuelta { top: 90px; }
     #mapa-vivo .mv-tren::after { content: ""; position: absolute; top: 50%; margin-top: -4px; border: 4px solid transparent; }
@@ -4318,23 +4318,83 @@ renderStations();
     dibujadas = true;
   }
 
+  // ── Movimiento en tiempo real ───────────────────────────────────────────
+  // Cada formación conserva su elemento. Entre consulta y consulta se extrapola con la velocidad
+  // observada (tope HORIZ_S) y la posición mostrada se acerca suave a la prevista: sin saltos.
+  const MAX_V = 0.012;  // estaciones/seg, tope de sanidad
+  const HORIZ_S = 45;   // seg máx. de extrapolación sin datos nuevos
+  const trenes = new Map();
+  let baseEstado = "";
+  function obtener(t, via) {
+    const key = via + "|" + (t.numero ?? "?");
+    let e = trenes.get(key);
+    if (!e) { e = { key: key, via: via, el: document.createElement("div"), disp: null, pos: null, v: 0, t0: 0, tData: 0, faltas: 0 }; trenes.set(key, e); }
+    return e;
+  }
+  function fijarObjetivo(e, t, via, n, tData) {
+    const p = Math.min(Math.max(Number(t.posicion) || 0, 0), n - 1);
+    const dir = via === "ida" ? 1 : -1;
+    const dt = (tData - e.tData) / 1000;
+    if (e.pos !== null && dt > 0.5) { // solo si es una muestra nueva (no el mismo dato en caché)
+      const v = t.cancelado ? 0 : Math.min(Math.max(((p - e.pos) / dt) * dir, 0), MAX_V);
+      e.v = e.v * 0.5 + v * 0.5;
+    }
+    if (e.pos === null || dt > 0.5) { e.pos = p; e.t0 = performance.now(); e.tData = tData; }
+    if (e.disp === null || Math.abs(e.disp - p) > 1.5) e.disp = p; // primer dato o salto grande: ubicar directo
+    e.faltas = 0;
+  }
+  function purgar(vistos) {
+    trenes.forEach((e, k) => {
+      if (vistos.has(k)) return;
+      if (++e.faltas >= 2) { e.el.remove(); trenes.delete(k); }
+    });
+  }
+  let ultimoFrame = performance.now();
+  let seguirMio = true;
+  function cuadro(now) {
+    const dt = Math.min((now - ultimoFrame) / 1000, 0.25);
+    ultimoFrame = now;
+    const n = ultimaData && ultimaData.estaciones ? ultimaData.estaciones.length : 0;
+    if (n > 1 && !document.hidden) {
+      trenes.forEach((e) => {
+        const dir = e.via === "ida" ? 1 : -1;
+        const edad = Math.min((now - e.t0) / 1000, HORIZ_S);
+        const pred = Math.min(Math.max(e.pos + dir * e.v * edad, 0), n - 1);
+        let d = e.disp + (pred - e.disp) * (1 - Math.exp(-dt / 1.5));
+        if ((d - e.disp) * dir < 0 && Math.abs(pred - e.disp) < 0.5) d = e.disp; // no retrocede por ruido
+        e.disp = d;
+        e.el.style.left = (d / (n - 1)) * 100 + "%";
+      });
+      const el = seguirMio && wrapMapa ? stage.querySelector(".mv-tren.mio") : null;
+      if (el) { // modo seguimiento: el mapa acompaña a tu formación
+        const r = el.getBoundingClientRect(), w = wrapMapa.getBoundingClientRect();
+        const dx = r.left + r.width / 2 - (w.left + w.width / 2);
+        if (Math.abs(dx) > 2) wrapMapa.scrollLeft += dx * (1 - Math.exp(-dt / 0.4));
+      }
+    }
+    requestAnimationFrame(cuadro);
+  }
+
   let ultimaData = null;
   function render(data) {
     ultimaData = data;
     const estaciones = data.estaciones || [];
     if (!dibujadas && estaciones.length > 1) dibujarEstaciones(estaciones);
     const n = estaciones.length;
-    stage.querySelectorAll(".mv-tren").forEach((x) => x.remove());
+    const vistos = new Set();
+    const tData = data.consultadoEn ? Date.parse(data.consultadoEn) : Date.now();
     let hacia = { ida: 0, vuelta: 0 };
     const mio = buscarMiTren(data.trenes || []);
     (data.trenes || []).forEach((t) => {
       if (n < 2) return;
       const via = viaDe(t);
       hacia[via]++;
-      const div = document.createElement("div");
+      const ent = obtener(t, via);
+      const div = ent.el;
+      div.textContent = "";
       div.className = "mv-tren " + via + " " + claseDemora(t) + (t.local ? " local" : "") + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "");
       div.tabIndex = 0;
-      div.style.left = (t.posicion / (n - 1)) * 100 + "%";
+      fijarObjetivo(ent, t, via, n, tData);
       // Rótulo debajo de la vía: número de formación y, si es local, la mención.
       const lbl = document.createElement("span");
       lbl.className = "mv-lbl";
@@ -4360,29 +4420,53 @@ renderStations();
         tag.textContent = "📍 Tu tren" + (validacionOk(mio.tren) ? " ✔" : "");
         div.appendChild(tag);
       }
-      stage.appendChild(div);
+      if (!div.parentNode) stage.appendChild(div);
+      vistos.add(ent.key);
     });
+    purgar(vistos);
     stage.classList.toggle("con-mio", !!mio);
     actualizarMio(mio, data);
     vacioIda.style.display = hacia.ida ? "none" : "block";
     vacioVuelta.style.display = hacia.vuelta ? "none" : "block";
     const hora = data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "";
-    estadoEl.textContent = "🕐 " + hora + " · " + hacia.ida + " hacia Moreno · " + hacia.vuelta + " hacia Once";
+    baseEstado = "🕐 " + hora + " · " + hacia.ida + " hacia Moreno · " + hacia.vuelta + " hacia Once";
+    estadoEl.textContent = baseEstado;
   }
 
-  let ultimoOk = 0;
+  let ultimoOk = 0, enCurso = false, fallas = 0, timer = null;
+  function programar() { // 10 s si el usuario sigue su tren, 15 s si no; con backoff ante fallas
+    clearTimeout(timer);
+    timer = setTimeout(actualizar, Math.min((sel ? 10000 : 15000) * Math.pow(2, Math.min(fallas, 3)), 60000));
+  }
   async function actualizar() {
+    if (enCurso || document.hidden) return;
+    enCurso = true;
+    const ctl = new AbortController();
+    const to = setTimeout(() => ctl.abort(), 12000);
     try {
-      const res = await fetch(API, { cache: "no-store" });
+      const res = await fetch(API, { cache: "no-store", signal: ctl.signal });
       if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      render(data);
+      render(await res.json());
       ultimoOk = Date.now();
+      fallas = 0;
     } catch (err) {
+      fallas++;
       const seg = ultimoOk ? Math.round((Date.now() - ultimoOk) / 1000) : null;
       estadoEl.textContent = seg ? "🕐 sin conexión hace " + seg + "s" : "🕐 no se pudo conectar";
+    } finally {
+      clearTimeout(to);
+      enCurso = false;
+      programar();
     }
   }
+  document.addEventListener("visibilitychange", () => { // al volver a la pestaña: dato fresco ya
+    if (!document.hidden) { ultimoFrame = performance.now(); clearTimeout(timer); actualizar(); }
+  });
+  setInterval(() => { // edad del dato, solo si se está demorando
+    if (fallas || !ultimoOk || !baseEstado) return;
+    const seg = Math.round((Date.now() - ultimoOk) / 1000);
+    estadoEl.textContent = seg > 40 ? baseEstado + " · ⚠ datos de hace " + seg + " s" : baseEstado;
+  }, 5000);
 
   // ── ¿Dónde está mi tren? ────────────────────────────────────────────────
   // El pasajero indica sentido, estación y horario en que subió. Con eso se calcula la salida
@@ -4468,6 +4552,7 @@ renderStations();
     sel = nueva;
     validacion = null;
     irAlTren = !!nueva;
+    if (nueva) seguirMio = true;
     try {
       if (nueva) localStorage.setItem(LS_MIO, JSON.stringify({ via: nueva.via, est: nueva.est, dep: nueva.dep, t: Date.now() }));
       else localStorage.removeItem(LS_MIO);
@@ -4648,6 +4733,7 @@ renderStations();
 
   function actualizarMio(mio, data) {
     miTrenActual = mio ? mio.tren : null;
+    pintarSeguir();
     if (validacion && validacion.estado === "ok" && !validacionOk(miTrenActual)) validacion = null; // cambió el tren que coincide: se vuelve a validar
     pintarBotonVal();
     if (!sel) { resMio.style.display = "none"; return; }
@@ -4671,7 +4757,13 @@ renderStations();
     }
   }
 
+  const btnSeg = document.createElement("button");
+  btnSeg.type = "button"; btnSeg.className = "mv-mio-quitar"; btnSeg.textContent = "📍 Seguir mi tren"; btnSeg.style.display = "none";
+  function pintarSeguir() { btnSeg.style.display = miTrenActual && !seguirMio ? "" : "none"; }
   function iniciarPanelMio() {
+    if (quitarMio && quitarMio.parentNode) quitarMio.parentNode.insertBefore(btnSeg, quitarMio);
+    btnSeg.addEventListener("click", () => { seguirMio = true; pintarSeguir(); });
+    ["pointerdown", "wheel", "touchstart"].forEach((ev) => wrapMapa && wrapMapa.addEventListener(ev, () => { if (seguirMio) { seguirMio = false; pintarSeguir(); } }, { passive: true }));
     botonesVia.forEach((b) => b.addEventListener("click", () => {
       viaElegida = b.getAttribute("data-via");
       marcarVia(viaElegida);
@@ -4709,7 +4801,7 @@ renderStations();
   else if (panelMio) panelMio.style.display = "none";
 
   actualizar();
-  setInterval(actualizar, 15000);
+  requestAnimationFrame(cuadro);
 })();
 </script>
 </body>
