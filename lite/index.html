@@ -109,6 +109,21 @@ main { padding:calc(var(--head-h) + var(--safe-t) + 12px) 12px calc(var(--nav-h)
 #hoja.abierta { transform:none; visibility:visible; pointer-events:auto; transition:transform .22s ease; }
 #hoja h4 { margin:0 0 4px; font-size:18px; color:var(--navy); } #hoja p { margin:3px 0; font-size:14px; color:var(--text); }
 #hoja button { position:absolute; right:12px; top:10px; border:0; background:#EEF3F8; border-radius:50%; width:32px; height:32px; font-size:16px; }
+/* ── Locales ── */
+.seg.chico button { padding:9px 4px; font-size:14px; }
+.seg button small { display:block; font-size:10px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; opacity:.75; margin-top:1px; }
+.loc { display:grid; grid-template-columns:76px 1fr auto; gap:10px; align-items:center; padding:12px 14px; border-top:1px solid #E6EEF6; }
+.loc:first-child { border-top:0; }
+.loc .h { font:800 24px/1 ui-monospace,Menlo,Consolas,monospace; color:var(--navy); }
+.loc .o b { display:block; font-size:16px; } .loc .o span { display:block; font-size:13px; color:var(--muted); margin-top:2px; }
+.loc .cuando { text-align:right; font-size:13px; font-weight:700; color:var(--muted); line-height:1.2; }
+.loc .cuando b { display:block; font-size:18px; color:var(--blue); white-space:nowrap; }
+.loc.pasado { opacity:.45; }
+.loc.proximo { background:#EAF6FD; box-shadow:inset 4px 0 0 var(--celeste); }
+.sent { display:inline-block; font-size:11px; font-weight:800; padding:1px 8px; border-radius:10px; margin-left:6px; vertical-align:2px; background:var(--cel-light); color:var(--blue); }
+.ver-idos { display:block; width:100%; margin:0 0 10px; padding:11px; border:1px dashed var(--border); background:#fff; border-radius:12px; color:var(--blue); font-size:14px; font-weight:700; }
+.loc .o span + span { font-size:12px; }
+.nota { font-size:13px; color:var(--muted); padding:4px 4px 10px; line-height:1.4; }
 /* ── Barra inferior ── */
 nav { position:fixed; left:0; right:0; bottom:0; z-index:25; height:calc(var(--nav-h) + var(--safe-b)); padding-bottom:var(--safe-b); background:#fff; border-top:1px solid var(--border); display:flex; }
 nav button { flex:1; border:0; background:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; color:var(--muted); font-size:12px; font-weight:700; }
@@ -141,6 +156,16 @@ nav button[aria-selected="true"] { color:var(--blue); }
     <div id="estPaneles"></div>
   </section>
 
+  <!-- LOCALES -->
+  <section class="vista" id="v-locales" aria-label="Horarios de los locales">
+    <p class="nota">Los <b>locales</b> son trenes que salen vacíos desde una estación intermedia (no desde Once ni Moreno). Horarios del cronograma oficial.</p>
+    <div class="seg chico" id="segDia"></div>
+    <div class="seg chico" id="segSent"></div>
+    <div class="chips" id="chipsLoc"></div>
+    <div id="locLista"></div>
+    <p class="nota" id="locPie"></p>
+  </section>
+
   <!-- MAPA -->
   <section class="vista" id="v-mapa" aria-label="Mapa de formaciones">
     <div class="mapa-resumen"><div><b id="nIda">–</b>hacia Moreno</div><div><b id="nVuelta">–</b>hacia Once</div></div>
@@ -162,6 +187,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
 <nav role="tablist">
   <button type="button" role="tab" data-v="cabeceras" aria-selected="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M7 9h10M7 13h6M8 21l1.5-4M16 21l-1.5-4"/></svg>Cabeceras</button>
   <button type="button" role="tab" data-v="estaciones" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Estaciones</button>
+  <button type="button" role="tab" data-v="locales" aria-selected="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>Locales</button>
   <button type="button" role="tab" data-v="mapa" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg>Mapa</button>
 </nav>
 
@@ -302,9 +328,69 @@ nav button[aria-selected="true"] { color:var(--blue); }
     $("hoja").classList.add("abierta");
   }
 
+  // ── Locales (cronograma; se guarda en el celular para verlo sin señal) ──
+  var DIAS = [["lv", "Lun a Vie"], ["sab", "Sábado"], ["dom", "Domingo"]];
+  var loc = { dia: null, sent: "todos", est: "todas", pasados: false };
+  var fmtDiaSem = new Intl.DateTimeFormat("en-US", { timeZone: "America/Argentina/Buenos_Aires", weekday: "short" });
+  var fmtHM = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false });
+  function tipoHoy() { var w = fmtDiaSem.format(new Date()); return w === "Sun" ? "dom" : w === "Sat" ? "sab" : "lv"; }
+  function minAhora() { var p = fmtHM.format(new Date()).split(":"); return (+p[0]) * 60 + (+p[1]); }
+  function leerLocalesGuardados() { try { return JSON.parse(lsGet("lite.locales", "null")); } catch (e) { return null; } }
+  function pintarLocales(d) {
+    var hoy = tipoHoy();
+    if (!loc.dia) loc.dia = hoy;
+    var lista = (d.dias && d.dias[loc.dia]) || [];
+    // Botones de día, sentido y estaciones (solo las que tienen locales ese día)
+    $("segDia").innerHTML = DIAS.map(function (x) { return '<button type="button" data-dia="' + x[0] + '" aria-pressed="' + (x[0] === loc.dia) + '">' + x[1] + (x[0] === hoy ? "<small>hoy</small>" : "") + "</button>"; }).join("");
+    $("segSent").innerHTML = [["todos", "Todos"], ["moreno", "▼ A Moreno"], ["once", "▲ A Once"]].map(function (x) { return '<button type="button" data-sent="' + x[0] + '" aria-pressed="' + (x[0] === loc.sent) + '">' + x[1] + "</button>"; }).join("");
+    var ests = []; lista.forEach(function (l) { if (ests.indexOf(l.estacion) < 0) ests.push(l.estacion); });
+    ests.sort(function (a, b) { return ESTACIONES.indexOf(a) - ESTACIONES.indexOf(b); });
+    if (loc.est !== "todas" && ests.indexOf(loc.est) < 0) loc.est = "todas";
+    $("chipsLoc").innerHTML = ['todas'].concat(ests).map(function (e) { return '<button class="chip" type="button" data-est="' + esc(e) + '" aria-pressed="' + (e === loc.est) + '">' + (e === "todas" ? "Todas las estaciones" : esc(bonito(e))) + "</button>"; }).join("");
+    var filtrada = lista.filter(function (l) { return (loc.sent === "todos" || l.direccion === loc.sent) && (loc.est === "todas" || l.estacion === loc.est); });
+    var ahora = minAhora(), esHoy = loc.dia === hoy, proximoMarcado = false;
+    function fila(l, pasado) {
+      var falta = l.min - ahora, clase = "loc", cuando = "";
+      if (pasado) { clase += " pasado"; cuando = "ya salió"; }
+      else if (esHoy) {
+        if (!proximoMarcado) { clase += " proximo"; proximoMarcado = true; }
+        cuando = falta <= 0 ? "<b>Ahora</b>" : falta < 60 ? "<b>" + falta + " min</b>" : "<b>" + Math.floor(falta / 60) + " h " + (falta % 60) + " min</b>";
+      }
+      return '<div class="' + clase + '"><div class="h">' + esc(l.hora) + '</div><div class="o"><b>Sale de ' + esc(bonito(l.estacion)) + '</b><span>Hacia ' + esc(bonito(l.destino)) + " · llega " + esc(l.llegada) + '</span><span>Tren ' + esc(l.n) + '</span></div><div class="cuando">' + cuando + "</div></div>";
+    }
+    var h = "";
+    if (!filtrada.length) {
+      h = '<div class="vacio">No hay locales con esos filtros' + (loc.dia !== "lv" ? " ese día" : "") + ".</div>";
+    } else {
+      // Hoy: primero lo que falta; los que ya salieron quedan detrás de un botón.
+      var idos = esHoy ? filtrada.filter(function (l) { return l.min - ahora < -1; }) : [];
+      var faltan = esHoy ? filtrada.filter(function (l) { return l.min - ahora >= -1; }) : filtrada;
+      if (idos.length) h += '<button type="button" class="ver-idos" data-pasados="1">' + (loc.pasados ? "▴ Ocultar" : "▾ Ver") + " los " + idos.length + " que ya salieron</button>";
+      if (esHoy && !faltan.length) h += '<div class="vacio" style="padding:20px 10px">Hoy ya no quedan locales con estos filtros.</div>';
+      var cuerpo = (loc.pasados ? idos.map(function (l) { return fila(l, true); }) : []).concat(faltan.map(function (l) { return fila(l, false); })).join("");
+      if (cuerpo) h += '<div class="panel">' + cuerpo + "</div>";
+    }
+    $("locLista").innerHTML = h;
+    $("locPie").textContent = "Pueden sufrir cambios o demoras el día del servicio: mirá la pestaña Estaciones para el estado en vivo. Los feriados pueden tener cronograma especial.";
+  }
+  function cargarLocales() {
+    var guardado = leerLocalesGuardados();
+    if (guardado && !estado.datos.locales) { estado.datos.locales = guardado; pintarLocales(guardado); }
+    return pedir("horarios-locales").then(function (d) {
+      estado.datos.locales = d; lsSet("lite.locales", JSON.stringify(d));
+      if (estado.vista === "locales") pintarLocales(d);
+      avisar(""); marcar(true, "cronograma al día");
+    }).catch(function () {
+      if (estado.datos.locales) { marcar(false, "sin conexión · usando el cronograma guardado"); return; }
+      marcar(false, "sin conexión");
+      if (estado.vista === "locales") $("locLista").innerHTML = '<div class="vacio">No pudimos cargar los horarios ahora.<br>Reintentamos solos en unos segundos.</div>';
+    });
+  }
+
   // ── Carga por vista ──
   function cargar() {
     if (document.hidden) return Promise.resolve();
+    if (estado.vista === "locales") return cargarLocales();
     var v = estado.vista, mio = ++estado.pedido, ruta, pintar;
     if (v === "cabeceras") { ruta = "tablero-cabecera?estacion=" + encodeURIComponent(estado.cab); pintar = pintarCab; }
     else if (v === "estaciones") { ruta = "tablero-estacion?estacion=" + encodeURIComponent(estado.est); pintar = pintarEst; }
@@ -327,6 +413,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
     // Entre consulta y consulta se actualiza lo que depende del reloj (minutos y hora del tablero) sin pedir nada.
     var rel = $("reloj"); if (rel) rel.textContent = fmt.format(new Date());
     if (estado.vista === "estaciones" && estado.datos.estaciones) pintarEst(estado.datos.estaciones);
+    if (estado.vista === "locales" && estado.datos.locales) pintarLocales(estado.datos.locales);
   }
 
   function irA(v, sinCargar) {
@@ -334,7 +421,8 @@ nav button[aria-selected="true"] { color:var(--blue); }
     Array.prototype.forEach.call(document.querySelectorAll(".vista"), function (s) { s.classList.toggle("activa", s.id === "v-" + v); });
     Array.prototype.forEach.call(document.querySelectorAll("nav button"), function (b) { b.setAttribute("aria-selected", b.getAttribute("data-v") === v); });
     $("hoja").classList.remove("abierta"); window.scrollTo(0, 0);
-    if (estado.datos[v]) { var d = estado.datos[v]; (v === "cabeceras" ? pintarCab : v === "estaciones" ? pintarEst : pintarMapa)(d); }
+    if (estado.datos[v]) { var d = estado.datos[v]; (v === "cabeceras" ? pintarCab : v === "estaciones" ? pintarEst : v === "locales" ? pintarLocales : pintarMapa)(d); }
+    else if (v === "locales") { var g = leerLocalesGuardados(); if (g) { estado.datos.locales = g; pintarLocales(g); } }
     if (!sinCargar) cargar();
   }
 
@@ -349,6 +437,15 @@ nav button[aria-selected="true"] { color:var(--blue); }
   $("chips").addEventListener("click", function (e) {
     var b = e.target.closest("button"); if (!b) return;
     if (b.hasAttribute("data-cerca")) cercana(); else elegirEst(b.getAttribute("data-e"));
+  });
+  $("v-locales").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b || !estado.datos.locales) return;
+    if (b.hasAttribute("data-dia")) loc.dia = b.getAttribute("data-dia");
+    else if (b.hasAttribute("data-sent")) loc.sent = b.getAttribute("data-sent");
+    else if (b.hasAttribute("data-est")) loc.est = b.getAttribute("data-est");
+    else if (b.hasAttribute("data-pasados")) loc.pasados = !loc.pasados;
+    else return;
+    pintarLocales(estado.datos.locales);
   });
   $("mapaStage").addEventListener("click", function (e) { var b = e.target.closest(".m-tren"); if (b) detalleTren(+b.getAttribute("data-i")); });
   $("hojaX").addEventListener("click", function () { $("hoja").classList.remove("abierta"); });
@@ -396,7 +493,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
   var q = new URLSearchParams(location.search);
   if (q.get("e") && ESTACIONES.indexOf(q.get("e")) >= 0) { if (q.get("e") === "Moreno") { estado.cab = "Moreno"; Array.prototype.forEach.call($("segCab").children, function (x) { x.setAttribute("aria-pressed", x.getAttribute("data-e") === "Moreno"); }); } }
   pintarChips();
-  irA(["cabeceras", "estaciones", "mapa"].indexOf(q.get("v")) >= 0 ? q.get("v") : "cabeceras");
+  irA(["cabeceras", "estaciones", "locales", "mapa"].indexOf(q.get("v")) >= 0 ? q.get("v") : "cabeceras");
   setInterval(function () { cargar(); }, 20000);
   setInterval(repintarLocal, 1000 * 15);
   setInterval(function () { var rel = $("reloj"); if (rel) rel.textContent = fmt.format(new Date()); }, 5000);

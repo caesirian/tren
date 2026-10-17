@@ -965,6 +965,36 @@ export function buscarEnCronograma({ numero, sentido = null, estacionNombre, pro
   return null;
 }
 
+// Grilla completa de locales para la app Lite (/lite): los tres tipos de día, ordenados por minuto del día de
+// servicio (así los de madrugada no se mezclan), con destino real y hora de llegada a destino.
+// → { lv|sab|dom: [{ n, estacion, hora, min, direccion: "moreno"|"once", destino, llegada }] }
+export function localesHorariosApp() {
+  const out = {};
+  for (const dia of Object.keys(TRENES)) {
+    const lista = [];
+    for (const dir of ["m", "o"]) {
+      const terminal = dir === "m" ? 0 : 15;
+      for (const tr of TRENES[dia][dir]) {
+        if (tr.first === terminal) continue;
+        // Destino real: hacia Moreno las estaciones suben de índice, hacia Once bajan (el último es el menor).
+        const conHora = tr.t.map((v, i) => (v != null ? i : -1)).filter((i) => i >= 0);
+        const ultimo = dir === "m" ? Math.max(...conHora) : Math.min(...conHora);
+        lista.push({
+          n: tr.n,
+          estacion: STATIONS[tr.first].name,
+          hora: minAHora(tr.t[tr.first]),
+          min: tr.t[tr.first],
+          direccion: dir === "m" ? "moreno" : "once",
+          destino: STATIONS[ultimo].name,
+          llegada: minAHora(tr.t[ultimo]),
+        });
+      }
+    }
+    out[dia] = lista.sort((a, b) => a.min - b.min);
+  }
+  return out;
+}
+
 // Todos los locales del cronograma de un tipo de día, con número, para cotejar.
 export function localesConNumero(dia) {
   const out = [];

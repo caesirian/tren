@@ -18,6 +18,7 @@
   ],
   "shortcuts": [
     { "name": "Tablero Once", "short_name": "Once", "url": "/lite/?v=cabeceras&e=Once", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Horarios de los locales", "short_name": "Locales", "url": "/lite/?v=locales", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Mapa de formaciones", "short_name": "Mapa", "url": "/lite/?v=mapa", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

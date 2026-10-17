@@ -29,7 +29,7 @@ import { enviarPush, ultimaPushId, pushAutoActivo, setPushAuto, cargarPushAuto, 
 import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
-import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, horariosLocalesEstacionTodosLosDias, LOCALES, getDayType, infoTransporteEstacion, buscarEstacion } from "./schedule.js";
+import { detectarEstaciones, proximosTrenesEnEstacion, ultimosTrenes, horaArgentinaTexto, proximosLocales, proximosLocalesTodasEstaciones, proximoDiferencial, DIFERENCIAL, horariosLocalesEstacion, horariosLocalesEstacionTodosLosDias, LOCALES, getDayType, infoTransporteEstacion, buscarEstacion, localesHorariosApp } from "./schedule.js";
 import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js";
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema, esTemaEspaciado, programarRespuestaDiferida, marcarRespondidoMensaje, marcarRespondidoUsuario, enfriandoAlAire, reservarAlAire, ESPERA_AL_AIRE_MS } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
@@ -2737,6 +2737,21 @@ app.get("/api/tablero-cabecera", async (req, res) => {
   } catch (err) {
     console.error("Error en /api/tablero-cabecera:", err.message);
     res.status(502).json({ error: err.message });
+  }
+});
+
+// Horarios de los locales para la app Lite (/lite): grilla completa del cronograma oficial por tipo de día.
+// Es dato estático (no consulta el proxy), por eso la app lo guarda y funciona aunque no haya señal.
+app.get("/api/horarios-locales", (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+  if (!claveTableroValida(req)) return res.status(403).json({ error: "forbidden" });
+  try {
+    res.set("Cache-Control", "public, max-age=300");
+    res.json({ hoy: getDayType(new Date()), dias: localesHorariosApp(), consultadoEn: new Date().toISOString() });
+  } catch (err) {
+    console.error("Error en /api/horarios-locales:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
