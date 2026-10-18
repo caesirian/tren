@@ -154,3 +154,95 @@ export async function textoInformeFormaciones(arg = "") {
   );
   return bloques.join("\n");
 }
+
+// ─── Seguimiento de un tren puntual ───────────────────────────────────────────
+// /formaciones tren <HH:MM | número> [hoy|ayer|AAAA-MM-DD|DD/MM]
+// Busca la salida de una cabecera (por hora aproximada o por número de servicio) y
+// verifica si el mismo servicio quedó registrado llegando a la cabecera de destino.
+// Si salió y no figura la llegada, es una PISTA de que se cortó en el camino, no una
+// prueba: la llegada se detecta por radio de la cabecera y puede no haberse registrado.
+const minutoBA = (iso) => {
+  const t = ms(iso);
+  if (t == null) return null;
+  const d = new Date(t - 3 * 3600 * 1000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+};
+const horaBA = (iso) => (iso ? hora(iso) : "s/d");
+const OPUESTA = { Moreno: "Once", Once: "Moreno" };
+const VENTANA_BUSQUEDA_MIN = 10;
+const MARGEN_LLEGADA_MIN = 120; // el viaje dura ~78 min; pasado este margen sin llegada ya es llamativo
+
+export async function textoSeguimientoTren(args = []) {
+  const [buscado, ...resto] = args;
+  const ayuda = "Uso: /formaciones tren <HH:MM | número> [hoy | ayer | AAAA-MM-DD | DD/MM]\nEj.: /formaciones tren 6:37  ·  /formaciones tren 3820 ayer";
+  if (!buscado) return ayuda;
+  const f = parsearFecha(resto.join(" "));
+  if (!f) return ayuda;
+
+  const { salidas, llegadas } = await leerRegistrosDia(f.fecha);
+  if (!salidas.length && !llegadas.length) return `🔎 Sin registros de formaciones para ${f.titulo}.`;
+
+  const horaTxt = String(buscado).match(/^(\d{1,2})[:.](\d{2})$/);
+  const numTxt = !horaTxt && /^\d{3,5}$/.test(String(buscado)) ? String(buscado) : null;
+  if (!horaTxt && !numTxt) return ayuda;
+
+  const objetivo = horaTxt ? +horaTxt[1] * 60 + +horaTxt[2] : null;
+  const distancia = (s) => {
+    const m = [minutoBA(s.salioEn), minutoBA(s.programada)].filter((x) => x != null);
+    return m.length ? Math.min(...m.map((x) => Math.abs(x - objetivo))) : Infinity;
+  };
+
+  let candidatas;
+  if (numTxt) {
+    candidatas = salidas.filter((s) => String(s.numero) === numTxt);
+  } else {
+    candidatas = salidas.filter((s) => distancia(s) <= VENTANA_BUSQUEDA_MIN).sort((a, b) => distancia(a) - distancia(b));
+  }
+
+  const bloques = [`🔎 Seguimiento de formación — ${f.titulo}`];
+  if (!candidatas.length) {
+    if (numTxt) {
+      const ll = llegadas.filter((l) => String(l.numero) === numTxt);
+      if (ll.length) {
+        bloques.push(`\n#${numTxt}: sin salida registrada de cabecera, pero sí llegada a ${ll.map((l) => `${l.cabecera} ${horaBA(l.llegoEn)} (prog ${horaBA(l.programada)})`).join(" · ")}.`);
+      } else {
+        bloques.push(`\n#${numTxt}: no hay salida ni llegada registrada de ese número ese día (puede ser un local que no sale de una cabecera, o no se lo vio).`);
+      }
+    } else {
+      const cercanas = salidas
+        .map((s) => ({ s, d: distancia(s) }))
+        .filter((x) => Number.isFinite(x.d))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 4)
+        .map(({ s }) => `#${s.numero} ${s.cabecera} prog ${horaBA(s.programada)} · salió ${horaBA(s.salioEn)}`);
+      bloques.push(`\nNo hay salidas registradas dentro de ±${VENTANA_BUSQUEDA_MIN} min de ${buscado}.${cercanas.length ? `\nLas más cercanas:\n${cercanas.join("\n")}` : ""}`);
+    }
+    return bloques.join("\n");
+  }
+
+  const ahoraMs = Date.now();
+  for (const s of candidatas.slice(0, 5)) {
+    const dest = OPUESTA[s.cabecera];
+    const llegada = dest ? llegadas.find((l) => String(l.numero) === String(s.numero) && l.cabecera === dest) : null;
+    const lineas = [`\n🚆 #${s.numero} · ${s.cabecera}${s.destino ? ` → ${s.destino}` : ""} · ${TIPOS[s.tipoServicio] || "Común"}`];
+    lineas.push(`  Salida: prog ${horaBA(s.programada)} · salió ${tiempo(s.salioEn, s.fuente)} (${conSigno(difMin(s.salioEn, s.programada))})${s.anden ? ` · andén ${s.anden}` : ""}`);
+    if (!dest) {
+      lineas.push("  Sale de una estación intermedia: no se registra su llegada a una cabecera.");
+    } else if (llegada) {
+      const viaje = Math.round((ms(llegada.llegoEn) - ms(s.salioEn)) / 60000);
+      lineas.push(`  Llegada a ${dest}: prog ${horaBA(llegada.programada)} · llegó ${tiempo(llegada.llegoEn, llegada.fuente)} (${conSigno(difMin(llegada.llegoEn, llegada.programada))}) · viaje ${viaje} min`);
+      lineas.push(`  ✅ Hay llegada registrada a ${dest}: completó el recorrido.`);
+    } else {
+      const desdeSalida = Math.round((ahoraMs - ms(s.salioEn)) / 60000);
+      if (desdeSalida < MARGEN_LLEGADA_MIN) {
+        lineas.push(`  Llegada a ${dest}: todavía sin registro (salió hace ${desdeSalida} min; puede seguir en viaje).`);
+      } else {
+        lineas.push(`  ⚠️ Salió hace ${desdeSalida} min y no figura llegada a ${dest}. Es una pista de que pudo cortarse en el camino, pero no una prueba: la llegada se registra por radio de la cabecera y puede no haberse detectado.`);
+      }
+    }
+    bloques.push(lineas.join("\n"));
+  }
+  if (candidatas.length > 5) bloques.push(`\n(+${candidatas.length - 5} más; pasá el número para ver uno solo.)`);
+  bloques.push("\n~ = hora inferida entre dos consultas (±30 s). No se guarda en qué estación quedó una formación que se corta: eso falta registrarlo.");
+  return bloques.join("\n");
+}

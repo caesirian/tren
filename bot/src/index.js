@@ -42,7 +42,7 @@ import { tableroVivoHTML } from "./tableroVivo.js";
 import { registrarSnapshot, snapshotHaceMinutos, rangoRegistrado } from "./tableroHistorial.js";
 import { mapaVivoHTML } from "./mapaVivo.js";
 import { iniciarVigiaSalidas, textoFormaciones, estadoLocalesParaBot } from "./vigiaSalidas.js";
-import { textoInformeFormaciones } from "./informeFormaciones.js";
+import { textoInformeFormaciones, textoSeguimientoTren } from "./informeFormaciones.js";
 import { registrarValidacion, excedioLimiteValidaciones, textoValidaciones } from "./validacionesGps.js";
 import { registrarInstalacion, excedioLimiteInstalaciones, textoInstalaciones } from "./instalacionesLite.js";
 import { iniciarViaje, estadoViaje, ubicacionUsuario, iniciarViajes, hayViajeActivo } from "./viaje.js";
@@ -1016,6 +1016,7 @@ bot.command("apptrenes", async (ctx) => {
 // Estado en vivo de las formaciones en Once y Moreno: si ya llegó y espera, si ya salió
 // (y a qué hora) o si está en camino. Lo alimenta la vigilancia de salidas (vigiaSalidas.js).
 // /formaciones informe [hoy|ayer|AAAA-MM-DD|DD/MM] → informe por formación del día (informeFormaciones.js).
+// /formaciones tren <HH:MM|número> [fecha] → busca una salida puntual y verifica si llegó a la otra cabecera.
 // Mapa vertical de las vías con las formaciones demoradas resaltadas (mapaDemorasImagen.js).
 // Solo el admin; siempre se lo manda por privado, sin importar MAPA_DEMORAS_MODO.
 bot.command("mapademoras", async (ctx) => {
@@ -1038,7 +1039,7 @@ bot.command("formaciones", async (ctx) => {
   if (String(ctx.from?.id) !== String(process.env.ADMIN_TELEGRAM_ID)) return;
   try {
     const args = (ctx.message?.text || "").trim().split(/\s+/).slice(1);
-    const texto = /^informe$/i.test(args[0] || "") ? await textoInformeFormaciones(args.slice(1).join(" ")) : textoFormaciones();
+    const texto = /^informe$/i.test(args[0] || "") ? await textoInformeFormaciones(args.slice(1).join(" ")) : /^tren$/i.test(args[0] || "") ? await textoSeguimientoTren(args.slice(1)) : textoFormaciones();
     for (let i = 0; i < texto.length; i += 3900) {
       await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, texto.slice(i, i + 3900));
     }
