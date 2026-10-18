@@ -25,6 +25,7 @@ import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal } from "
 import { resumirDemoras } from "./resumenDemoras.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado } from "./servicioLimitado.js";
 import { contextoSalidasParaBot } from "./vigiaSalidas.js";
+import { recorridoDeServicio, buscarEstacion } from "./schedule.js";
 
 const COLECCION = "cancelacionesProxyVistas";
 const COLECCION_DEMORAS = "demorasProxyAvisadas";
@@ -38,6 +39,7 @@ const INTERVALO_AVISO_DEMORAS_MS = 60 * 60 * 1000;
 const COLECCION_CONTROL_AVISOS = "controlAvisosGrupo";
 let ultimoAvisoDemorasMs = 0;
 const COLECCION_LOCALES = "localesFueraCronogramaVistos";
+const COLECCION_ACORTADOS = "serviciosAcortadosVistos";
 const RETENCION_DIAS = 3;
 
 // Avisos de locales en el GRUPO (a pedido de Coco, 29/9): activo por defecto.
@@ -499,4 +501,87 @@ export async function chequearTramoLimitadoProxy() {
       `🚧 Detecté servicio limitado por el proxy: los trenes de hoy solo circulan entre ${tramo.desde} y ${tramo.hasta} (${det.trenes} trenes vistos). ` +
       `Ya lo estoy aplicando en el bot y en el tablero. Si es un falso positivo: /limitado off (no vuelve a activarse solo por 1 hora). Si querés fijarlo con otro tramo o duración: /limitado <estación> <estación> [minutos] [motivo].`,
   };
+}
+
+
+// Servicios ACORTADOS: la app muestra un destino distinto del final que el cronograma prevé para
+// ese número de servicio (ej. el #3814 Moreno→Once figuraba "Moreno→Castelar"). El pasajero que
+// va más allá de ese punto tiene que bajarse, así que se avisa al grupo y al admin apenas se
+// detecta (con el tren todavía en "Programado" suele haber margen). Una vez por tren, día y
+// destino mostrado: si el destino vuelve a cambiar, es un aviso nuevo.
+// Tope de avisos al grupo por chequeo: si aparecen muchos juntos (tramo limitado, accidente)
+// se avisa solo por privado y lo cubre el aviso de servicio limitado.
+export async function chequearServiciosAcortados() {
+  if (!monitorProxyActivo()) return { nuevos: [], texto: null, textosGrupo: [], desactivado: true };
+  let barrido;
+  try {
+    barrido = await barridoEstructurado(); // comparte caché con el resto de los chequeos
+  } catch (err) {
+    console.error("Error consultando el proxy para servicios acortados:", err.message);
+    return { nuevos: [], texto: null, textosGrupo: [], error: err.message };
+  }
+
+  const nuevos = [];
+  const claves = new Set();
+  for (const item of barrido.todos) {
+    const d = datosServicio(item);
+    const numero = d.s.numero ?? null;
+    if (numero == null) continue;
+    const previsto = recorridoDeServicio(numero, d.prog);
+    if (!previsto) continue; // número que no figura en el cronograma Once–Moreno: no hay con qué comparar
+    const destinoApp = buscarEstacion(d.destino);
+    if (!destinoApp || destinoApp.id === previsto.destinoId) continue; // destino ilegible o el esperado
+    const dia = d.prog ? new Date(d.prog).toISOString().slice(0, 10) : "s-fecha";
+    const clave = `${numero}-${destinoApp.id}-${dia}`;
+    if (claves.has(clave) || vistosEnMemoria.has(`acortado:${clave}`)) continue;
+    claves.add(clave);
+    const firestore = ensureInit();
+    let visto = false;
+    if (firestore) {
+      try {
+        visto = (await firestore.collection(COLECCION_ACORTADOS).doc(clave).get()).exists;
+      } catch (err) {
+        console.error("Error chequeando servicio acortado visto:", err.message);
+      }
+    }
+    vistosEnMemoria.add(`acortado:${clave}`);
+    if (visto) continue;
+    if (firestore) {
+      firestore
+        .collection(COLECCION_ACORTADOS)
+        .doc(clave)
+        .set({
+          numero,
+          dia,
+          origenPrevisto: previsto.origenNombre,
+          horaOrigenPrevista: previsto.horaOrigen,
+          destinoPrevisto: previsto.destinoNombre,
+          destinoEnApp: destinoApp.name,
+          estacionVista: d.est?.nombre ?? null,
+          programada: d.prog || null,
+          estado: d.estado,
+          detectadoEn: new Date().toISOString(),
+          timestamp: FieldValue.serverTimestamp(),
+        })
+        .catch((err) => console.error("Error guardando servicio acortado:", err.message));
+    }
+    nuevos.push({ item, d, previsto, destinoApp });
+  }
+  if (!nuevos.length) return { nuevos: [], texto: null, textosGrupo: [] };
+
+  const texto =
+    `✂️ ${nuevos.length} servicio(s) ACORTADO(S) según la app (el destino mostrado no es el final del cronograma):\n\n` +
+    nuevos
+      .map(({ d, previsto, destinoApp }) => `• #${d.s.numero} ${previsto.origenNombre} ${previsto.horaOrigen} → debería llegar a ${previsto.destinoNombre} · la app lo muestra hasta ${destinoApp.name} (visto en ${d.est?.nombre ?? "?"}, prog ${hora(d.prog)}, ${d.estado})`)
+      .join("\n");
+
+  const MAX_AVISOS_GRUPO_POR_CHEQUEO = 3;
+  let textosGrupo = nuevos.map(({ previsto, destinoApp }) => `✂️ El tren de las ${previsto.horaOrigen} de ${previsto.origenNombre} a ${previsto.destinoNombre} (#${previsto.n}) figura en la app con recorrido acortado: llega solo hasta ${destinoApp.name}.`);
+  textosGrupo = [...new Set(textosGrupo)];
+  let texto2 = texto;
+  if (textosGrupo.length > MAX_AVISOS_GRUPO_POR_CHEQUEO) {
+    texto2 += `\n\n⚠️ Son ${textosGrupo.length} avisos de una sola vez (posible tramo limitado): NO los publiqué en el grupo.`;
+    textosGrupo = [];
+  }
+  return { nuevos: nuevos.map((n) => n.item), texto: texto2, textosGrupo };
 }

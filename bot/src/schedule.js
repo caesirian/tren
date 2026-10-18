@@ -965,6 +965,35 @@ export function buscarEnCronograma({ numero, sentido = null, estacionNombre, pro
   return null;
 }
 
+// Recorrido que el cronograma prevé para un número de servicio: estación de origen y estación
+// FINAL (la última con horario). Sirve para detectar servicios acortados: si la app muestra
+// un destino distinto del final previsto, el tren no va a llegar hasta donde le corresponde.
+export function recorridoDeServicio(numero, fechaProg = null) {
+  if (numero == null) return null;
+  const fecha = fechaProg ? new Date(fechaProg) : new Date();
+  if (Number.isNaN(fecha.getTime())) return null;
+  for (const dia of [getDayType(fecha), getPrevDayType(fecha)]) {
+    for (const dir of ["m", "o"]) {
+      const tr = TRENES[dia]?.[dir]?.find((x) => String(x.n) === String(numero));
+      if (!tr) continue;
+      const conHora = tr.t.map((v, i) => (v != null ? i : -1)).filter((i) => i >= 0);
+      const ultimo = dir === "m" ? Math.max(...conHora) : Math.min(...conHora);
+      return {
+        n: tr.n,
+        dia,
+        sentido: dir,
+        origenId: tr.first,
+        origenNombre: STATIONS[tr.first].name,
+        horaOrigen: minAHora(tr.t[tr.first]),
+        destinoId: ultimo,
+        destinoNombre: STATIONS[ultimo].name,
+        horaDestino: minAHora(tr.t[ultimo]),
+      };
+    }
+  }
+  return null;
+}
+
 // Grilla completa de locales para la app Lite (/lite): los tres tipos de día, ordenados por minuto del día de
 // servicio (así los de madrugada no se mezclan), con destino real y hora de llegada a destino.
 // → { lv|sab|dom: [{ n, estacion, hora, min, direccion: "moreno"|"once", destino, llegada }] }

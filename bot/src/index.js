@@ -46,7 +46,7 @@ import { textoInformeFormaciones, textoSeguimientoTren } from "./informeFormacio
 import { registrarValidacion, excedioLimiteValidaciones, textoValidaciones } from "./validacionesGps.js";
 import { registrarInstalacion, excedioLimiteInstalaciones, textoInstalaciones } from "./instalacionesLite.js";
 import { iniciarViaje, estadoViaje, ubicacionUsuario, iniciarViajes, hayViajeActivo } from "./viaje.js";
-import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
+import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearServiciosAcortados, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
 import { reporteLocales, clasificarServicio } from "./locales.js";
@@ -3106,6 +3106,17 @@ async function chequeoPeriodicoProxy(origen) {
     if (!(await servicioSuspendido().catch(() => null))) for (const t of localesProxy.textosGrupo || []) await publicarEnGrupo(t);
   } catch (err) {
     console.error(`Error chequeando locales fuera de cronograma (${origen}):`, err.message);
+  }
+
+  try {
+    const acortados = await chequearServiciosAcortados();
+    if (!acortados.desactivado) console.log(`Chequeo proxy (${origen}): ${acortados.nuevos?.length ?? 0} servicio(s) acortado(s) nuevo(s)`);
+    if (acortados.texto && process.env.ADMIN_TELEGRAM_ID) {
+      await bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, acortados.texto).catch((err) => console.error("Error avisando servicios acortados:", err.message));
+    }
+    if (!(await servicioSuspendido().catch(() => null))) for (const t of acortados.textosGrupo || []) await publicarEnGrupo(t);
+  } catch (err) {
+    console.error(`Error chequeando servicios acortados (${origen}):`, err.message);
   }
 
   try {
