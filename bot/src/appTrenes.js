@@ -250,12 +250,16 @@ export async function barridoEstructurado({ forzar = false } = {}) {
   const todos = [];
   const vistos = new Set();
   const errores = [];
+  const vacias = []; // índices de estaciones que respondieron OK pero sin servicios (≠ error de red)
   resultados.forEach((res, i) => {
     if (res.status === "rejected") {
       errores.push(`${ESTACIONES_BARRIDO[i]}: ${res.reason?.message || res.reason}`);
       return;
     }
-    if (!res.value.servicios.length) errores.push(`${ESTACIONES_BARRIDO[i]}: sin servicios de Sarmiento (estaciones: ${res.value.revisadas.join(", ") || "ninguna"})`);
+    if (!res.value.servicios.length) {
+      vacias.push(i);
+      errores.push(`${ESTACIONES_BARRIDO[i]}: sin servicios de Sarmiento (estaciones: ${res.value.revisadas.join(", ") || "ninguna"})`);
+    }
     for (const item of res.value.servicios) {
       const clave = `${item.r?.servicio?.numero}-${item.est.id}`;
       if (vistos.has(clave)) continue;
@@ -263,7 +267,7 @@ export async function barridoEstructurado({ forzar = false } = {}) {
       todos.push(item);
     }
   });
-  cacheBarrido = { todos, anormales: todos.filter(esAnormal), errores, momento: Date.now() };
+  cacheBarrido = { todos, anormales: todos.filter(esAnormal), errores, vacias, momento: Date.now() };
   return cacheBarrido;
 }
 
@@ -345,6 +349,11 @@ export function textoBarrido(b, { completo = false } = {}) {
     texto += "\nNingún servicio con cancelación, leyenda, demora de 10+ min o tipo especial en este momento.";
   }
   if (b.errores.length) texto += `\n\nAvisos:\n- ${b.errores.join("\n- ")}`;
+  try {
+    evaluarTramoBarrido(b);
+    const dg = diagnosticoTramoProxy();
+    if (dg) texto += `\n\n🚧 Detección de tramo: ${dg.motivo} (hacia Moreno ${dg.haciaMoreno}, hacia Once ${dg.haciaOnce}, sin origen ${dg.sinOrigen}${dg.onceVacio ? ", Once vacío" : ""}${dg.morenoVacio ? ", Moreno vacío" : ""})`;
+  } catch {}
   return texto;
 }
 
@@ -787,12 +796,28 @@ export async function arribosVivosEstacion(nombreEstacion) {
 // observado { desdeIdx, hastaIdx } o null si se ve el recorrido completo o si
 // hay muy pocos trenes para concluir algo (ej. de madrugada o a la noche, donde
 // el recorte sería un falso positivo).
+let ultimoDiagTramo = null;
+export function diagnosticoTramoProxy() {
+  return ultimoDiagTramo;
+}
+
 export async function detectarTramoProxy({ minimoPorSentido = 3 } = {}) {
-  const b = await barridoEstructurado();
+  return evaluarTramoBarrido(await barridoEstructurado(), { minimoPorSentido });
+}
+
+// Parte pura (síncrona) de la detección: recibe un barrido ya hecho.
+export function evaluarTramoBarrido(b, { minimoPorSentido = 3 } = {}) {
   const ultimo = ESTACIONES_BARRIDO.length - 1;
+  const vacias = b.vacias || [];
+  // Una cabecera que responde OK pero sin ningún servicio es evidencia directa
+  // de recorte en esa punta (ej. Once sin salidas ni llegadas).
+  const onceVacio = vacias.includes(0);
+  const morenoVacio = vacias.includes(ultimo);
+  const minimo = onceVacio || morenoVacio ? Math.min(2, minimoPorSentido) : minimoPorSentido;
   const vistos = new Set();
   const haciaMoreno = [];
   const haciaOnce = [];
+  let sinOrigen = 0;
   for (const item of b.todos) {
     const d = datosServicio(item);
     const num = d.s.numero;
@@ -800,14 +825,33 @@ export async function detectarTramoProxy({ minimoPorSentido = 3 } = {}) {
     const idDest = indiceEstacionRamal(d.destino);
     const idEst = indiceEstacionRamal(item.est.nombre);
     const idOrig = d.origenReal ? indiceEstacionRamal(d.origenReal) : -1;
-    if (idDest < 0 || idEst < 0 || idOrig < 0 || idDest === idEst) continue;
+    if (idDest < 0 || idEst < 0 || idDest === idEst) continue;
+    if (idOrig < 0) { sinOrigen++; continue; }
     vistos.add(num);
     (idDest > idEst ? haciaMoreno : haciaOnce).push({ idOrig, idDest });
   }
-  if (haciaMoreno.length < minimoPorSentido || haciaOnce.length < minimoPorSentido) return null;
-  const desdeIdx = Math.min(Math.min(...haciaMoreno.map((t) => t.idOrig)), Math.min(...haciaOnce.map((t) => t.idDest)));
-  const hastaIdx = Math.max(Math.max(...haciaMoreno.map((t) => t.idDest)), Math.max(...haciaOnce.map((t) => t.idOrig)));
-  if (desdeIdx <= 0 && hastaIdx >= ultimo) return null;
-  if (hastaIdx - desdeIdx < 2) return null;
-  return { desdeIdx, hastaIdx, trenes: haciaMoreno.length + haciaOnce.length };
+  const diag = { haciaMoreno: haciaMoreno.length, haciaOnce: haciaOnce.length, sinOrigen, onceVacio, morenoVacio, minimo };
+  const fin = (res, motivo) => { ultimoDiagTramo = { ...diag, resultado: res ? `${res.desdeIdx}-${res.hastaIdx}` : "ninguno", motivo }; return res; };
+
+  let desdeIdx = 0;
+  let hastaIdx = ultimo;
+  const okMoreno = haciaMoreno.length >= minimo;
+  const okOnce = haciaOnce.length >= minimo;
+  if (okMoreno && okOnce) {
+    desdeIdx = Math.min(Math.min(...haciaMoreno.map((t) => t.idOrig)), Math.min(...haciaOnce.map((t) => t.idDest)));
+    hastaIdx = Math.max(Math.max(...haciaMoreno.map((t) => t.idDest)), Math.max(...haciaOnce.map((t) => t.idOrig)));
+  } else if (okMoreno && onceVacio) {
+    // Once sin servicios y pocos trenes hacia Once: alcanza con los que van hacia Moreno.
+    desdeIdx = Math.min(...haciaMoreno.map((t) => t.idOrig));
+    hastaIdx = Math.max(...haciaMoreno.map((t) => t.idDest));
+  } else if (okOnce && morenoVacio) {
+    desdeIdx = Math.min(...haciaOnce.map((t) => t.idDest));
+    hastaIdx = Math.max(...haciaOnce.map((t) => t.idOrig));
+  } else {
+    return fin(null, `pocos trenes con origen conocido (hacia Moreno ${haciaMoreno.length}, hacia Once ${haciaOnce.length}, mínimo ${minimo})`);
+  }
+  if (desdeIdx <= 0 && hastaIdx >= ultimo) return fin(null, "recorrido completo");
+  if (hastaIdx - desdeIdx < 2) return fin(null, "tramo demasiado corto");
+  const res = { desdeIdx, hastaIdx, trenes: haciaMoreno.length + haciaOnce.length };
+  return fin(res, "tramo detectado");
 }
