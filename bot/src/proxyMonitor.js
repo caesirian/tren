@@ -20,7 +20,7 @@
 
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { detectarTramoProxy, barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora, recorridoVivo, textoRecorrido } from "./appTrenes.js";
+import { detectarTramoProxy, diagnosticoTramoProxy, barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora, recorridoVivo, textoRecorrido } from "./appTrenes.js";
 import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal } from "./locales.js";
 import { resumirDemoras } from "./resumenDemoras.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado } from "./servicioLimitado.js";
@@ -463,6 +463,9 @@ export async function contextoProxyParaBot() {
 // ni por la fuente de verdad. Solo avisa al admin por privado.
 // Interruptor: TRAMO_LIMITADO_AUTO=false.
 let deteccionesSeguidas = 0;
+let completosSeguidos = 0;
+let avisadoRestablecido = null;
+const CHEQUEOS_RESTABLECIDO = 3;
 export async function chequearTramoLimitadoProxy() {
   if (!monitorProxyActivo() || String(process.env.TRAMO_LIMITADO_AUTO ?? "true").trim().toLowerCase() === "false") return { texto: null, desactivado: true };
   let det;
@@ -476,6 +479,26 @@ export async function chequearTramoLimitadoProxy() {
 
   if (!det) {
     deteccionesSeguidas = 0;
+    // Tramo cargado a mano o por la fuente de verdad: el bot no lo da de baja solo (podría ser un
+    // dato suelto), pero si el proxy muestra el recorrido COMPLETO durante varios chequeos seguidos
+    // (con Once y Moreno con servicios), avisa UNA vez al admin por privado para que lo confirme.
+    if (actual && actual.origen !== "proxy") {
+      const dg = diagnosticoTramoProxy();
+      if (dg?.motivo === "recorrido completo" && !dg.onceVacio && !dg.morenoVacio) {
+        completosSeguidos += 1;
+        if (completosSeguidos >= CHEQUEOS_RESTABLECIDO && avisadoRestablecido !== actual.venceEn) {
+          avisadoRestablecido = actual.venceEn;
+          return {
+            texto:
+              `✅ El proxy muestra el recorrido completo Once–Moreno (${dg.haciaMoreno + dg.haciaOnce} trenes, Once y Moreno con servicios) ` +
+              `pero sigue vigente el servicio limitado ${actual.desde}–${actual.hasta} (cargado por ${actual.origen}). ` +
+              `Si ya se restableció: /limitado off. Si no, ignorá este aviso (no lo repito para este tramo).`,
+          };
+        }
+      } else {
+        completosSeguidos = 0;
+      }
+    }
     if (actual?.origen === "proxy") {
       await limpiarTramoLimitado();
       return { texto: "✅ El proxy volvió a mostrar el recorrido completo Once–Moreno: di de baja el servicio limitado que había detectado solo." };
@@ -483,6 +506,7 @@ export async function chequearTramoLimitadoProxy() {
     return { texto: null };
   }
 
+  completosSeguidos = 0;
   deteccionesSeguidas += 1;
   if (deteccionesSeguidas < 2) return { texto: null };
   if (actual && actual.origen !== "proxy") return { texto: null }; // manda el manual / la fuente de verdad
