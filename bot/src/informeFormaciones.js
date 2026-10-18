@@ -226,6 +226,11 @@ export async function textoSeguimientoTren(args = []) {
     const llegada = dest ? llegadas.find((l) => String(l.numero) === String(s.numero) && l.cabecera === dest) : null;
     const lineas = [`\n🚆 #${s.numero} · ${s.cabecera}${s.destino ? ` → ${s.destino}` : ""} · ${TIPOS[s.tipoServicio] || "Común"}`];
     lineas.push(`  Salida: prog ${horaBA(s.programada)} · salió ${tiempo(s.salioEn, s.fuente)} (${conSigno(difMin(s.salioEn, s.programada))})${s.anden ? ` · andén ${s.anden}` : ""}`);
+    // Destino que mostraba la app vs. el que le corresponde (un servicio común/diferencial va de cabecera a cabecera).
+    const norm = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+    if (dest && s.destino && s.tipoServicio !== "local" && norm(s.destino) !== norm(dest)) {
+      lineas.push(`  ⚠️ La app lo mostraba con destino ${s.destino}, pero le corresponde ${dest}: el servicio figuraba ACORTADO hasta ${s.destino}.`);
+    }
     if (!dest) {
       lineas.push("  Sale de una estación intermedia: no se registra su llegada a una cabecera.");
     } else if (llegada) {
@@ -234,10 +239,13 @@ export async function textoSeguimientoTren(args = []) {
       lineas.push(`  ✅ Hay llegada registrada a ${dest}: completó el recorrido.`);
     } else {
       const desdeSalida = Math.round((ahoraMs - ms(s.salioEn)) / 60000);
+      const llegadasDest = llegadas.filter((l) => l.cabecera === dest).length;
       if (desdeSalida < MARGEN_LLEGADA_MIN) {
         lineas.push(`  Llegada a ${dest}: todavía sin registro (salió hace ${desdeSalida} min; puede seguir en viaje).`);
+      } else if (!llegadasDest) {
+        lineas.push(`  ℹ️ Sin llegada registrada, pero hoy NO hay ninguna llegada guardada a ${dest}: la detección de llegadas no está funcionando, así que esta falta no indica nada sobre el tren.`);
       } else {
-        lineas.push(`  ⚠️ Salió hace ${desdeSalida} min y no figura llegada a ${dest}. Es una pista de que pudo cortarse en el camino, pero no una prueba: la llegada se registra por radio de la cabecera y puede no haberse detectado.`);
+        lineas.push(`  ⚠️ Salió hace ${desdeSalida} min y no figura llegada a ${dest} (hoy sí hay otras ${llegadasDest} llegadas guardadas ahí). Es una pista de que pudo cortarse en el camino, no una prueba.`);
       }
     }
     bloques.push(lineas.join("\n"));
