@@ -132,6 +132,22 @@ async function guardar(doc) {
 // estA/estB: índices de estación (0–15) o nombres. Devuelve el tramo guardado, o
 // null si los datos no sirven (misma estación, nombre desconocido), o el tramo
 // que ya estaba si un aviso del proxy intenta pisar uno manual / de la fuente.
+// Observadores del ciclo de vida del tramo (la push automática se engancha acá).
+// Eventos: { tipo: "activado", tramo } cuando aparece un tramo nuevo (o cambia de
+// extremos), y { tipo: "baja", tramo } cuando se cierra uno vigente. Las renovaciones
+// del mismo tramo (el proxy lo renueva en cada chequeo) NO notifican.
+const alCambiarTramoFns = [];
+export const alCambiarTramo = (fn) => alCambiarTramoFns.push(fn);
+function notificarTramo(evento) {
+  for (const fn of alCambiarTramoFns) {
+    try {
+      Promise.resolve(fn(evento)).catch((err) => console.error("Error en observador de servicio limitado:", err.message));
+    } catch (err) {
+      console.error("Error en observador de servicio limitado:", err.message);
+    }
+  }
+}
+
 export async function setTramoLimitado({ estA, estB, motivo = "", duracionMin = null, venceEn = null, origen = "manual", quien = null }) {
   const a = Number.isInteger(estA) ? estA : idxEstacion(estA);
   const b = Number.isInteger(estB) ? estB : idxEstacion(estB);
@@ -170,7 +186,9 @@ export async function setTramoLimitado({ estA, estB, motivo = "", duracionMin = 
     venceEn: vence.toISOString(),
     vigenciaEstimada: estimado,
   };
+  const previo = await getTramoLimitado();
   await guardar(doc);
+  if (!previo || previo.desdeIdx !== desdeIdx || previo.hastaIdx !== hastaIdx) notificarTramo({ tipo: "activado", tramo: doc });
   return doc;
 }
 
@@ -178,8 +196,10 @@ export async function setTramoLimitado({ estA, estB, motivo = "", duracionMin = 
 // admin) evita que la detección automática lo reactive durante una hora.
 export async function limpiarTramoLimitado({ suprimirProxy = false } = {}) {
   if (suprimirProxy) proxySuprimidoHasta = Date.now() + 60 * 60 * 1000;
+  const vigenteAntes = await getTramoLimitado();
   const actual = enMemoria || cache.valor;
   await guardar({ ...(actual || {}), activo: false, cerradoEn: new Date().toISOString() });
+  if (vigenteAntes) notificarTramo({ tipo: "baja", tramo: vigenteAntes });
 }
 
 export function tramoIncluye(tramo, idx) {

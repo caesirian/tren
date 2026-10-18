@@ -25,7 +25,7 @@ const MAX_MENSAJE = 178;
 
 let activo = String(process.env.PUSH_AUTO ?? "true").trim().toLowerCase() !== "false";
 let ultimoId = null;
-let memoria = { ultimoEnvioMs: 0, ultimaClave: null, ultimaClaveMs: 0, incidenteMs: 0 };
+let memoria = { ultimoEnvioMs: 0, ultimaClave: null, ultimaClaveMs: 0, incidenteMs: 0, tramoAvisadoMs: 0 };
 
 export const pushAutoActivo = () => activo;
 export const ultimaPushId = () => ultimoId;
@@ -151,6 +151,8 @@ async function despachar(dec, origen) {
     memoria.ultimaClaveMs = ahoraMs;
     if (dec.incidente) memoria.incidenteMs = ahoraMs;
     else if (dec.clave === "normal") memoria.incidenteMs = 0;
+    if (dec.tramo === "activado") memoria.tramoAvisadoMs = ahoraMs;
+    else if (dec.tramo === "baja") memoria.tramoAvisadoMs = 0;
     await persistir();
     await avisarAdmin(`📣 Push automática enviada (${origen})\n"${dec.titulo}"\n${dec.mensaje}\n\nID: ${data.id} · Ver entrega: /pushestado\nPara frenar las automáticas: /pushauto off`);
     return { enviado: true, id: data.id };
@@ -175,6 +177,53 @@ export async function pushPorAlerta({ titulo, mensaje, origen }) {
   const msg = recortar(mensaje);
   if (!msg) return { enviado: false, motivo: "alerta vacía" };
   return despachar({ titulo: titulo || "📢 Aviso de servicio", mensaje: msg, urgente: false, incidente: false, clave: `alerta|${msg.toLowerCase().slice(0, 60)}` }, origen || "alerta");
+}
+
+// Servicio limitado (tramo operativo). Es información de alto valor para el pasajero:
+// se avisa al activarse y al restablecerse. Son pushes "urgentes" (se saltan el intervalo
+// de 10 min entre pushes, pero no la regla de no repetir la misma en 2 h).
+// - La detección automática del proxy es una DEDUCCIÓN: por defecto no sale al público
+//   (el admin ya recibe su aviso privado). PUSH_TRAMO_PROXY=true lo habilita.
+// - "Restablecido" sale si el limitado se avisó por push o lo cargó una fuente confirmada (Vivi/admin).
+export async function pushPorTramo({ tipo, tramo }) {
+  if (!tramo) return { enviado: false, motivo: "sin tramo" };
+  if (tipo === "activado") {
+    if (tramo.origen === "proxy" && String(process.env.PUSH_TRAMO_PROXY || "").toLowerCase() !== "true") {
+      return { enviado: false, motivo: "detección automática: solo aviso privado al admin" };
+    }
+    return despachar(
+      {
+        titulo: "🚧 Servicio limitado",
+        mensaje: recortar(`Solo circulan trenes entre ${tramo.desde} y ${tramo.hasta}. Más info en el sitio.`),
+        urgente: true,
+        incidente: true,
+        tramo: "activado",
+        clave: `limitado|${tramo.desde}|${tramo.hasta}`.toLowerCase(),
+      },
+      `servicio limitado · ${tramo.origen || "s/d"}`
+    );
+  }
+  if (tipo === "baja") {
+    // Sale si el servicio limitado se avisó por push, o si lo había cargado una fuente confirmada
+    // (Vivi / admin: el público ya lo ve en el sitio y el bot). Un tramo deducido por el proxy que
+    // nunca se publicó no genera "restablecido".
+    const avisado = !!memoria.tramoAvisadoMs && Date.now() - memoria.tramoAvisadoMs <= INCIDENTE_VIGENTE_MS;
+    if (!avisado && tramo.origen === "proxy") {
+      return { enviado: false, motivo: "el servicio limitado deducido por el proxy nunca se avisó al público" };
+    }
+    return despachar(
+      {
+        titulo: "✅ Servicio restablecido",
+        mensaje: "Se restableció el recorrido completo Once–Moreno.",
+        urgente: true,
+        incidente: false,
+        tramo: "baja",
+        clave: `limitado-baja|${tramo.timestamp || memoria.tramoAvisadoMs}`,
+      },
+      "servicio limitado restablecido"
+    );
+  }
+  return { enviado: false, motivo: "evento desconocido" };
 }
 
 export function iniciarPushAuto({ notificarAdmin } = {}) {

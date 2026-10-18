@@ -25,7 +25,7 @@ import { TREN_SARMIENTO_INFO, RESPUESTA_SIN_DATO, RESPUESTA_ERROR_TECNICO } from
 import { esConsultaDeEstado } from "./intencionEstado.js";
 import { registrarUsuario, datosConocidos, buscarUsuario, parsearArgs, aplicarAccion, listarModerados, nombreDe, tecladoModeracion, tecladoRestaurar, textoDuracion } from "./moderacion.js";
 import { getEstadoServicio, actualizarEstadoServicio, agregarAlertaComplementaria, listarAlertasComplementarias, quitarAlertaComplementaria, editarAlertaComplementaria, limpiarAlertasComplementarias, alCambiarEstado, alAgregarAlerta } from "./firestoreStatus.js";
-import { enviarPush, ultimaPushId, pushAutoActivo, setPushAuto, cargarPushAuto, iniciarPushAuto, pushPorCambioEstado, pushPorAlerta } from "./pushAuto.js";
+import { enviarPush, ultimaPushId, pushAutoActivo, setPushAuto, cargarPushAuto, iniciarPushAuto, pushPorCambioEstado, pushPorAlerta, pushPorTramo } from "./pushAuto.js";
 import { crearPropuesta, revisarPropuesta } from "./propuestasEstado.js";
 import { getAlertasTrenes } from "./apiTransporte.js";
 import { responderPregunta, SIN_RESPUESTA_SENTINEL, esErrorTransitorio, generarMensajeRetomar, formatearTablaSalidas } from "./gemini.js";
@@ -48,7 +48,7 @@ import { registrarInstalacion, excedioLimiteInstalaciones, textoInstalaciones } 
 import { iniciarViaje, estadoViaje, ubicacionUsuario, iniciarViajes, hayViajeActivo } from "./viaje.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearServiciosAcortados, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
-import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
+import { alCambiarTramo, getTramoLimitado, setTramoLimitado, limpiarTramoLimitado, extraerEstaciones, idxEstacion, tramoIncluye, resumenTramo, textoTramoParaContexto } from "./servicioLimitado.js";
 import { reporteLocales, clasificarServicio } from "./locales.js";
 import { evaluarEstadoAutomatico, cargarEstadoAuto, setEstadoAuto, estadoAutoActivo } from "./estadoAuto.js";
 import { escaneoCompletoActivo, cargarEscaneoCompleto, setEscaneoCompleto } from "./appTrenesAuto.js";
@@ -3152,6 +3152,7 @@ app.listen(PORT, async () => {
   iniciarPushAuto({ notificarAdmin: (t) => (process.env.ADMIN_TELEGRAM_ID ? bot.telegram.sendMessage(process.env.ADMIN_TELEGRAM_ID, t).catch((e) => console.error("Error avisando push al admin:", e.message)) : null) });
   alCambiarEstado((e) => pushPorCambioEstado(e));
   alAgregarAlerta((a) => pushPorAlerta(a));
+  alCambiarTramo((e) => pushPorTramo(e)); // push al activarse / restablecerse el servicio limitado
 
   // Respaldo interno: mientras el servicio esté despierto (Render free se
   // duerme sin tráfico), chequea cancelaciones del proxy cada 5 min sin
