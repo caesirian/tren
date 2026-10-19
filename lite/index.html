@@ -628,13 +628,14 @@ nav button[aria-selected="true"] { color:var(--blue); }
   var ANUNCIOS = [
     { id: "hgsw", texto: "HG Soluciones Web", url: "https://HGSolucionesWeb.com.ar", imagen: "../banner.png" }
   ];
-  var PUB_PRIMERO_MS = 12000;   // primera aparición, después de abrir la app
-  var PUB_CADA_MS = 60000;      // cada cuánto vuelve a aparecer
-  var PUB_VISIBLE_MS = 8000;    // cuánto se queda en pantalla
+  var PUB_PRIMERO_MS = 10000;   // primera aparición, después de abrir la app
+  var PUB_CADA_MS = 45000;      // cada cuánto vuelve a aparecer
+  var PUB_VISIBLE_MS = 5000;    // cuánto se queda en pantalla
+  var PUB_MAX_APERTURA = 5;     // tope de anuncios por apertura de la app (si la dejan abierta mucho rato, no sigue)
   (function publicidad() {
     var el = $("pub"), i = parseInt(lsGet("pubIdx", "0"), 10) || 0;
     if (!el || !ANUNCIOS.length) return;
-    var actual = null;
+    var actual = null, mostrados = 0, timer = null;
     // Métricas (impresiones y clics por anuncio): las recibe el bot en /api/publicidad-lite y se leen con /publicidad en Telegram.
     function medir(evento) {
       if (!actual) return;
@@ -646,6 +647,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
     function mostrar() {
       if (document.hidden || $("hoja").classList.contains("abierta") || $("ios").style.display === "block") return; // no molestar si hay algo abierto o la app está en segundo plano
       var a = ANUNCIOS[i % ANUNCIOS.length]; i++; lsSet("pubIdx", String(i));
+      if (++mostrados >= PUB_MAX_APERTURA) clearInterval(timer);
       actual = String(a.id || a.texto || "anuncio").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "anuncio";
       el.href = a.url || "#";
       el.classList.toggle("pub-img", !!a.imagen);
@@ -656,7 +658,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
       medir("impresion");
       setTimeout(function () { el.classList.remove("visible"); }, PUB_VISIBLE_MS);
     }
-    setTimeout(function () { mostrar(); setInterval(mostrar, PUB_CADA_MS); }, PUB_PRIMERO_MS);
+    setTimeout(function () { mostrar(); if (mostrados < PUB_MAX_APERTURA) timer = setInterval(mostrar, PUB_CADA_MS); }, PUB_PRIMERO_MS);
   })();
 
   programar();
