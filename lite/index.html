@@ -135,6 +135,16 @@ nav { position:fixed; left:0; right:0; bottom:0; z-index:25; height:calc(var(--n
 nav button { flex:1; border:0; background:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; color:var(--muted); font-size:12px; font-weight:700; }
 nav svg { width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
 nav button[aria-selected="true"] { color:var(--blue); }
+/* ── Publicidad discreta: tira chica sobre la barra inferior, aparece unos segundos y se va sola ── */
+#pub { position:fixed; left:12px; right:12px; bottom:calc(var(--nav-h) + var(--safe-b) + 8px); z-index:24; max-width:420px; margin:0 auto;
+  display:flex; align-items:center; gap:8px; min-height:34px; padding:6px 12px; border-radius:10px; background:rgba(255,255,255,.97); border:1px solid var(--border);
+  box-shadow:0 4px 14px rgba(0,43,92,.18); color:var(--text); font-size:13px; font-weight:600; text-decoration:none;
+  opacity:0; transform:translateY(6px); pointer-events:none; transition:opacity .35s ease, transform .35s ease; }
+#pub.visible { opacity:1; transform:none; pointer-events:auto; }
+#pub .pub-et { flex:none; font-size:9px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); opacity:.75; }
+#pub .pub-tx { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#pub img { flex:none; height:22px; width:auto; border-radius:4px; }
+@media (prefers-reduced-motion:reduce) { #pub { transition:opacity .2s; transform:none; } }
 #ios { display:none; position:fixed; left:12px; right:12px; bottom:calc(var(--nav-h) + var(--safe-b) + 10px); z-index:40; background:var(--navy); color:#fff; border-radius:14px; padding:14px 16px; font-size:14px; line-height:1.4; box-shadow:0 8px 30px rgba(0,0,0,.35); }
 #ios button { float:right; background:none; border:0; color:#fff; font-size:18px; margin:-6px -6px 0 8px; }
 </style>
@@ -190,6 +200,8 @@ nav button[aria-selected="true"] { color:var(--blue); }
 
 <div id="hoja" role="dialog" aria-live="polite"><button type="button" id="hojaX" aria-label="Cerrar">✕</button><div id="hojaTxt"></div></div>
 <div id="ios"><button type="button" id="iosX" aria-label="Cerrar">✕</button><b>Instalá la app</b><br>Tocá <b>Compartir</b> (el cuadrado con la flecha) y elegí <b>“Agregar a pantalla de inicio”</b>.</div>
+
+<a id="pub" aria-hidden="true" tabindex="-1" target="_blank" rel="noopener sponsored"></a>
 
 <nav role="tablist">
   <button type="button" role="tab" data-v="cabeceras" aria-selected="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M7 9h10M7 13h6M8 21l1.5-4M16 21l-1.5-4"/></svg>Cabeceras</button>
@@ -607,6 +619,29 @@ nav button[aria-selected="true"] { color:var(--blue); }
     clearTimeout(timer);
     timer = setTimeout(function () { Promise.resolve(cargar()).then(programar, programar); }, estado.vista === "mapa" ? 10000 : 20000);
   }
+  /* ── Publicidad discreta ──
+     Para sumar un auspiciante agregá un objeto a ANUNCIOS: { texto, url, logo (opcional, URL de imagen chica) }.
+     Rotan en orden. Con la lista vacía no se muestra nada. */
+  var ANUNCIOS = [
+    { texto: "Publicite aquí", url: "https://trensarmientoenlinea.com.ar/#contacto-publicidad" }
+  ];
+  var PUB_PRIMERO_MS = 12000;   // primera aparición, después de abrir la app
+  var PUB_CADA_MS = 60000;      // cada cuánto vuelve a aparecer
+  var PUB_VISIBLE_MS = 2000;    // cuánto se queda en pantalla
+  (function publicidad() {
+    var el = $("pub"), i = parseInt(lsGet("pubIdx", "0"), 10) || 0;
+    if (!el || !ANUNCIOS.length) return;
+    function mostrar() {
+      if (document.hidden || $("hoja").classList.contains("abierta") || $("ios").style.display === "block") return; // no molestar si hay algo abierto o la app está en segundo plano
+      var a = ANUNCIOS[i % ANUNCIOS.length]; i++; lsSet("pubIdx", String(i));
+      el.href = a.url || "#";
+      el.innerHTML = '<span class="pub-et">Publicidad</span>' + (a.logo ? '<img alt="" src="' + esc(a.logo) + '">' : "") + '<span class="pub-tx">' + esc(a.texto) + "</span>";
+      el.classList.add("visible");
+      setTimeout(function () { el.classList.remove("visible"); }, PUB_VISIBLE_MS);
+    }
+    setTimeout(function () { mostrar(); setInterval(mostrar, PUB_CADA_MS); }, PUB_PRIMERO_MS);
+  })();
+
   programar();
   requestAnimationFrame(cuadroMapa);
   setInterval(repintarLocal, 1000 * 15);
