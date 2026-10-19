@@ -623,10 +623,10 @@ nav button[aria-selected="true"] { color:var(--blue); }
     timer = setTimeout(function () { Promise.resolve(cargar()).then(programar, programar); }, estado.vista === "mapa" ? 10000 : 20000);
   }
   /* ── Publicidad discreta ──
-     Para sumar un auspiciante agregá un objeto a ANUNCIOS: { texto, url, logo (opcional, ícono chico) o imagen (opcional, banner que reemplaza la tira de texto) }.
+     Para sumar un auspiciante agregá un objeto a ANUNCIOS: { id (corto, sin espacios: identifica al anuncio en las estadísticas), texto, url, logo (opcional, ícono chico) o imagen (opcional, banner que reemplaza la tira de texto) }.
      Rotan en orden. Con la lista vacía no se muestra nada. */
   var ANUNCIOS = [
-    { texto: "HG Soluciones Web", url: "https://HGSolucionesWeb.com.ar", imagen: "../banner.png" }
+    { id: "hgsw", texto: "HG Soluciones Web", url: "https://HGSolucionesWeb.com.ar", imagen: "../banner.png" }
   ];
   var PUB_PRIMERO_MS = 12000;   // primera aparición, después de abrir la app
   var PUB_CADA_MS = 60000;      // cada cuánto vuelve a aparecer
@@ -634,15 +634,26 @@ nav button[aria-selected="true"] { color:var(--blue); }
   (function publicidad() {
     var el = $("pub"), i = parseInt(lsGet("pubIdx", "0"), 10) || 0;
     if (!el || !ANUNCIOS.length) return;
+    var actual = null;
+    // Métricas (impresiones y clics por anuncio): las recibe el bot en /api/publicidad-lite y se leen con /publicidad en Telegram.
+    function medir(evento) {
+      if (!actual) return;
+      try {
+        fetch(API + "publicidad-lite", { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ evento: evento, anuncio: actual }), keepalive: true }).catch(function () {});
+      } catch (e) {}
+    }
+    el.addEventListener("click", function () { medir("clic"); });
     function mostrar() {
       if (document.hidden || $("hoja").classList.contains("abierta") || $("ios").style.display === "block") return; // no molestar si hay algo abierto o la app está en segundo plano
       var a = ANUNCIOS[i % ANUNCIOS.length]; i++; lsSet("pubIdx", String(i));
+      actual = String(a.id || a.texto || "anuncio").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "anuncio";
       el.href = a.url || "#";
       el.classList.toggle("pub-img", !!a.imagen);
       el.innerHTML = a.imagen
         ? '<span class="pub-et">Publicidad</span><img alt="' + esc(a.texto) + '" src="' + esc(a.imagen) + '">'
         : '<span class="pub-et">Publicidad</span>' + (a.logo ? '<img alt="" src="' + esc(a.logo) + '">' : "") + '<span class="pub-tx">' + esc(a.texto) + "</span>";
       el.classList.add("visible");
+      medir("impresion");
       setTimeout(function () { el.classList.remove("visible"); }, PUB_VISIBLE_MS);
     }
     setTimeout(function () { mostrar(); setInterval(mostrar, PUB_CADA_MS); }, PUB_PRIMERO_MS);

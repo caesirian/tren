@@ -45,6 +45,7 @@ import { iniciarVigiaSalidas, textoFormaciones, estadoLocalesParaBot } from "./v
 import { textoInformeFormaciones, textoSeguimientoTren } from "./informeFormaciones.js";
 import { registrarValidacion, excedioLimiteValidaciones, textoValidaciones } from "./validacionesGps.js";
 import { registrarInstalacion, excedioLimiteInstalaciones, textoInstalaciones } from "./instalacionesLite.js";
+import { registrarEventoPublicidad, excedioLimitePublicidad, textoPublicidad } from "./publicidadLite.js";
 import { iniciarViaje, estadoViaje, ubicacionUsuario, iniciarViajes, hayViajeActivo } from "./viaje.js";
 import { chequearCancelacionesProxy, chequearDemorasProxy, chequearOrigenesInusuales, chequearLocalesFueraCronograma, chequearServiciosAcortados, chequearTramoLimitadoProxy, contextoProxyParaBot } from "./proxyMonitor.js";
 import { esConsultaSalidasOnce, LINK_TABLERO } from "./tableroOnce.js";
@@ -1098,6 +1099,19 @@ bot.command("instalaciones", async (ctx) => {
   } catch (err) {
     console.error("Error en /instalaciones:", err.message);
     await ctx.reply("⚠️ No pude leer las instalaciones: " + err.message);
+  }
+});
+
+// Publicidad de la app Lite (publicidadLite.js). /publicidad [días] → clics, impresiones y CTR por anuncio y por día.
+bot.command("publicidad", async (ctx) => {
+  if (!esAdminEstado(ctx)) return;
+  try {
+    const dias = parseInt((ctx.message?.text || "").trim().split(/\s+/)[1], 10);
+    const texto = await textoPublicidad(Number.isFinite(dias) ? dias : 7);
+    for (let i = 0; i < texto.length; i += 3900) await ctx.reply(texto.slice(i, i + 3900));
+  } catch (err) {
+    console.error("Error en /publicidad:", err.message);
+    await ctx.reply("⚠️ No pude leer la publicidad: " + err.message);
   }
 });
 
@@ -2914,6 +2928,33 @@ app.post("/api/instalacion-lite", express.text({ type: "*/*", limit: "2kb" }), a
     res.status(r.ok ? 200 : 400).json(r);
   } catch (err) {
     console.error("Error en /api/instalacion-lite:", err.message);
+    res.status(400).json({ ok: false, error: "payload inválido" });
+  }
+});
+
+// Métricas de la publicidad de la app Lite (impresiones y clics). Mismo esquema que /api/instalacion-lite. Ver publicidadLite.js.
+app.options("/api/publicidad-lite", (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  }
+  res.sendStatus(204);
+});
+app.post("/api/publicidad-lite", express.text({ type: "*/*", limit: "1kb" }), async (req, res) => {
+  const origin = req.headers.origin;
+  if (!origin || !ORIGENES_TABLERO_PERMITIDOS.has(origin)) return res.status(403).json({ error: "forbidden" });
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  const ip = (req.headers["x-forwarded-for"] || req.ip || "").toString().split(",")[0].trim();
+  if (excedioLimitePublicidad(ip)) return res.status(429).json({ error: "demasiados envíos" });
+  try {
+    let body = req.body;
+    if (typeof body === "string") body = JSON.parse(body);
+    const r = await registrarEventoPublicidad(body);
+    res.status(r.ok ? 200 : 400).json(r);
+  } catch (err) {
+    console.error("Error en /api/publicidad-lite:", err.message);
     res.status(400).json({ ok: false, error: "payload inválido" });
   }
 });
