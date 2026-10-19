@@ -144,6 +144,9 @@ nav button[aria-selected="true"] { color:var(--blue); }
 #pub .pub-et { flex:none; font-size:9px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); opacity:.75; }
 #pub .pub-tx { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #pub img { flex:none; height:22px; width:auto; border-radius:4px; }
+#pub.pub-img { display:block; position:fixed; padding:0; max-width:300px; min-height:0; overflow:hidden; line-height:0; }
+#pub.pub-img img { display:block; width:100%; height:auto; border-radius:0; }
+#pub.pub-img .pub-et { position:absolute; top:3px; right:5px; padding:1px 5px; border-radius:4px; background:rgba(255,255,255,.85); line-height:1.3; }
 @media (prefers-reduced-motion:reduce) { #pub { transition:opacity .2s; transform:none; } }
 #ios { display:none; position:fixed; left:12px; right:12px; bottom:calc(var(--nav-h) + var(--safe-b) + 10px); z-index:40; background:var(--navy); color:#fff; border-radius:14px; padding:14px 16px; font-size:14px; line-height:1.4; box-shadow:0 8px 30px rgba(0,0,0,.35); }
 #ios button { float:right; background:none; border:0; color:#fff; font-size:18px; margin:-6px -6px 0 8px; }
@@ -620,14 +623,14 @@ nav button[aria-selected="true"] { color:var(--blue); }
     timer = setTimeout(function () { Promise.resolve(cargar()).then(programar, programar); }, estado.vista === "mapa" ? 10000 : 20000);
   }
   /* ── Publicidad discreta ──
-     Para sumar un auspiciante agregá un objeto a ANUNCIOS: { texto, url, logo (opcional, URL de imagen chica) }.
+     Para sumar un auspiciante agregá un objeto a ANUNCIOS: { texto, url, logo (opcional, ícono chico) o imagen (opcional, banner que reemplaza la tira de texto) }.
      Rotan en orden. Con la lista vacía no se muestra nada. */
   var ANUNCIOS = [
-    { texto: "Publicite aquí", url: "https://trensarmientoenlinea.com.ar/#contacto-publicidad" }
+    { texto: "HG Soluciones Web", url: "https://HGSolucionesWeb.com.ar", imagen: "../banner.png" }
   ];
   var PUB_PRIMERO_MS = 12000;   // primera aparición, después de abrir la app
   var PUB_CADA_MS = 60000;      // cada cuánto vuelve a aparecer
-  var PUB_VISIBLE_MS = 4000;    // cuánto se queda en pantalla
+  var PUB_VISIBLE_MS = 8000;    // cuánto se queda en pantalla
   (function publicidad() {
     var el = $("pub"), i = parseInt(lsGet("pubIdx", "0"), 10) || 0;
     if (!el || !ANUNCIOS.length) return;
@@ -635,7 +638,10 @@ nav button[aria-selected="true"] { color:var(--blue); }
       if (document.hidden || $("hoja").classList.contains("abierta") || $("ios").style.display === "block") return; // no molestar si hay algo abierto o la app está en segundo plano
       var a = ANUNCIOS[i % ANUNCIOS.length]; i++; lsSet("pubIdx", String(i));
       el.href = a.url || "#";
-      el.innerHTML = '<span class="pub-et">Publicidad</span>' + (a.logo ? '<img alt="" src="' + esc(a.logo) + '">' : "") + '<span class="pub-tx">' + esc(a.texto) + "</span>";
+      el.classList.toggle("pub-img", !!a.imagen);
+      el.innerHTML = a.imagen
+        ? '<span class="pub-et">Publicidad</span><img alt="' + esc(a.texto) + '" src="' + esc(a.imagen) + '">'
+        : '<span class="pub-et">Publicidad</span>' + (a.logo ? '<img alt="" src="' + esc(a.logo) + '">' : "") + '<span class="pub-tx">' + esc(a.texto) + "</span>";
       el.classList.add("visible");
       setTimeout(function () { el.classList.remove("visible"); }, PUB_VISIBLE_MS);
     }
