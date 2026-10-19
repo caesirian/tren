@@ -1,17 +1,21 @@
 // src/publicidadLite.js
-// Métricas de la publicidad de la app Lite (trensarmientoenlinea.com.ar/lite): impresiones (se mostró el banner)
-// y clics (lo tocaron), por anuncio y por día. Pedido de Coco (19/10): contabilizar los clics.
+// Métricas de la publicidad de la app Lite (trensarmientoenlinea.com.ar/lite) y del sitio: clics (lo tocaron) por
+// anuncio, por origen ("app" o "sitio") y por día; en la app además impresiones (se mostró el banner, porque ahí
+// aparece y desaparece). En el sitio los banners están siempre a la vista, así que ahí solo se cuentan clics.
+// Pedido de Coco (19/10): contabilizar los clics, discriminando sitio vs app.
 //
 // Privacidad: igual que instalacionesLite.js — no se guarda IP ni nada identificable; solo contadores diarios.
 //
 // Colección Firestore: publicidadLite. Un documento por anuncio y día, id = "<anuncio>_<AAAA-MM-DD>" (hora de Argentina),
-// con { anuncio, fecha, impresiones, clics, actualizadoEn }.
+// con { anuncio, origen, fecha, impresiones, clics, actualizadoEn }. Los del sitio llevan "_sitio_" en el id; los
+// documentos anteriores a esta distinción no tienen "origen" y son todos de la app.
 
 import { FieldValue } from "firebase-admin/firestore";
 import { firestoreDb } from "./firestoreStatus.js";
 
 const COLECCION = "publicidadLite";
 const EVENTOS = new Set(["impresion", "clic"]);
+const ORIGENES = new Set(["app", "sitio"]);
 
 const fechaAR = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" });
 const hoyAR = (d = new Date()) => fechaAR.format(d); // AAAA-MM-DD
@@ -33,7 +37,9 @@ export function normalizarEventoPublicidad(b) {
   const evento = EVENTOS.has(b.evento) ? b.evento : null;
   const anuncio = typeof b.anuncio === "string" && /^[a-z0-9-]{2,40}$/.test(b.anuncio) ? b.anuncio : null;
   if (!evento || !anuncio) return null;
-  return { evento, anuncio };
+  const origen = ORIGENES.has(b.origen) ? b.origen : "app"; // sin origen = app (versiones anteriores de Lite)
+  if (origen === "sitio" && evento === "impresion") return null; // en el sitio solo se cuentan clics
+  return { evento, anuncio, origen };
 }
 
 export async function registrarEventoPublicidad(body) {
@@ -45,8 +51,8 @@ export async function registrarEventoPublicidad(body) {
   const campo = d.evento === "clic" ? "clics" : "impresiones";
   await db
     .collection(COLECCION)
-    .doc(`${d.anuncio}_${fecha}`)
-    .set({ anuncio: d.anuncio, fecha, [campo]: FieldValue.increment(1), actualizadoEn: FieldValue.serverTimestamp() }, { merge: true });
+    .doc(d.origen === "sitio" ? `${d.anuncio}_sitio_${fecha}` : `${d.anuncio}_${fecha}`)
+    .set({ anuncio: d.anuncio, origen: d.origen, fecha, [campo]: FieldValue.increment(1), actualizadoEn: FieldValue.serverTimestamp() }, { merge: true });
   return { ok: true };
 }
 
@@ -60,27 +66,33 @@ export async function textoPublicidad(dias = 7) {
   const desde = hoyAR(new Date(Date.now() - (dias - 1) * 86400000));
   const snap = await db.collection(COLECCION).where("fecha", ">=", desde).get();
   const filas = snap.docs.map((d) => d.data());
-  if (!filas.length) return `📢 Publicidad Lite — últimos ${dias} día(s)\nTodavía no hay impresiones ni clics registrados.`;
+  if (!filas.length) return `📢 Publicidad — últimos ${dias} día(s)\nTodavía no hay clics ni impresiones registrados.`;
 
-  const porAnuncio = {};
-  const porDia = {};
+  const porAnuncio = {}; // anuncio -> { sitio: {clics}, app: {clics, impresiones} }
+  const porDia = {}; // fecha -> { sitio, app } (clics)
   for (const f of filas) {
-    const a = (porAnuncio[f.anuncio] ||= { impresiones: 0, clics: 0 });
-    a.impresiones += f.impresiones || 0;
-    a.clics += f.clics || 0;
-    const dd = (porDia[f.fecha] ||= { impresiones: 0, clics: 0 });
-    dd.impresiones += f.impresiones || 0;
-    dd.clics += f.clics || 0;
+    const origen = f.origen === "sitio" ? "sitio" : "app";
+    const a = (porAnuncio[f.anuncio] ||= { sitio: { clics: 0 }, app: { clics: 0, impresiones: 0 } });
+    a[origen].clics += f.clics || 0;
+    if (origen === "app") a.app.impresiones += f.impresiones || 0;
+    const dd = (porDia[f.fecha] ||= { sitio: 0, app: 0 });
+    dd[origen] += f.clics || 0;
   }
-  const out = [`📢 Publicidad Lite — últimos ${dias} día(s)`];
-  for (const [anuncio, v] of Object.entries(porAnuncio).sort((x, y) => y[1].clics - x[1].clics)) {
-    out.push(`• ${anuncio}: ${v.clics} clic(s) · ${v.impresiones} impresiones · CTR ${pct(v.clics, v.impresiones)}`);
+  const total = (a) => a.sitio.clics + a.app.clics;
+  const out = [`📢 Publicidad — últimos ${dias} día(s)`];
+  let tSitio = 0, tApp = 0;
+  for (const [anuncio, a] of Object.entries(porAnuncio).sort((x, y) => total(y[1]) - total(x[1]))) {
+    tSitio += a.sitio.clics;
+    tApp += a.app.clics;
+    out.push("", `• ${anuncio}: ${total(a)} clic(s)`);
+    out.push(`   🌐 Sitio: ${a.sitio.clics}`);
+    out.push(`   📱 App: ${a.app.clics}${a.app.impresiones ? ` (${a.app.impresiones} impresiones · CTR ${pct(a.app.clics, a.app.impresiones)})` : ""}`);
   }
-  const dias7 = Object.keys(porDia).sort().reverse().slice(0, 10);
-  out.push("", "Por día:");
-  for (const f of dias7) {
+  out.push("", `Total: ${tSitio + tApp} clic(s) — 🌐 sitio ${tSitio} · 📱 app ${tApp}`);
+  out.push("", "Por día (clics):");
+  for (const f of Object.keys(porDia).sort().reverse().slice(0, 10)) {
     const [y, m, d] = f.split("-");
-    out.push(`${d}/${m}: ${porDia[f].clics} clic(s) / ${porDia[f].impresiones} impresiones`);
+    out.push(`${d}/${m}: 🌐 ${porDia[f].sitio} · 📱 ${porDia[f].app}`);
   }
   return out.join("\n");
 }

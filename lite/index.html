@@ -639,7 +639,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
     function medir(evento) {
       if (!actual) return;
       try {
-        fetch(API + "publicidad-lite", { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ evento: evento, anuncio: actual }), keepalive: true }).catch(function () {});
+        fetch(API + "publicidad-lite", { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ evento: evento, anuncio: actual, origen: "app" }), keepalive: true }).catch(function () {});
       } catch (e) {}
     }
     el.addEventListener("click", function () { medir("clic"); });

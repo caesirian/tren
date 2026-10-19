@@ -1,6 +1,6 @@
 // Service worker de Tren Sarmiento Lite. Cachea solo la "cáscara" de la app para que abra al instante
 // y sin conexión; los datos en vivo (trenbot.onrender.com) NUNCA se cachean.
-const VERSION = "lite-v6";
+const VERSION = "lite-v7";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
