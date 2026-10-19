@@ -627,7 +627,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
   ];
   var PUB_PRIMERO_MS = 12000;   // primera aparición, después de abrir la app
   var PUB_CADA_MS = 60000;      // cada cuánto vuelve a aparecer
-  var PUB_VISIBLE_MS = 2000;    // cuánto se queda en pantalla
+  var PUB_VISIBLE_MS = 4000;    // cuánto se queda en pantalla
   (function publicidad() {
     var el = $("pub"), i = parseInt(lsGet("pubIdx", "0"), 10) || 0;
     if (!el || !ANUNCIOS.length) return;
