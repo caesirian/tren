@@ -3,6 +3,7 @@ Allow: /
 Disallow: /mod.html
 Disallow: /Admin/
 Disallow: /index_prueba.html
+Disallow: /index_prueba2.html
 Disallow: /testsub.html
 
 Sitemap: https://trensarmientoenlinea.com.ar/sitemap.xml
