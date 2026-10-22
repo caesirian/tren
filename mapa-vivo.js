@@ -24,7 +24,7 @@
 (function (global) {
   "use strict";
   if (global.MapaVivo) return;
-  var VERSION = 2, FILA = 48, CAB = 40, GAP = 28, MAX_V = 0.012, HORIZ_S = 45;
+  var VERSION = 3, FILA = 64, CAB = 54, GAP = 28, MAX_ESPERA = 1, MAX_V = 0.012, HORIZ_S = 45;
 
   var CSS = [
     ".mv{position:relative;background:var(--card,#fff);border:1px solid var(--border,#CDDAEA);border-radius:16px;padding:6px 0;box-shadow:0 2px 12px rgba(0,43,92,.07);--mv-local:var(--fucsia,#C026D3)}",
@@ -36,7 +36,7 @@
     ".mv-etiqueta.vuelta{left:4px}.mv-etiqueta.ida{left:52px}",
     ".mv-vacio{position:absolute;left:112px;right:6px;font-size:11px;font-weight:600;color:var(--muted,#5B6B82)}",
     ".mv-vacio.ida{top:4px}.mv-vacio.vuelta{top:20px}",
-    ".mv-via{position:absolute;top:40px;width:4px;margin-left:-2px;border-radius:2px;background:#E1EAF3}",
+    ".mv-via{position:absolute;top:54px;width:4px;margin-left:-2px;border-radius:2px;background:#E1EAF3}",
     ".mv-via.vuelta{left:28px}.mv-via.ida{left:76px}",
     ".mv-estacion{position:absolute;left:0;right:0;height:0}",
     ".mv-punto{position:absolute;top:-9px;width:18px;height:18px;box-sizing:border-box;border-radius:50%;background:#fff;border:3px solid var(--blue,#0055A4)}",
@@ -53,6 +53,9 @@
     ".mv-tip{position:absolute;top:50%;left:calc(100% + 6px);transform:translateY(-50%);background:var(--navy,#002B5C);color:#fff;padding:5px 9px;border-radius:8px;font:600 11px/1.2 system-ui,sans-serif;text-align:left;white-space:nowrap;display:none;pointer-events:none;z-index:6}",
     ".mv-tren:hover .mv-tip,.mv-tren:focus .mv-tip{display:block}",
     ".mv-stage.con-mio .mv-tren:not(.mio){opacity:.3}",
+    ".mv-oculto{display:none}",
+    ".mv-mas{position:absolute;width:46px;height:22px;margin:-11px 0 0 0;padding:0;border:2px dashed var(--muted,#5B6B82);border-radius:11px;box-sizing:border-box;background:#fff;color:var(--muted,#5B6B82);font:800 11px/18px ui-monospace,Menlo,Consolas,monospace;text-align:center;cursor:pointer;z-index:3}",
+    ".mv-mas.vuelta{left:5px}.mv-mas.ida{left:53px}",
     ".mv-tren.mio{z-index:5;opacity:1;box-shadow:0 0 0 3px #fff,0 0 0 6px var(--celeste,#0095D4),0 3px 10px rgba(0,43,92,.45)}",
     "@media (prefers-reduced-motion:no-preference){.mv-tren.mio{animation:mvPulso 1.8s ease-in-out infinite}}",
     "@keyframes mvPulso{0%,100%{box-shadow:0 0 0 3px #fff,0 0 0 6px var(--celeste,#0095D4),0 3px 10px rgba(0,43,92,.45)}50%{box-shadow:0 0 0 3px #fff,0 0 0 10px rgba(0,149,212,.35),0 3px 10px rgba(0,43,92,.45)}}",
@@ -84,6 +87,13 @@
     if (t.demoraMax >= 20) return "muy-demorado";
     if (t.demoraMax >= 10) return "demorado";
     return "ok";
+  }
+  function porSalir(t, via, n) {
+    return t.fuente === "estimada" && !t.cancelado && (via === "ida" ? t.posicion <= 0.001 : t.posicion >= n - 1.001);
+  }
+  function horaSalida(t) {
+    var p = t.paradas && t.paradas[0] && t.paradas[0].prog ? Date.parse(t.paradas[0].prog) : NaN;
+    return isNaN(p) ? Number(t.numero) || 0 : p;
   }
   function separar(L, min, max) {
     var n = L.length, i, it;
@@ -119,7 +129,15 @@
     var pill = document.createElement("button"); pill.type = "button"; pill.className = "mv-seguir"; pill.textContent = "📍 Seguir mi tren";
     if (o.barraAbajo) { barra.style.bottom = o.barraAbajo; pill.style.bottom = o.barraAbajo; }
     document.body.appendChild(barra); document.body.appendChild(pill);
+    var mas = { ida: crearMas("ida"), vuelta: crearMas("vuelta") };
+    function crearMas(v) { // contador "+N por salir" al final de las formaciones que esperan en la cabecera de origen
+      var b = document.createElement("button"); b.type = "button"; b.className = "mv-mas " + v; b.style.display = "none";
+      b.addEventListener("click", function (ev) { ev.stopPropagation(); expandida[v] = !expandida[v]; refrescar(); });
+      stage.appendChild(b);
+      return b;
+    }
 
+    var expandida = { ida: false, vuelta: false };
     var datos = null, T = new Map(), elegida = null, mioT = null, mioObj = null, sigue = true, nEst = 0;
     var dibujadas = false, sigBarra = "", sigMio = "", pillOn = false, ultimoFrame = performance.now();
     var base = "", ultimoOk = 0, fallas = 0, enCurso = false, timer = null, arrancado = false;
@@ -187,17 +205,21 @@
       if (datos && nEst > 1 && !document.hidden && (!o.activo || o.activo())) {
         var vias = { ida: [], vuelta: [] };
         T.forEach(function (e) {
+          if (e.oculto) return;
           var dir = e.via === "ida" ? 1 : -1, edad = Math.min((now - e.t0) / 1000, HORIZ_S);
           var pred = Math.min(Math.max(e.pos + dir * e.v * edad, 0), nEst - 1);
           var d = e.disp + (pred - e.disp) * (1 - Math.exp(-dt / 1.5));
           if ((d - e.disp) * dir < 0 && Math.abs(pred - e.disp) < 0.5) d = e.disp; // no retrocede por ruido
           e.disp = d;
-          vias[e.via].push({ e: e, y: CAB + d * FILA });
+          vias[e.via].push({ el: e.el, y: CAB + d * FILA + (e.espera ? dir * e.rank * 0.001 : 0) });
+        });
+        ["ida", "vuelta"].forEach(function (v) {
+          if (mas[v].style.display !== "none") vias[v].push({ el: mas[v], y: v === "ida" ? CAB + 0.5 : CAB + (nEst - 1) * FILA - 0.5 });
         });
         ["ida", "vuelta"].forEach(function (v) {
           var L = vias[v].sort(function (a, b) { return a.y - b.y; });
           separar(L, CAB, CAB + (nEst - 1) * FILA); // formaciones muy juntas en una misma vía no se pisan
-          L.forEach(function (x) { x.e.el.style.top = x.y + "px"; });
+          L.forEach(function (x) { x.el.style.top = x.y + "px"; });
         });
         var vis = enPantalla();
         var el = sigue && mioT && vis ? stage.querySelector(".mv-tren.mio") : null;
@@ -245,6 +267,7 @@
       if (esm || t.numero != null) barra.appendChild(b);
     }
 
+    function nombres0(fin) { return datos && datos.estaciones ? bonito(datos.estaciones[fin ? datos.estaciones.length - 1 : 0]) : ""; }
     function pintar(d) {
       datos = d;
       var est = d && d.estaciones && d.estaciones.length > 1 ? d.estaciones : null;
@@ -252,7 +275,7 @@
       if (!dibujadas || est.length !== nEst) dibujar(est);
       var tData = d.consultadoEn ? Date.parse(d.consultadoEn) : Date.now();
       mioObj = buscarMio(d); mioT = mioObj ? mioObj.tren : null;
-      var vistos = {}, cuenta = { ida: 0, vuelta: 0 };
+      var vistos = {}, cuenta = { ida: 0, vuelta: 0 }, espera = { ida: [], vuelta: [] };
       (d.trenes || []).forEach(function (t, i) {
         var via = viaDe(t); cuenta[via]++;
         var key = via + "|" + (t.numero != null ? t.numero : "i" + i);
@@ -265,6 +288,8 @@
         div.tabIndex = 0;
         div.setAttribute("data-k", key);
         fijarObjetivo(e, t, via, tData);
+        e.espera = porSalir(t, via, nEst); e.oculto = false; e.rank = 0;
+        if (e.espera) espera[via].push(e);
         div.appendChild(document.createTextNode(t.numero != null ? t.numero : "?"));
         div.setAttribute("role", "button");
         div.setAttribute("aria-label", "Formación " + (t.numero != null ? t.numero : "") + " hacia " + (t.destino || ""));
@@ -279,6 +304,23 @@
         if (!div.parentNode) stage.appendChild(div);
       });
       T.forEach(function (e, k) { if (!vistos[k] && ++e.faltas >= 2) { e.el.remove(); T.delete(k); } });
+      ["ida", "vuelta"].forEach(function (v) {
+        var L = espera[v].sort(function (a, b) { return horaSalida(a.t) - horaSalida(b.t); }), ocultas = 0;
+        L.forEach(function (e, i) {
+          e.rank = i;
+          e.oculto = i >= MAX_ESPERA && !expandida[v] && e.t !== mioT && e.key !== elegida; // la elegida y "mi tren" nunca se ocultan
+          if (e.oculto) ocultas++;
+        });
+        var b = mas[v];
+        if (L.length > MAX_ESPERA) {
+          b.style.display = "";
+          b.textContent = expandida[v] ? "−" : "+" + ocultas;
+          var donde = v === "ida" ? nombres0() : nombres0(true);
+          b.setAttribute("aria-label", expandida[v] ? "Ocultar las formaciones por salir de " + donde : (L.length - MAX_ESPERA) + " formaciones más por salir de " + donde);
+          b.title = b.getAttribute("aria-label");
+        } else b.style.display = "none";
+      });
+      T.forEach(function (e) { e.el.classList.toggle("mv-oculto", !!e.oculto); });
       stage.classList.toggle("con-mio", !!mioT);
       vacio.ida.style.display = cuenta.ida ? "none" : "block";
       vacio.vuelta.style.display = cuenta.vuelta ? "none" : "block";
