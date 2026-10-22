@@ -176,3 +176,21 @@ export function textoGrupoLocal(c) {
   }
   return null;
 }
+
+// Línea para el CONTEXTO DEL BOT (no para el grupo): cuando un local sale de una
+// estación distinta a la del cronograma, el bot tiene que poder responder
+// "este local ¿sale de Liniers?" con el origen REAL de hoy. Devuelve null si el
+// servicio no es un local cambiado.
+export function textoLocalCambiadoParaBot(c) {
+  if (!c?.esLocal || !(c.sinProgramar || c.reprogramado)) return null;
+  const hacia = c.destino && c.destino !== "?" ? ` hacia ${c.destino}` : "";
+  const cuando = c.horaSalida ? ` a las ${c.horaSalida}` : c.estacionVista?.hora ? ` (pasa por ${c.estacionVista.nombre} a las ${c.estacionVista.hora})` : "";
+  const cron = c.cronograma?.esLocal ? c.cronograma : null;
+  if (cron && norm(cron.origenNombre) !== norm(c.origen)) {
+    return `- El local de las ${cron.horaOrigen} de ${cron.origenNombre}${hacia} HOY NO sale de ${cron.origenNombre}: sale de ${c.origen}${cuando}.`;
+  }
+  if (cron && c.reprogramado) {
+    return `- El local de las ${c.horaOriginal} de ${c.origen}${hacia} se reprogramó: sale${cuando || " en otro horario"}.`;
+  }
+  return `- Hay una formación vacía que sale de ${c.origen}${hacia}${cuando}; no figura en el cronograma de locales.`;
+}

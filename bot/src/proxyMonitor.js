@@ -21,7 +21,7 @@
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { detectarTramoProxy, diagnosticoTramoProxy, barridoEstructurado, datosServicio, textoCancelacion, trenesConOrigenInusual, hora, recorridoVivo, textoRecorrido } from "./appTrenes.js";
-import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal } from "./locales.js";
+import { clasificarServicio, textoClasificacionPrivada, textoGrupoLocal, textoLocalCambiadoParaBot } from "./locales.js";
 import { resumirDemoras } from "./resumenDemoras.js";
 import { getTramoLimitado, setTramoLimitado, limpiarTramoLimitado } from "./servicioLimitado.js";
 import { contextoSalidasParaBot } from "./vigiaSalidas.js";
@@ -427,6 +427,22 @@ export async function contextoProxyParaBot() {
   // Formaciones en Once/Moreno: si ya salió, si está esperando en la estación (vigiaSalidas.js).
   const bloqueFormaciones = contextoSalidasParaBot();
 
+  // Locales que HOY salen de una estación distinta a la del cronograma (ej. el de
+  // Flores 16:57 sale de Liniers 17:09). Sin esto el bot solo conoce el cronograma
+  // fijo y confirma/niega el origen "de memoria" (oct 2026).
+  let bloqueLocalesCambiados = null;
+  try {
+    const lineasLoc = [...new Set(barrido.todos.map((item) => textoLocalCambiadoParaBot(clasificarServicio(item))).filter(Boolean))].slice(0, 6);
+    if (lineasLoc.length) {
+      bloqueLocalesCambiados =
+        `\n== LOCALES CON ORIGEN U HORARIO DISTINTO AL CRONOGRAMA — HOY (declarado fuente de verdad; en vivo) ==\n` +
+        lineasLoc.join("\n") +
+        `\nSi preguntan por un local puntual (por su horario o con "este local"/"ese"), y figura acá, contestá con esto: desde qué estación sale realmente y a qué hora; pisa al cronograma fijo. Nunca menciones cómo se obtuvo este dato.`;
+    }
+  } catch (err) {
+    console.error("Error armando locales cambiados para el contexto:", err.message);
+  }
+
   // Cancelaciones y leyendas primero; después los trenes con demora de 10+ min
   // (así, si preguntan por el servicio, el bot puede mencionar las demoras vigentes).
   const conAviso = barrido.todos.filter((item) => item.r?.servicio?.cancelacion || item.r?.servicio?.leyenda);
@@ -438,7 +454,7 @@ export async function contextoProxyParaBot() {
     })
     .sort((a, b) => (datosServicio(b).demora ?? 0) - (datosServicio(a).demora ?? 0));
   const relevantes = [...conAviso, ...demoradosAhora];
-  if (!relevantes.length) return [bloqueRecorrido, bloqueFormaciones].filter(Boolean).join("\n") || null;
+  if (!relevantes.length) return [bloqueRecorrido, bloqueFormaciones, bloqueLocalesCambiados].filter(Boolean).join("\n") || null;
 
   const lineas = relevantes.slice(0, 12).map((item) => {
     const { est, s, prog, estim, demora, destino, estado } = datosServicio(item);
@@ -453,7 +469,7 @@ export async function contextoProxyParaBot() {
     lineas.join("\n") +
     `\nEsto es lo que se detecta EN ESTE MOMENTO (no vencido, no hay que calcular vigencia): tiene la misma prioridad que los avisos de la fuente de verdad por texto. Nunca menciones cómo se obtuvo este dato ni nombres de sistemas o mecanismos internos. Si preguntan por el estado del servicio, mencioná también los trenes con demora de 10+ min que aparezcan acá (con su estación y los minutos). Un tren específico cancelado no implica que todo el ramal esté cortado; hablá solo del/de los tren(es) que aparecen acá salvo que haya varios en el mismo tramo y horario.`;
 
-  return [bloqueRecorrido, bloqueFormaciones, bloqueCancelaciones].filter(Boolean).join("\n");
+  return [bloqueRecorrido, bloqueFormaciones, bloqueLocalesCambiados, bloqueCancelaciones].filter(Boolean).join("\n");
 }
 
 // Servicio limitado detectado por el proxy (recorte en Once o en Moreno).

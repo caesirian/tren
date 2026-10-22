@@ -140,6 +140,19 @@ function replyReal(ctx) {
   return r;
 }
 
+// Si el mensaje es un reply y habla "en deíctico" ("este local", "ese", "y el de las 17?"),
+// el sentido está en el mensaje citado: se lo anexamos a la pregunta (así también cambia la
+// clave del caché, que antes devolvía la misma respuesta a "este local..." de otro reply).
+// Solo se anexa si el reply es al bot o si lo etiquetaron, y con tope de largo.
+const REGEX_DEICTICO = /\b(este|esta|ese|esa|esos|esas|aquel|el mismo|el de|la de|los de|las de|y el|y ese|y esa)\b/i;
+export function anexarMensajeCitado(citado, pregunta, { respondeAlBot = false, etiquetado = false } = {}) {
+  const texto = String(citado?.text || citado?.caption || "").replace(/\s+/g, " ").trim();
+  if (!texto || !(respondeAlBot || etiquetado)) return pregunta;
+  const corta = pregunta.split(/\s+/).length <= 8;
+  if (!REGEX_DEICTICO.test(pregunta) && !corta) return pregunta;
+  return `${pregunta}\n(El usuario responde a este mensaje: "${texto.slice(0, 400)}")`;
+}
+
 function mencionaAlBot(ctx) {
   const text = ctx.message?.text ?? "";
   const esRespuestaAlBot =
@@ -452,7 +465,7 @@ ${tramoLimitado ? `ATENCIÓN: HAY SERVICIO LIMITADO VIGENTE (solo circulan trene
           `CRONOGRAMA COMPLETO de locales de ${estacion.name} para HOY (${nombreDia[diaHoy]}): ${todosLosHorarios.length ? fmt(todosLosHorarios) : "hoy no tiene locales en esta estación"}.\n` +
           `${proxTxt}\n` +
           (otros.length ? `Otros días — ${otros.join(" | ")}.\n` : "") +
-          `Al responder, dá SIEMPRE el cronograma completo de hoy (todos los horarios, aunque ya hayan pasado); no lo recortes a los próximos.`;
+          `Si preguntan por los locales de la estación en general, dá el cronograma completo de hoy (todos los horarios, aunque ya hayan pasado). Si preguntan por UN local puntual (por su horario, o "este/ese local"), contestá SOLO por ese, sin listar el resto, y confirmá su estación de origen con el dato en vivo si lo hay.`;
       }
       partes.push(`
 == "LOCALES" (formaciones que arrancan VACÍAS) EN "${estacion.name}" ==
@@ -2501,8 +2514,12 @@ async function manejarTexto(ctx, { diferida = false } = {}) {
     }
     if (!fueEtiquetado) liberarAlAire = reservarAlAire();
 
-    const pregunta = limpiarMencion(textoOriginal);
-    if (!pregunta) return;
+    const preguntaBase = limpiarMencion(textoOriginal);
+    if (!preguntaBase) return;
+    const citado = replyReal(ctx);
+    const pregunta = citado
+      ? anexarMensajeCitado(citado, preguntaBase, { respondeAlBot: citado.from?.username === botUsername, etiquetado: fueEtiquetado })
+      : preguntaBase;
     preguntaParaReintento = pregunta;
 
     // Límite de uso por persona: protege la cuota gratuita de Gemini.
