@@ -2728,55 +2728,8 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-leyenda { display: flex; gap: 16px; flex-wrap: wrap; font-size: .78rem; color: var(--muted); margin-bottom: 10px; }
     #mapa-vivo .mv-leyenda span { display: inline-flex; align-items: center; gap: 5px; }
     #mapa-vivo .mv-leyenda i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-    #mapa-vivo .mv-wrap { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 14px 20px; }
-    #mapa-vivo .mv-stage { position: relative; max-width: 440px; height: 760px; margin: 0 auto; }
-    #mapa-vivo .mv-via { position: absolute; top: 56px; bottom: 24px; width: 10px; margin-left: -5px; border-radius: 5px; }
-    #mapa-vivo .mv-via.ida { left: 112px; background: var(--celeste); }
-    #mapa-vivo .mv-via.vuelta { left: 44px; background: var(--navy); }
-    #mapa-vivo .mv-etiqueta { position: absolute; top: 0; width: 70px; margin-left: -35px; padding: 3px 4px; border-radius: 10px; font-size: .62rem; font-weight: 800; color: #fff; line-height: 1.15; text-align: center; }
-    #mapa-vivo .mv-etiqueta.ida { left: 112px; background: var(--celeste); }
-    #mapa-vivo .mv-etiqueta.vuelta { left: 44px; background: var(--navy); }
-    #mapa-vivo .mv-estacion { position: absolute; left: 0; right: 0; height: 0; }
-    #mapa-vivo .mv-estacion .mv-linea { position: absolute; left: 44px; width: 68px; top: -1px; height: 2px; background: var(--border); }
-    #mapa-vivo .mv-estacion .mv-punto { position: absolute; top: -8px; width: 16px; height: 16px; border-radius: 50%; background: var(--card); border: 3px solid var(--blue); box-sizing: border-box; }
-    #mapa-vivo .mv-estacion .mv-punto.ida { left: 104px; }
-    #mapa-vivo .mv-estacion .mv-punto.vuelta { left: 36px; }
-    #mapa-vivo .mv-estacion .mv-nombre { position: absolute; left: 146px; top: -9px; font-size: .78rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
-    #mapa-vivo .mv-estacion.cabecera .mv-nombre { color: var(--navy); font-weight: 800; font-size: .84rem; }
     #mapa-vivo { --local: #C026D3; }
-    #mapa-vivo .mv-tren { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; color: var(--navy); border: 2px solid #fff; box-sizing: border-box; box-shadow: 0 1px 4px rgba(0,43,92,.35); will-change: top; z-index: 2; cursor: pointer; }
-    #mapa-vivo .mv-tren::before { content: ""; position: absolute; inset: -12px; border-radius: 50%; }
-    #mapa-vivo .mv-tren.sel { outline: 3px solid var(--navy); outline-offset: 3px; }
-    #mapa-vivo .mv-tren.ida { left: 112px; }
-    #mapa-vivo .mv-tren.vuelta { left: 44px; }
-    #mapa-vivo .mv-tren::after { content: ""; position: absolute; left: 50%; margin-left: -4px; border: 4px solid transparent; }
-    #mapa-vivo .mv-tren.ida::after { bottom: -9px; border-top: 6px solid var(--navy); border-bottom: 0; }
-    #mapa-vivo .mv-tren.vuelta::after { top: -9px; border-bottom: 6px solid #fff; border-top: 0; }
-    #mapa-vivo .mv-lbl { position: absolute; top: 50%; transform: translateY(-50%); line-height: 1.15; white-space: nowrap; pointer-events: none; }
-    #mapa-vivo .mv-tren.ida .mv-lbl { left: 100%; margin-left: 7px; text-align: left; }
-    #mapa-vivo .mv-tren.vuelta .mv-lbl { right: 100%; margin-right: 7px; text-align: right; }
-    #mapa-vivo .mv-lbl b { display: block; font-size: .66rem; font-weight: 800; color: var(--navy); }
-    #mapa-vivo .mv-lbl em { display: block; font-style: normal; font-size: .58rem; font-weight: 800; color: var(--local); text-transform: uppercase; letter-spacing: .3px; }
-    #mapa-vivo .mv-tren.ok { background: var(--green); }
-    #mapa-vivo .mv-tren.demorado { background: var(--yellow); }
-    #mapa-vivo .mv-tren.muy-demorado { background: var(--red); }
-    #mapa-vivo .mv-tren.cancelado { background: #9CA3AF; }
-    #mapa-vivo .mv-tren.local { background: var(--local); }
-    #mapa-vivo .mv-tren.local.demorado { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--yellow); }
-    #mapa-vivo .mv-tren.local.muy-demorado { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--red); }
-    #mapa-vivo .mv-tren.local.cancelado { background: #9CA3AF; }
-    #mapa-vivo .mv-tren.est { border-style: dashed; }
     #mapa-vivo .mv-mio-debug { display: block; white-space: pre-line; margin-top: 6px; font-weight: 500; font-size: .74rem; font-family: ui-monospace, Menlo, Consolas, monospace; opacity: .9; word-break: break-word; }
-    #mapa-vivo .mv-tren.origen-inusual { outline: 3px solid #4338CA; outline-offset: 1px; }
-    #mapa-vivo .mv-tren .mv-tip { position: absolute; top: 50%; left: 26px; transform: translateY(-50%); background: var(--navy); color: #fff; padding: 5px 9px; border-radius: 8px; font-size: .68rem; white-space: nowrap; display: none; font-weight: 600; pointer-events: none; z-index: 5; }
-    #mapa-vivo .mv-tren:hover .mv-tip, #mapa-vivo .mv-tren:focus .mv-tip { display: block; }
-    #mapa-vivo .mv-vacio { position: absolute; left: 146px; right: 0; text-align: left; font-size: .7rem; color: var(--muted); font-weight: 600; }
-    #mapa-vivo .mv-vacio.ida { top: 4px; }
-    #mapa-vivo .mv-vacio.vuelta { top: 30px; }
-    .mv-accion { display: none; position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(92vw, 520px); z-index: 1200; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; padding: 12px 14px; background: #fff; border-radius: 14px; box-shadow: 0 8px 30px rgba(0,43,92,.3); font-size: .82rem; font-weight: 600; color: #002B5C; }
-    .mv-accion.on { display: flex; }
-    .mv-accion button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: #0095D4; color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
-    .mv-accion button.sec { background: transparent; color: #0055A4; text-decoration: underline; padding: 0 4px; }
 
     /* ¿Dónde está mi tren? */
     #mapa-vivo .mv-mio-panel { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; margin: 0 0 14px; }
@@ -2804,20 +2757,14 @@ console.log('[Firebase] Listener de estado inicializado');
     #mapa-vivo .mv-val.ok .mv-val-ico { background: var(--green); color: #fff; font-size: .95rem; }
     #mapa-vivo .mv-val.fail { border-color: var(--yellow); color: var(--yellow); background: var(--yellow-bg); }
     #mapa-vivo .mv-val.fail .mv-val-ico { background: var(--yellow); color: #fff; font-size: .95rem; }
-    #mapa-vivo .mv-stage.con-mio .mv-tren:not(.mio) { opacity: .3; }
-    #mapa-vivo .mv-tren.mio { width: 20px; height: 20px; margin: -10px 0 0 -10px; z-index: 4; box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); }
 
 
-    #mapa-vivo .mv-mio-tag { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; background: var(--celeste); color: #fff; font-size: .62rem; font-weight: 800; white-space: nowrap; pointer-events: none; }
-    #mapa-vivo .mv-tren.mio .mv-mio-tag { bottom: 30px; }
-    @media (prefers-reduced-motion: no-preference) { #mapa-vivo .mv-tren.mio { animation: mvMioPulso 1.8s ease-in-out infinite; } }
-    @keyframes mvMioPulso { 0%, 100% { box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--celeste), 0 4px 14px rgba(0,43,92,.45); } 50% { box-shadow: 0 0 0 4px #fff, 0 0 0 11px rgba(0,149,212,.35), 0 4px 14px rgba(0,43,92,.45); } }
   </style>
   <section class="section section-cel" id="mapa-vivo" aria-labelledby="mapa-vivo-title">
     <div class="container">
       <span class="section-label">🗺️ En vivo</span>
       <h2 class="section-title" id="mapa-vivo-title">Mapa esquemático del ramal</h2>
-      <p class="section-sub">Dos vías: la de la derecha va <strong>hacia Moreno ▼</strong> y la de la izquierda <strong>hacia Once ▲</strong>. Cada formación es un punto sobre la vía (la flecha indica para dónde va) y al costado tiene su número; si es un <strong>local</strong>, se pinta de fucsia y lo aclara. Tocá una formación para marcarla como <strong>tu tren</strong>. <span class="last-update-badge" id="mapaVivoEstado">🕐 conectando…</span></p>
+      <p class="section-sub">Dos vías: la de la derecha va <strong>hacia Moreno ▼</strong> y la de la izquierda <strong>hacia Once ▲</strong>. Cada formación es una pastilla sobre la vía con su número adentro; si es un <strong>local</strong>, se pinta de fucsia. Tocá una formación para marcarla como <strong>tu tren</strong>. <span class="last-update-badge" id="mapaVivoEstado">🕐 conectando…</span></p>
       <p class="mv-aviso">📡 La posición sale del GPS de la formación cuando está disponible. Si no, se ESTIMA por horarios entre la última estación confirmada y la siguiente (círculo con borde punteado) y puede estar corrida, sobre todo con demoras grandes.</p>
       <div class="mv-leyenda">
         <span><i style="background:var(--green)"></i> en horario</span>
@@ -2855,16 +2802,7 @@ console.log('[Firebase] Listener de estado inicializado');
         </div>
         <div class="mv-mio-res" id="mvMioRes" role="status" aria-live="polite" style="display:none;"></div>
       </div>
-      <div class="mv-wrap" id="mapaVivoWrap">
-        <div class="mv-stage" id="mapaVivoTrack">
-          <div class="mv-via ida"></div>
-          <div class="mv-via vuelta"></div>
-          <span class="mv-etiqueta ida">▼ Hacia Moreno</span>
-          <span class="mv-etiqueta vuelta">▲ Hacia Once</span>
-          <div class="mv-vacio ida" id="mapaVivoVacioIda" style="display:none;">Sin formaciones hacia Moreno en este momento</div>
-          <div class="mv-vacio vuelta" id="mapaVivoVacioVuelta" style="display:none;">Sin formaciones hacia Once en este momento</div>
-        </div>
-      </div>
+      <div id="mapaVivoMapa"></div>
     </div>
   </section>
 
@@ -4828,203 +4766,29 @@ renderStations();
   setInterval(actualizar, 20000);
 })();
 </script>
+<script src="mapa-vivo.js?v=2"></script>
 <script>
 // Mapa esquemático en vivo (dos vías) — pide los datos al bot (trenbot.onrender.com).
 // Posición interpolada por horario, no GPS real (ver aviso en la sección).
 (function () {
   const API = "https://trenbot.onrender.com/api/tablero-mapa";
-  const stage = document.getElementById("mapaVivoTrack");
+  const cont = document.getElementById("mapaVivoMapa");
   const estadoEl = document.getElementById("mapaVivoEstado");
-  const vacioIda = document.getElementById("mapaVivoVacioIda");
-  const vacioVuelta = document.getElementById("mapaVivoVacioVuelta");
-  if (!stage) return;
-
-  function claseDemora(t) {
-    if (t.cancelado) return "cancelado";
-    if (t.demoraMax >= 20) return "muy-demorado";
-    if (t.demoraMax >= 10) return "demorado";
-    return "ok";
-  }
-
-  // "ida" = hacia Moreno (vía de arriba, de izquierda a derecha); "vuelta" = hacia Once (vía de abajo).
-  function viaDe(t) {
-    const d = (t.destino || "").toLowerCase();
-    if (d.indexOf("once") !== -1) return "vuelta";
-    if (d.indexOf("moreno") !== -1) return "ida";
-    return t.sentido === "Moreno-Once" ? "vuelta" : "ida";
-  }
-
-  const FILA = 44, CAB = 56; // alto de cada estación y de la cabecera del mapa vertical (px)
-  let dibujadas = false;
-  function dibujarEstaciones(nombres) {
-    stage.querySelectorAll(".mv-estacion").forEach((n) => n.remove());
-    const n = nombres.length;
-    nombres.forEach((nombre, i) => {
-      const div = document.createElement("div");
-      div.className = "mv-estacion" + (i === 0 || i === n - 1 ? " cabecera" : "");
-      div.style.top = (CAB + i * FILA) + "px";
-      div.innerHTML = '<span class="mv-linea"></span><span class="mv-punto ida"></span><span class="mv-punto vuelta"></span><span class="mv-nombre"></span>';
-      div.querySelector(".mv-nombre").textContent = nombre;
-      stage.appendChild(div);
-    });
-    stage.style.height = (CAB + (n - 1) * FILA + 24) + "px";
-    dibujadas = true;
-  }
-
-  // ── Movimiento en tiempo real ───────────────────────────────────────────
-  // Cada formación conserva su elemento. Entre consulta y consulta se extrapola con la velocidad observada
-  // (tope HORIZ_S) y la posición mostrada se acerca suave a la prevista: sin saltos.
-  const MAX_V = 0.012;  // estaciones/seg, tope de sanidad
-  const HORIZ_S = 45;   // seg máx. de extrapolación sin datos nuevos
-  const trenes = new Map();
-  let baseEstado = "";
-  let elegidaKey = null; // formación tocada en el mapa (aún no necesariamente "mi tren")
-  let seguirMio = true;
-  function obtener(t, via) {
-    const key = via + "|" + (t.numero ?? "?");
-    let e = trenes.get(key);
-    if (!e) { e = { key: key, via: via, el: document.createElement("div"), disp: null, pos: null, v: 0, t0: 0, tData: 0, faltas: 0, t: null }; trenes.set(key, e); }
-    return e;
-  }
-  function fijarObjetivo(e, t, via, n, tData) {
-    const p = Math.min(Math.max(Number(t.posicion) || 0, 0), n - 1);
-    const dir = via === "ida" ? 1 : -1;
-    const dt = (tData - e.tData) / 1000;
-    if (e.pos !== null && dt > 0.5) { // solo si es una muestra nueva (no el mismo dato en caché)
-      const v = t.cancelado ? 0 : Math.min(Math.max(((p - e.pos) / dt) * dir, 0), MAX_V);
-      e.v = e.v * 0.5 + v * 0.5;
+  if (!cont || !window.MapaVivo) return;
+  const viaDe = MapaVivo.viaDe;
+  // El mapa es un módulo único (mapa-vivo.js), el mismo de la app lite y de la página de Render.
+  // Acá solo se conecta lo propio de la web: el panel "¿Dónde está mi tren?".
+  const mapa = MapaVivo.crear({
+    contenedor: cont, api: API, estadoEl: estadoEl,
+    hooks: {
+      mio: (d) => buscarMiTren(d.trenes || []),
+      despues: (d, mio) => actualizarMio(d ? mio : null, d),
+      esMio: (t) => mapa.mio() === t,
+      marcar: (t, via) => marcarMiTren({ t: t, via: via }),
+      quitar: () => { cambiarSeleccion(null); poblarHoras(); },
+      etiqueta: (t) => (validacionOk(t) ? " ✔" : "")
     }
-    if (e.pos === null || dt > 0.5) { e.pos = p; e.t0 = performance.now(); e.tData = tData; }
-    if (e.disp === null) { e.disp = p; e.el.style.top = (CAB + p * FILA) + "px"; }
-    else if (Math.abs(e.disp - p) > 1.5) e.disp = p; // salto grande: ubicar directo
-    e.faltas = 0;
-  }
-  function purgar(vistos) {
-    trenes.forEach((e, k) => {
-      if (vistos.has(k)) return;
-      if (++e.faltas >= 2) { e.el.remove(); trenes.delete(k); }
-    });
-  }
-  function mapaEnPantalla() { const r = stage.getBoundingClientRect(); return r.bottom > 0 && r.top < window.innerHeight; }
-  let ultimoFrame = performance.now();
-  function cuadro(now) {
-    const dt = Math.min((now - ultimoFrame) / 1000, 0.25);
-    ultimoFrame = now;
-    const n = ultimaData && ultimaData.estaciones ? ultimaData.estaciones.length : 0;
-    if (n > 1 && !document.hidden) {
-      trenes.forEach((e) => {
-        const dir = e.via === "ida" ? 1 : -1;
-        const edad = Math.min((now - e.t0) / 1000, HORIZ_S);
-        const pred = Math.min(Math.max(e.pos + dir * e.v * edad, 0), n - 1);
-        let d = e.disp + (pred - e.disp) * (1 - Math.exp(-dt / 1.5));
-        if ((d - e.disp) * dir < 0 && Math.abs(pred - e.disp) < 0.5) d = e.disp; // no retrocede por ruido
-        e.disp = d;
-        e.el.style.top = (CAB + d * FILA) + "px";
-      });
-      const el = seguirMio && mapaEnPantalla() ? stage.querySelector(".mv-tren.mio") : null;
-      if (el) { // modo seguimiento: la pantalla acompaña a tu formación (solo mientras el mapa está a la vista)
-        const r = el.getBoundingClientRect();
-        const dy = r.top + r.height / 2 - window.innerHeight / 2;
-        if (Math.abs(dy) > 3) window.scrollBy({ top: dy * (1 - Math.exp(-dt / 0.4)), behavior: "instant" });
-      }
-    }
-    requestAnimationFrame(cuadro);
-  }
-
-  let ultimaData = null;
-  function render(data) {
-    ultimaData = data;
-    const estaciones = data.estaciones || [];
-    if (!dibujadas && estaciones.length > 1) dibujarEstaciones(estaciones);
-    const n = estaciones.length;
-    const vistos = new Set();
-    const tData = data.consultadoEn ? Date.parse(data.consultadoEn) : Date.now();
-    let hacia = { ida: 0, vuelta: 0 };
-    const mio = buscarMiTren(data.trenes || []);
-    (data.trenes || []).forEach((t) => {
-      if (n < 2) return;
-      const via = viaDe(t);
-      hacia[via]++;
-      const ent = obtener(t, via);
-      const div = ent.el;
-      div.textContent = "";
-      div.className = "mv-tren " + via + " " + claseDemora(t) + (t.local ? " local" : "") + (t.origenInusual ? " origen-inusual" : "") + (t.fuente === "estimada" ? " est" : "") + (ent.key === elegidaKey ? " sel" : "");
-      div.tabIndex = 0;
-      ent.t = t;
-      fijarObjetivo(ent, t, via, n, tData);
-      // Rótulo debajo de la vía: número de formación y, si es local, la mención.
-      const lbl = document.createElement("span");
-      lbl.className = "mv-lbl";
-      const num = document.createElement("b");
-      num.textContent = t.numero ?? "";
-      lbl.appendChild(num);
-      if (t.local) {
-        const loc = document.createElement("em");
-        loc.textContent = "Local";
-        lbl.appendChild(loc);
-      }
-      div.appendChild(lbl);
-      const dem = t.cancelado ? "Cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
-      const inusual = t.origenInusual ? " · ⚠ origen inusual" : "";
-      const tip = document.createElement("span");
-      tip.className = "mv-tip";
-      tip.textContent = "#" + (t.numero ?? "?") + (t.local ? " · LOCAL" + (t.origenLocal ? " " + t.origenLocal : "") : "") + " → " + t.destino + " · " + dem + inusual + (t.fuente === "gps" ? " · 📡 GPS" : t.fuente === "estimada" ? " · ≈ estimada" : "");
-      div.appendChild(tip);
-      if (mio && mio.tren === t) {
-        div.classList.add("mio");
-        const tag = document.createElement("span");
-        tag.className = "mv-mio-tag";
-        tag.textContent = "📍 Tu tren" + (validacionOk(mio.tren) ? " ✔" : "");
-        div.appendChild(tag);
-      }
-      if (!div.parentNode) stage.appendChild(div);
-      vistos.add(ent.key);
-    });
-    purgar(vistos);
-    stage.classList.toggle("con-mio", !!mio);
-    actualizarMio(mio, data);
-    pintarAccion();
-    vacioIda.style.display = hacia.ida ? "none" : "block";
-    vacioVuelta.style.display = hacia.vuelta ? "none" : "block";
-    const hora = data.consultadoEn ? new Date(data.consultadoEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "";
-    baseEstado = "🕐 " + hora + " · " + hacia.ida + " hacia Moreno · " + hacia.vuelta + " hacia Once";
-    estadoEl.textContent = baseEstado;
-  }
-
-  let ultimoOk = 0, enCurso = false, fallas = 0, timer = null;
-  function programar() { // 10 s si el usuario sigue su tren, 15 s si no; con backoff ante fallas
-    clearTimeout(timer);
-    timer = setTimeout(actualizar, Math.min((sel ? 10000 : 15000) * Math.pow(2, Math.min(fallas, 3)), 60000));
-  }
-  async function actualizar() {
-    if (enCurso || document.hidden) return;
-    enCurso = true;
-    const ctl = new AbortController();
-    const to = setTimeout(() => ctl.abort(), 12000);
-    try {
-      const res = await fetch(API, { cache: "no-store", signal: ctl.signal });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      render(await res.json());
-      ultimoOk = Date.now();
-      fallas = 0;
-    } catch (err) {
-      fallas++;
-      const seg = ultimoOk ? Math.round((Date.now() - ultimoOk) / 1000) : null;
-      estadoEl.textContent = seg ? "🕐 sin conexión hace " + seg + "s" : "🕐 no se pudo conectar";
-    } finally {
-      clearTimeout(to);
-      enCurso = false;
-      programar();
-    }
-  }
-  document.addEventListener("visibilitychange", () => { // al volver a la pestaña: dato fresco ya
-    if (!document.hidden) { ultimoFrame = performance.now(); clearTimeout(timer); actualizar(); }
   });
-  setInterval(() => { // edad del dato, solo si se está demorando
-    if (fallas || !ultimoOk || !baseEstado) return;
-    const seg = Math.round((Date.now() - ultimoOk) / 1000);
-    estadoEl.textContent = seg > 40 ? baseEstado + " · ⚠ datos de hace " + seg + " s" : baseEstado;
-  }, 5000);
 
   // ── ¿Dónde está mi tren? ────────────────────────────────────────────────
   // El pasajero indica sentido, estación y horario en que subió. Con eso se identifica el tren en el
@@ -5132,13 +4896,13 @@ renderStations();
     sel = nueva;
     validacion = null;
     irAlTren = !!nueva;
-    if (nueva) seguirMio = true;
+    if (nueva) mapa.seguir(true);
     try {
       if (nueva) localStorage.setItem(LS_MIO, JSON.stringify({ via: nueva.via, est: nueva.est, dep: nueva.dep, num: nueva.num ?? null, t: Date.now() }));
       else localStorage.removeItem(LS_MIO);
     } catch (e) { /* sin storage: la selección vive solo en esta visita */ }
     quitarMio.style.display = nueva ? "" : "none";
-    if (ultimaData) render(ultimaData); else actualizarMio(null, null);
+    if (mapa.datos()) mapa.refrescar(); else actualizarMio(null, null);
   }
 
   function marcarVia(via) {
@@ -5302,7 +5066,7 @@ renderStations();
     validando = false;
     validacion = { estado: det.ok ? "ok" : "fail", numero: tren ? (tren.numero ?? null) : null };
     registrarValidacion(tren, det);
-    if (ultimaData) render(ultimaData); else pintarBotonVal();
+    if (mapa.datos()) mapa.refrescar(); else pintarBotonVal();
   }
 
   function pedirValidacion() {
@@ -5319,7 +5083,6 @@ renderStations();
 
   function actualizarMio(mio, data) {
     miTrenActual = mio ? mio.tren : null;
-    pintarSeguir();
     if (validacion && validacion.estado === "ok" && !validacionOk(miTrenActual)) validacion = null; // cambió el tren que coincide: se vuelve a validar
     pintarBotonVal();
     if (!sel) { resMio.style.display = "none"; return; }
@@ -5334,39 +5097,10 @@ renderStations();
     mostrarRes(t.cancelado ? "nada" : "ok", "📍 Tu formación: #" + (t.numero ?? "?") + " → " + t.destino + " · " + dem + " · " + ubicacion(t, data.estaciones || []) + prox + textoFuente(t), textoDebug(t, data.estaciones || []));
     if (irAlTren) {
       irAlTren = false;
-      const el = stage.querySelector(".mv-tren.mio");
-      if (el && mapaEnPantalla()) {
-        const r = el.getBoundingClientRect();
-        const suave = !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-        window.scrollBy({ top: r.top + r.height / 2 - window.innerHeight / 2, behavior: suave ? "smooth" : "auto" });
-      }
+      mapa.centrarMio(true);
     }
   }
 
-  const btnSeg = document.createElement("button");
-  btnSeg.type = "button"; btnSeg.className = "mv-mio-quitar"; btnSeg.textContent = "📍 Seguir mi tren"; btnSeg.style.display = "none";
-  function pintarSeguir() { btnSeg.style.display = miTrenActual && !seguirMio ? "" : "none"; }
-  const barra = document.createElement("div");
-  barra.className = "mv-accion"; barra.setAttribute("aria-live", "polite");
-  function pintarAccion() {
-    const e = elegidaKey ? trenes.get(elegidaKey) : null;
-    if (!e || !e.t) { barra.className = "mv-accion"; barra.dataset.sig = ""; return; }
-    const t = e.t, esMio = miTrenActual === t;
-    const dem = t.cancelado ? "cancelado" : t.demoraMax ? "+" + t.demoraMax + " min" : "en horario";
-    const texto = "Formación #" + (t.numero ?? "?") + " → " + t.destino + " · " + dem;
-    const sig = e.key + "|" + texto + "|" + esMio;
-    barra.className = "mv-accion on";
-    if (barra.dataset.sig === sig) return; // no se reconstruye si no cambió: no se pierde un toque en curso
-    barra.dataset.sig = sig;
-    barra.textContent = "";
-    const sp = document.createElement("span");
-    sp.textContent = (esMio ? "📍 Tu tren · " : "") + texto;
-    const b = document.createElement("button");
-    b.type = "button";
-    if (esMio) { b.className = "sec"; b.textContent = "Dejar de seguir"; b.addEventListener("click", () => { cambiarSeleccion(null); poblarHoras(); elegidaKey = null; pintarAccion(); }); }
-    else { b.textContent = "📍 Marcar como mi tren"; b.addEventListener("click", () => marcarMiTren(e)); }
-    barra.appendChild(sp); barra.appendChild(b);
-  }
   // Toma la formación tocada y la reconoce en el cronograma (la de menor diferencia de horarios) para que el panel quede coherente.
   function marcarMiTren(e) {
     const t = e.t, via = e.via;
@@ -5387,26 +5121,7 @@ renderStations();
     cambiarSeleccion({ via: via, est: est, dep: dep, num: t.numero ?? null });
     poblarHoras();
   }
-  function elegirTren(ev) {
-    const el = ev.target && ev.target.closest ? ev.target.closest(".mv-tren") : null;
-    let key = null;
-    if (el) trenes.forEach((e) => { if (e.el === el) key = e.key; });
-    if (key === elegidaKey) return;
-    elegidaKey = key;
-    if (ultimaData) render(ultimaData); else pintarAccion();
-  }
   function iniciarPanelMio() {
-    document.body.appendChild(barra);
-    if (quitarMio && quitarMio.parentNode) quitarMio.parentNode.insertBefore(btnSeg, quitarMio);
-    btnSeg.addEventListener("click", () => { seguirMio = true; pintarSeguir(); });
-    ["pointerdown", "wheel", "touchstart"].forEach((ev) => window.addEventListener(ev, () => { if (seguirMio) { seguirMio = false; pintarSeguir(); } }, { passive: true }));
-    stage.addEventListener("click", elegirTren);
-    stage.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.classList && ev.target.classList.contains("mv-tren")) { ev.preventDefault(); elegirTren(ev); } });
-    document.addEventListener("click", (ev) => { // tocar fuera de una formación o de la barra la deselecciona
-      if (!elegidaKey || (ev.target.closest && (ev.target.closest(".mv-tren") || ev.target.closest(".mv-accion")))) return;
-      elegidaKey = null;
-      if (ultimaData) render(ultimaData); else pintarAccion();
-    });
     botonesVia.forEach((b) => b.addEventListener("click", () => {
       viaElegida = b.getAttribute("data-via");
       marcarVia(viaElegida);
@@ -5443,8 +5158,7 @@ renderStations();
   if (panelMio && hayDatosHorarios()) iniciarPanelMio();
   else if (panelMio) panelMio.style.display = "none";
 
-  actualizar();
-  requestAnimationFrame(cuadro);
+  mapa.iniciar();
 })();
 </script>
 <script>
