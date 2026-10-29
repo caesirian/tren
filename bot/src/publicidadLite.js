@@ -1,8 +1,9 @@
 // src/publicidadLite.js
 // Métricas de la publicidad de la app Lite (trensarmientoenlinea.com.ar/lite) y del sitio: clics (lo tocaron) por
-// anuncio, por origen ("app" o "sitio") y por día; en la app además impresiones (se mostró el banner, porque ahí
-// aparece y desaparece). En el sitio los banners están siempre a la vista, así que ahí solo se cuentan clics.
-// Pedido de Coco (19/10): contabilizar los clics, discriminando sitio vs app.
+// anuncio, por origen ("app" o "sitio") y por día, e impresiones (se mostró el banner). En la app una impresión es
+// cada vez que aparece el banner; en el sitio, una vez por carga de página cuando al menos la mitad del banner entra
+// en pantalla (los banners del sitio están al final o en medio de la página y no todos llegan a verlos).
+// Pedido de Coco (19/10): contabilizar los clics, discriminando sitio vs app. 29/10: impresiones y CTR también en el sitio.
 //
 // Privacidad: igual que instalacionesLite.js — no se guarda IP ni nada identificable; solo contadores diarios.
 //
@@ -38,7 +39,6 @@ export function normalizarEventoPublicidad(b) {
   const anuncio = typeof b.anuncio === "string" && /^[a-z0-9-]{2,40}$/.test(b.anuncio) ? b.anuncio : null;
   if (!evento || !anuncio) return null;
   const origen = ORIGENES.has(b.origen) ? b.origen : "app"; // sin origen = app (versiones anteriores de Lite)
-  if (origen === "sitio" && evento === "impresion") return null; // en el sitio solo se cuentan clics
   return { evento, anuncio, origen };
 }
 
@@ -68,13 +68,13 @@ export async function textoPublicidad(dias = 7) {
   const filas = snap.docs.map((d) => d.data());
   if (!filas.length) return `📢 Publicidad — últimos ${dias} día(s)\nTodavía no hay clics ni impresiones registrados.`;
 
-  const porAnuncio = {}; // anuncio -> { sitio: {clics}, app: {clics, impresiones} }
+  const porAnuncio = {}; // anuncio -> { sitio: {clics, impresiones}, app: {clics, impresiones} }
   const porDia = {}; // fecha -> { sitio, app } (clics)
   for (const f of filas) {
     const origen = f.origen === "sitio" ? "sitio" : "app";
-    const a = (porAnuncio[f.anuncio] ||= { sitio: { clics: 0 }, app: { clics: 0, impresiones: 0 } });
+    const a = (porAnuncio[f.anuncio] ||= { sitio: { clics: 0, impresiones: 0 }, app: { clics: 0, impresiones: 0 } });
     a[origen].clics += f.clics || 0;
-    if (origen === "app") a.app.impresiones += f.impresiones || 0;
+    a[origen].impresiones += f.impresiones || 0;
     const dd = (porDia[f.fecha] ||= { sitio: 0, app: 0 });
     dd[origen] += f.clics || 0;
   }
@@ -85,8 +85,9 @@ export async function textoPublicidad(dias = 7) {
     tSitio += a.sitio.clics;
     tApp += a.app.clics;
     out.push("", `• ${anuncio}: ${total(a)} clic(s)`);
-    out.push(`   🌐 Sitio: ${a.sitio.clics}`);
-    out.push(`   📱 App: ${a.app.clics}${a.app.impresiones ? ` (${a.app.impresiones} impresiones · CTR ${pct(a.app.clics, a.app.impresiones)})` : ""}`);
+    const det = (o) => (o.impresiones ? ` (${o.impresiones} impresiones · CTR ${pct(o.clics, o.impresiones)})` : "");
+    out.push(`   🌐 Sitio: ${a.sitio.clics}${det(a.sitio)}`);
+    out.push(`   📱 App: ${a.app.clics}${det(a.app)}`);
   }
   out.push("", `Total: ${tSitio + tApp} clic(s) — 🌐 sitio ${tSitio} · 📱 app ${tApp}`);
   out.push("", "Por día (clics):");

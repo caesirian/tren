@@ -5162,17 +5162,37 @@ renderStations();
 })();
 </script>
 <script>
-// Clics en la publicidad del sitio (pedido 19/10): se mandan al bot, que los suma por anuncio y por día (origen "sitio")
-// y los muestra junto a los de la app con /publicidad en Telegram. No se guarda nada que identifique a la persona.
+// Publicidad del sitio (pedido 19/10, ampliado 29/10): se mandan al bot clics e impresiones, que los suma por anuncio y por día
+// (origen "sitio") y los muestra junto a los de la app con /publicidad en Telegram. No se guarda nada que identifique a la persona.
+// Impresión = una vez por carga de página, cuando al menos la mitad del banner entra en pantalla. Los clics también van a Clarity como evento.
 (function () {
   var API = "https://trenbot.onrender.com/api/publicidad-lite";
+  function enviar(evento, anuncio) {
+    try {
+      fetch(API, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ evento: evento, anuncio: anuncio, origen: "sitio" }), keepalive: true }).catch(function () {});
+    } catch (err) {}
+  }
   document.addEventListener("click", function (e) {
     var cont = e.target && e.target.closest ? e.target.closest("[data-pub]") : null;
     if (!cont || !e.target.closest("a")) return; // solo cuentan los toques sobre un link del anuncio
-    try {
-      fetch(API, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ evento: "clic", anuncio: cont.getAttribute("data-pub"), origen: "sitio" }), keepalive: true }).catch(function () {});
-    } catch (err) {}
+    var anuncio = cont.getAttribute("data-pub");
+    enviar("clic", anuncio);
+    try { if (window.clarity) window.clarity("event", "pub_clic_" + anuncio); } catch (err) {}
   });
+  if ("IntersectionObserver" in window) {
+    var visto = {};
+    var obs = new IntersectionObserver(function (entradas) {
+      entradas.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        var anuncio = en.target.getAttribute("data-pub");
+        obs.unobserve(en.target);
+        if (visto[anuncio]) return;
+        visto[anuncio] = true;
+        enviar("impresion", anuncio);
+      });
+    }, { threshold: 0.5 });
+    document.querySelectorAll("[data-pub]").forEach(function (el) { obs.observe(el); });
+  }
 })();
 </script>
 </body>
