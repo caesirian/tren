@@ -125,6 +125,7 @@ main { padding:calc(var(--head-h) + var(--safe-t) + 12px) 12px calc(var(--nav-h)
 .loc .cuando { text-align:right; font-size:13px; font-weight:700; color:var(--muted); line-height:1.2; }
 .loc .cuando b { display:block; font-size:18px; color:var(--blue); white-space:nowrap; }
 .loc.pasado { opacity:.45; }
+.conf { display:inline-block; font-size:11px; font-weight:800; padding:1px 8px; border-radius:10px; background:#DCFCE7; color:#166534; margin-left:6px; letter-spacing:.2px; vertical-align:middle; }
 .loc.proximo { background:#EAF6FD; box-shadow:inset 4px 0 0 var(--celeste); }
 .sent { display:inline-block; font-size:11px; font-weight:800; padding:1px 8px; border-radius:10px; margin-left:6px; vertical-align:2px; background:var(--cel-light); color:var(--blue); }
 .ver-idos { display:block; width:100%; margin:0 0 10px; padding:11px; border:1px dashed var(--border); background:#fff; border-radius:12px; color:var(--blue); font-size:14px; font-weight:700; }
@@ -273,7 +274,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
     var min = t.cancelado ? "Cancelado" : m == null ? "–" : m <= 0 ? "Ahora" : m;
     var unidad = t.cancelado ? "" : m != null && m > 0 ? "min" : "";
     var det = t.cancelado ? esc(t.motivoCancelacion || "Servicio cancelado") : "Sale " + hhmm(t.estim || t.prog) + (dem ? " · +" + t.demoraMin + " min de demora" : " · en horario") + (t.anden ? " · andén " + esc(t.anden) : "");
-    return '<div class="tren' + (i === 0 && !t.cancelado ? " primero" : "") + (dem ? " demora" : "") + (t.cancelado ? " cancel" : "") + '"><div><div class="dst">' + esc(t.destino || "?") + (t.cancelado ? '<span class="etq">CANCELADO</span>' : "") + '</div><div class="det">' + det + '</div></div><div class="min"><b>' + min + "</b>" + (unidad ? "<span>" + unidad + "</span>" : "") + "</div></div>";
+    return '<div class="tren' + (i === 0 && !t.cancelado ? " primero" : "") + (dem ? " demora" : "") + (t.cancelado ? " cancel" : "") + '"><div><div class="dst">' + esc(t.destino || "?") + (t.cancelado ? '<span class="etq">CANCELADO</span>' : etqConf(t.numero)) + '</div><div class="det">' + det + '</div></div><div class="min"><b>' + min + "</b>" + (unidad ? "<span>" + unidad + "</span>" : "") + "</div></div>";
   }
   function pintarEst(d) {
     var s = d.sentidos || { moreno: [], once: [] };
@@ -438,6 +439,14 @@ nav button[aria-selected="true"] { color:var(--blue); }
   // ── Locales (cronograma; se guarda en el celular para verlo sin señal) ──
   var DIAS = [["lv", "Lun a Vie"], ["sab", "Sábado"], ["dom", "Domingo"]];
   var loc = { dia: null, sent: "todos", est: "todas", pasados: false };
+  // Local con GPS en la app de Trenes Argentinos = "Confirmado" (se refresca junto con cada vista).
+  var confirmados = {};
+  function pedirConfirmados() {
+    return pedir("locales-confirmados").then(function (d) {
+      confirmados = {}; (d.confirmados || []).forEach(function (n) { confirmados[String(n)] = true; });
+    }).catch(function () {});
+  }
+  function etqConf(n) { return n != null && confirmados[String(n)] ? '<span class="conf">✓ Confirmado</span>' : ""; }
   var fmtDiaSem = new Intl.DateTimeFormat("en-US", { timeZone: "America/Argentina/Buenos_Aires", weekday: "short" });
   var fmtHM = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hour12: false });
   function tipoHoy() { var w = fmtDiaSem.format(new Date()); return w === "Sun" ? "dom" : w === "Sat" ? "sab" : "lv"; }
@@ -463,7 +472,7 @@ nav button[aria-selected="true"] { color:var(--blue); }
         if (!proximoMarcado) { clase += " proximo"; proximoMarcado = true; }
         cuando = falta <= 0 ? "<b>Ahora</b>" : falta < 60 ? "<b>" + falta + " min</b>" : "<b>" + Math.floor(falta / 60) + " h " + (falta % 60) + " min</b>";
       }
-      return '<div class="' + clase + '"><div class="h">' + esc(l.hora) + '</div><div class="o"><b>Sale de ' + esc(bonito(l.estacion)) + '</b><span>Hacia ' + esc(bonito(l.destino)) + " · llega " + esc(l.llegada) + '</span><span>Tren ' + esc(l.n) + '</span></div><div class="cuando">' + cuando + "</div></div>";
+      return '<div class="' + clase + '"><div class="h">' + esc(l.hora) + '</div><div class="o"><b>Sale de ' + esc(bonito(l.estacion)) + (pasado || !esHoy ? "" : etqConf(l.n)) + '</b><span>Hacia ' + esc(bonito(l.destino)) + " · llega " + esc(l.llegada) + '</span><span>Tren ' + esc(l.n) + '</span></div><div class="cuando">' + cuando + "</div></div>";
     }
     var h = "";
     if (!filtrada.length) {
@@ -483,7 +492,8 @@ nav button[aria-selected="true"] { color:var(--blue); }
   function cargarLocales() {
     var guardado = leerLocalesGuardados();
     if (guardado && !estado.datos.locales) { estado.datos.locales = guardado; pintarLocales(guardado); }
-    return pedir("horarios-locales").then(function (d) {
+    return Promise.all([pedir("horarios-locales"), pedirConfirmados()]).then(function (r) {
+      var d = r[0];
       estado.datos.locales = d; lsSet("lite.locales", JSON.stringify(d));
       if (estado.vista === "locales") pintarLocales(d);
       avisar(""); marcar(true, "cronograma al día");
@@ -502,7 +512,8 @@ nav button[aria-selected="true"] { color:var(--blue); }
     if (v === "cabeceras") { ruta = "tablero-cabecera?estacion=" + encodeURIComponent(estado.cab); pintar = pintarCab; }
     else if (v === "estaciones") { ruta = "tablero-estacion?estacion=" + encodeURIComponent(estado.est); pintar = pintarEst; }
     else { ruta = "tablero-mapa"; pintar = pintarMapa; }
-    return pedir(ruta).then(function (d) {
+    return Promise.all([pedir(ruta), v === "estaciones" ? pedirConfirmados() : null]).then(function (r) {
+      var d = r[0];
       if (mio !== estado.pedido) return;
       estado.ok = Date.now(); estado.datos[v] = d; pintar(d);
       avisar(""); marcar(true, "en vivo · " + hhmm(d.consultadoEn));

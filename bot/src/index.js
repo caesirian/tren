@@ -34,7 +34,7 @@ import { registrarMensajeGrupo, getSenalComunidad } from "./complaintTracker.js"
 import { incrementarContadorMensajes, detectarTema, yaRespondidoRecientemente, registrarRespuestaAlAire, olvidarTema, esTemaEspaciado, programarRespuestaDiferida, marcarRespondidoMensaje, marcarRespondidoUsuario, enfriandoAlAire, reservarAlAire, ESPERA_AL_AIRE_MS } from "./respuestaDedupe.js";
 import { evaluarSpam } from "./spamDetector.js";
 import { reporteEstacion, barridoSarmiento, proximasSalidas, barridoEstructurado, trenesConOrigenInusual, textoCancelacion, datosServicio, hora, consultarProxy, filasParaTabla, columnasCabecera, proximosPorEstacion, posicionesEnVivo, ESTACIONES_BARRIDO, arribosVivosEstacion } from "./appTrenes.js";
-import { COORDS_ESTACIONES } from "./appTrenes.js";
+import { COORDS_ESTACIONES, gpsValido } from "./appTrenes.js";
 import { actualizarMarcha } from "./marcha.js";
 import { generarImagenTablero, generarImagenProximoTren } from "./tableroImagen.js";
 import { imagenMapaDemoras, mapaDemorasModo } from "./mapaDemorasImagen.js";
@@ -2771,6 +2771,28 @@ app.get("/api/horarios-locales", (req, res) => {
   } catch (err) {
     console.error("Error en /api/horarios-locales:", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Locales "Confirmados" para la app Lite: formaciones de locales que ya tienen posición GPS en la app de Trenes
+// Argentinos (están en su estación de origen o en camino). Devuelve solo los números de tren; Lite los cruza
+// con el cronograma (pestaña Locales) y con las pantallas de estación para mostrar "Confirmado".
+app.get("/api/locales-confirmados", async (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && ORIGENES_TABLERO_PERMITIDOS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+  if (!claveTableroValida(req)) return res.status(403).json({ error: "forbidden" });
+  try {
+    const barrido = await barridoEstructurado();
+    const confirmados = new Set();
+    for (const item of barrido.todos) {
+      const d = datosServicio(item);
+      if (d.s.numero == null || d.s.cancelacion || !gpsValido(d.s.location)) continue;
+      if (clasificarServicio(item).esLocal) confirmados.add(d.s.numero);
+    }
+    res.json({ confirmados: [...confirmados], consultadoEn: new Date().toISOString() });
+  } catch (err) {
+    console.error("Error en /api/locales-confirmados:", err.message);
+    res.status(502).json({ error: err.message });
   }
 });
 
